@@ -1,0 +1,21 @@
+# Rust build output
+/target/
+**/*.rs.bk
+*.pdb
+
+# Local runtime data and secrets
+/data/
+.env
+.env.*
+!.env.example
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+secret.key
+
+# Editors and OS
+.idea/
+.vscode/
+*.swp
+.DS_Store
+Thumbs.db
