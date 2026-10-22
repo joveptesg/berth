@@ -465,6 +465,27 @@ pub async fn set_default(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<(
     Ok(())
 }
 
+/// Opens the blob store of a profile (a deleted profile still opens: its blobs may remain).
+pub(crate) async fn open(
+    state: &AppState,
+    tenant_id: &str,
+    id: &str,
+) -> anyhow::Result<storage::ObjectBlobStore> {
+    let row: Row = sqlx::query_as(
+        "SELECT id, name, kind, config, secrets_encrypted, delivery_mode, verified_at,
+            verify_error, created_at FROM storage_profiles WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_one(&state.db)
+    .await
+    .context("load storage profile")?;
+    storage::open(
+        &backend(&state.secret, &row)?,
+        &state.config.load().data_dir,
+    )
+}
+
 /// Checks the connection (write, read back, delete a probe) and stores the result.
 ///
 /// # Errors

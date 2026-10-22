@@ -9,7 +9,7 @@ use sqlx::SqlitePool;
 use subtle::ConstantTimeEq;
 
 use super::{
-    auth, random_token, settings,
+    auth, books, random_token, settings,
     storage::{self, ProfileInput},
 };
 use crate::{AppState, db, db::now_ms};
@@ -126,6 +126,9 @@ pub async fn create_owner(
         .await
         .context("insert policy")?;
     storage::insert_first(&mut tx, &state.secret, &tenant_id, &first_storage).await?;
+    books::default_library(&mut tx, &tenant_id)
+        .await
+        .context("create library")?;
     if !settings::locked(state).name {
         db::put_server_setting(&mut tx, "name", Some(&Value::String(name)))
             .await

@@ -11,14 +11,18 @@ use axum::{
 };
 use berth_server::{
     AppState,
+    media::fixtures,
     service::{auth, pairing},
 };
 use http_body_util::BodyExt;
+use sha2::Digest;
 use tower::ServiceExt;
 
 const PASSWORD: &str = "harbour lights";
 
 async fn start(dir: &Path) -> AppState {
+    // Server errors show up in the output of a failing test.
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
     let config = dir.join("berth.toml");
     std::fs::write(
         &config,
@@ -1125,5 +1129,474 @@ async fn storage_api_crud() {
     assert_eq!(
         send(&state, bearer_get(&item, &token)).await.problem(),
         "not_found"
+    );
+}
+
+// ── Upload and sync ──────────────────────────────────────
+
+fn put_bytes(uri: &str, token: &str, bytes: Vec<u8>) -> Request<Body> {
+    Request::put(uri)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::CONTENT_TYPE, "application/octet-stream")
+        .body(Body::from(bytes))
+        .unwrap()
+}
+
+fn chapter_mp3(title: &str, track: u32, seconds: u32) -> Vec<u8> {
+    fixtures::mp3(&fixtures::Mp3 {
+        seconds,
+        title: Some(title),
+        album: Some("Сами боги"),
+        artist: Some("Айзек Азимов"),
+        narrator: None,
+        track: Some(track),
+        chapters: &[],
+        cover: false,
+    })
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: upload, analyse, save, sync, cover, delete"
+)]
+async fn upload_analyse_save_and_sync() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    set_up(&state).await;
+    let token = admin_token(&state).await;
+
+    // A folder: two chapters out of order by name, and a cover next to them.
+    let second = chapter_mp3("Вторая", 2, 2);
+    let first = chapter_mp3("Первая", 1, 1);
+    let created = send(
+        &state,
+        api(
+            "POST",
+            "/v1/ingest/uploads",
+            &token,
+            Some(&serde_json::json!({
+                "name": "Азимов Айзек - Сами боги [Юрий Красиков]",
+                "files": [
+                    { "name": "b.mp3", "size": second.len() },
+                    { "name": "a.mp3", "size": first.len() },
+                    { "name": "cover.png", "size": fixtures::PNG.len() },
+                ],
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    let created = created.json();
+    let id = created["id"].as_str().unwrap().to_owned();
+    assert!(
+        created["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .all(|t| t["method"] == "server")
+    );
+
+    let early = send(
+        &state,
+        api(
+            "POST",
+            &format!("/v1/ingest/uploads/{id}/complete"),
+            &token,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(early.json()["detail"], "upload_file_missing");
+    let short = send(
+        &state,
+        put_bytes(
+            &format!("/v1/ingest/uploads/{id}/files/0"),
+            &token,
+            vec![1, 2, 3],
+        ),
+    )
+    .await;
+    assert_eq!(short.json()["detail"], "upload_size_mismatch");
+    for (idx, bytes) in [second.clone(), first, fixtures::PNG.to_vec()]
+        .into_iter()
+        .enumerate()
+    {
+        let stored = send(
+            &state,
+            put_bytes(
+                &format!("/v1/ingest/uploads/{id}/files/{idx}"),
+                &token,
+                bytes,
+            ),
+        )
+        .await;
+        assert_eq!(stored.status, StatusCode::NO_CONTENT, "{}", stored.body);
+    }
+    let analysing = send(
+        &state,
+        api(
+            "POST",
+            &format!("/v1/ingest/uploads/{id}/complete"),
+            &token,
+            None,
+        ),
+    )
+    .await;
+    assert_eq!(analysing.status, StatusCode::ACCEPTED, "{}", analysing.body);
+    assert_eq!(analysing.json()["status"], "analyzing");
+    assert_eq!(berth_server::jobs::run_due(&state).await.unwrap(), 1);
+
+    let ready = send(
+        &state,
+        bearer_get(&format!("/v1/ingest/uploads/{id}"), &token),
+    )
+    .await
+    .json();
+    assert_eq!(ready["status"], "ready", "{ready}");
+    let draft = &ready["draft"];
+    assert_eq!(draft["title"], "Сами боги");
+    assert_eq!(draft["authors"], serde_json::json!(["Айзек Азимов"]));
+    assert_eq!(
+        draft["narrators"],
+        serde_json::json!(["Юрий Красиков"]),
+        "from the folder name"
+    );
+    assert_eq!(draft["files"][0]["name"], "a.mp3", "track order");
+    assert_eq!(draft["chapters"][1]["title"], "Вторая");
+    assert!(draft["cover_hash"].is_string());
+
+    let saved = send(
+        &state,
+        api(
+            "POST",
+            &format!("/v1/ingest/uploads/{id}/save"),
+            &token,
+            Some(&serde_json::json!({
+                "title": "Сами боги", "authors": ["Айзек Азимов"], "narrators": ["Юрий Красиков"],
+                "series": "", "rating": 16,
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(saved.status, StatusCode::CREATED, "{}", saved.body);
+    let book_id = saved.json()["book_id"].as_str().unwrap().to_owned();
+    let again = send(
+        &state,
+        api(
+            "POST",
+            &format!("/v1/ingest/uploads/{id}/save"),
+            &token,
+            Some(&serde_json::json!({ "title": "x" })),
+        ),
+    )
+    .await;
+    assert_eq!(again.json()["detail"], "upload_not_ready");
+
+    // The phone gets the whole book in one page, then nothing new.
+    let page = send(&state, bearer_get("/v1/sync", &token)).await.json();
+    assert_eq!(page["reset"], true);
+    assert_eq!(page["has_more"], false);
+    let book = &page["books"][0];
+    assert_eq!(book["id"], book_id.as_str());
+    assert_eq!(book["rating"], 16);
+    assert_eq!(book["files"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        book["files"][1]["offset_ms"],
+        book["files"][0]["duration_ms"]
+    );
+    assert_eq!(book["chapters"].as_array().unwrap().len(), 2);
+    assert_eq!(book["duration_ms"], book["chapters"][1]["end_ms"]);
+    let cursor = page["cursor"].as_str().unwrap().to_owned();
+    let quiet = send(
+        &state,
+        bearer_get(&format!("/v1/sync?cursor={cursor}"), &token),
+    )
+    .await
+    .json();
+    assert_eq!(
+        (
+            quiet["reset"].clone(),
+            quiet["books"].as_array().unwrap().len()
+        ),
+        (serde_json::json!(false), 0)
+    );
+
+    // The cover is served with caching headers.
+    let cover = send(
+        &state,
+        bearer_get(&format!("/v1/books/{book_id}/cover"), &token),
+    )
+    .await;
+    assert_eq!(cover.status, StatusCode::OK);
+    assert_eq!(cover.headers[header::CONTENT_TYPE], "image/png");
+    let etag = cover.headers[header::ETAG].to_str().unwrap().to_owned();
+    let cached = Request::get(format!("/v1/books/{book_id}/cover"))
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::IF_NONE_MATCH, etag)
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(send(&state, cached).await.status, StatusCode::NOT_MODIFIED);
+
+    // The same bytes again need no transfer.
+    let digest = hex::encode(sha2::Sha256::digest(&second));
+    let dedup = send(
+        &state,
+        api(
+            "POST",
+            "/v1/ingest/uploads",
+            &token,
+            Some(&serde_json::json!({ "name": "again", "files": [{ "name": "x.mp3", "size": second.len(), "sha256": digest }] })),
+        ),
+    )
+    .await
+    .json();
+    assert_eq!(dedup["targets"][0]["method"], "stored");
+
+    // A deleted book is removed on the next sync.
+    let tenant_id = tenant(&state).await;
+    berth_server::service::books::delete(&state.db, &tenant_id, &book_id)
+        .await
+        .unwrap();
+    let gone = send(
+        &state,
+        bearer_get(&format!("/v1/sync?cursor={cursor}"), &token),
+    )
+    .await
+    .json();
+    assert_eq!(gone["removed"], serde_json::json!([book_id]));
+    assert_eq!(
+        send(
+            &state,
+            bearer_get(&format!("/v1/books/{book_id}/cover"), &token)
+        )
+        .await
+        .problem(),
+        "not_found"
+    );
+}
+
+/// A same-origin browser request with the session cookie.
+fn browser(
+    method: &str,
+    uri: &str,
+    session: &str,
+    content_type: &str,
+    body: Vec<u8>,
+) -> Request<Body> {
+    Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::COOKIE, format!("berth_session={session}"))
+        .header("sec-fetch-site", "same-origin")
+        .header("hx-request", "true")
+        .header(header::CONTENT_TYPE, content_type)
+        .body(Body::from(body))
+        .unwrap()
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one admin journey: upload page, library, book page"
+)]
+async fn admin_uploads_and_edits_books() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+
+    let empty = send(&state, get("/", Some(&session))).await;
+    assert!(empty.body.contains("href=\"/upload\""), "{}", empty.body);
+    let page = send(&state, get("/upload", Some(&session))).await;
+    assert!(
+        page.body.contains("id=\"dropzone\"") && page.body.contains("data-presigned=\"false\"")
+    );
+
+    // The browser script: targets, files, completion, then the card polls.
+    let m4b = fixtures::m4b(&fixtures::M4b {
+        seconds: 90,
+        title: "Основание",
+        artist: "Айзек Азимов",
+        chapters: &[(0, "Психоисторики"), (30_000, "Энциклопедисты")],
+    });
+    let new = serde_json::json!({ "name": "Основание.m4b", "files": [{ "name": "Основание.m4b", "size": m4b.len() }] });
+    let created = send(
+        &state,
+        browser(
+            "POST",
+            "/upload/new",
+            &session,
+            "application/json",
+            new.to_string().into_bytes(),
+        ),
+    )
+    .await;
+    assert_eq!(created.status, StatusCode::OK, "{}", created.body);
+    let id = created.json()["id"].as_str().unwrap().to_owned();
+    let card = send(&state, get(&format!("/upload/{id}"), Some(&session))).await;
+    assert!(card.body.contains("data-progress"), "{}", card.body);
+    let stored = send(
+        &state,
+        browser(
+            "PUT",
+            &format!("/upload/{id}/files/0"),
+            &session,
+            "application/octet-stream",
+            m4b,
+        ),
+    )
+    .await;
+    assert_eq!(stored.status, StatusCode::NO_CONTENT, "{}", stored.body);
+    let analysing = send(
+        &state,
+        post(&format!("/upload/{id}/complete"), Some(&session), &[]),
+    )
+    .await;
+    assert!(
+        analysing.body.contains("hx-trigger=\"load delay:2s\""),
+        "{}",
+        analysing.body
+    );
+    berth_server::jobs::run_due(&state).await.unwrap();
+    let ready = send(&state, get(&format!("/upload/{id}"), Some(&session))).await;
+    assert!(ready.body.contains("value=\"Основание\""), "{}", ready.body);
+    assert!(ready.body.contains("Энциклопедисты"));
+    assert!(
+        !ready.body.contains("hx-trigger=\"load delay:2s\""),
+        "no more polling"
+    );
+
+    let rejected = send(
+        &state,
+        post(
+            &format!("/upload/{id}/save"),
+            Some(&session),
+            &[("title", " "), ("authors", "Айзек Азимов")],
+        ),
+    )
+    .await;
+    assert!(
+        rejected.body.contains("role=\"alert\""),
+        "{}",
+        rejected.body
+    );
+    let saved = send(
+        &state,
+        post(
+            &format!("/upload/{id}/save"),
+            Some(&session),
+            &[
+                ("title", "Основание"),
+                ("authors", "Айзек Азимов"),
+                ("narrators", ""),
+                ("series", "Основание"),
+                ("series_no", "1"),
+                ("rating", "12"),
+            ],
+        ),
+    )
+    .await;
+    let book_id = between(&saved.body, "href=\"/book/", "\"").to_owned();
+
+    // The library lists it, filters find it, the book page edits it.
+    let library = send(&state, get("/library", Some(&session))).await;
+    let library_url = library.location().unwrap().to_owned();
+    let list = send(&state, get(&library_url, Some(&session))).await;
+    assert!(
+        list.body.contains(&format!("/book/{book_id}")),
+        "{}",
+        list.body
+    );
+    assert!(list.body.contains("Основание #1"));
+    let found = send(
+        &state,
+        get(
+            &format!("{library_url}?q=%D0%B0%D0%B7%D0%B8%D0%BC%D0%BE%D0%B2"),
+            Some(&session),
+        ),
+    )
+    .await;
+    assert!(
+        found.body.contains(&format!("/book/{book_id}")),
+        "case-insensitive Cyrillic search"
+    );
+    let none = send(
+        &state,
+        get(&format!("{library_url}?rating=18"), Some(&session)),
+    )
+    .await;
+    assert!(!none.body.contains(&format!("/book/{book_id}")));
+
+    let book = send(&state, get(&format!("/book/{book_id}"), Some(&session))).await;
+    assert!(
+        book.body.contains("Психоисторики") && book.body.contains("1:30"),
+        "{}",
+        book.body
+    );
+    let edited = send(
+        &state,
+        post(
+            &format!("/book/{book_id}"),
+            Some(&session),
+            &[
+                ("title", "Основание"),
+                ("authors", "Азимов, Айзек"),
+                ("series_no", "x"),
+            ],
+        ),
+    )
+    .await;
+    assert!(edited.body.contains("role=\"alert\""), "{}", edited.body);
+    let edited = send(
+        &state,
+        post(
+            &format!("/book/{book_id}"),
+            Some(&session),
+            &[("title", "Основание"), ("rating", "16")],
+        ),
+    )
+    .await;
+    assert!(edited.body.contains("role=\"status\""), "{}", edited.body);
+
+    // A new cover, then the book goes.
+    let boundary = "berthboundary";
+    let mut form = format!(
+        "--{boundary}\r\nContent-Disposition: form-data; name=\"cover\"; filename=\"c.png\"\r\nContent-Type: image/png\r\n\r\n"
+    )
+    .into_bytes();
+    form.extend_from_slice(fixtures::PNG);
+    form.extend_from_slice(format!("\r\n--{boundary}--\r\n").as_bytes());
+    let covered = send(
+        &state,
+        browser(
+            "POST",
+            &format!("/book/{book_id}/cover"),
+            &session,
+            &format!("multipart/form-data; boundary={boundary}"),
+            form,
+        ),
+    )
+    .await;
+    assert!(covered.body.contains("cover?v="), "{}", covered.body);
+    let image = send(
+        &state,
+        get(&format!("/book/{book_id}/cover"), Some(&session)),
+    )
+    .await;
+    assert_eq!(image.headers[header::CONTENT_TYPE], "image/png");
+    let dashboard = send(&state, get("/", Some(&session))).await;
+    assert!(dashboard.body.contains(">1</dd>"), "one book");
+
+    let deleted = send(
+        &state,
+        post(&format!("/book/{book_id}/delete"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(deleted.location(), Some(library_url.as_str()));
+    assert_eq!(
+        send(&state, get(&format!("/book/{book_id}"), Some(&session)))
+            .await
+            .status,
+        StatusCode::NOT_FOUND
     );
 }

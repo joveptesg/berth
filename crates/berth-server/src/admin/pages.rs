@@ -17,7 +17,7 @@ use super::{is_htmx, redirect, session, storage::StorageForm};
 use crate::{
     AppState,
     error::ApiError,
-    service::{auth, settings, setup},
+    service::{auth, books, ingest, settings, setup},
 };
 
 pub(super) type Page = Result<Response, ApiError>;
@@ -257,8 +257,33 @@ pub(crate) async fn logout(State(state): State<AppState>, headers: HeaderMap) ->
 
 // ── Dashboard ────────────────────────────────────────────
 
-pub(crate) async fn dashboard(State(state): State<AppState>) -> Page {
-    render(&state, "dashboard.html", shell(&state, "dashboard"))
+pub(crate) async fn dashboard(
+    State(state): State<AppState>,
+    Extension(session): Extension<session::AdminSession>,
+) -> Page {
+    let tenant_id = &session.0.tenant_id;
+    let library_id = books::default_library_id(&state.db, tenant_id).await?;
+    let book_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM books WHERE tenant_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(anyhow::Error::from)?;
+    let uploads = ingest::recent(&state.db, tenant_id, 5).await?;
+    let jobs = crate::jobs::recent(&state.db, tenant_id, 6)
+        .await
+        .map_err(anyhow::Error::from)?;
+    render(
+        &state,
+        "dashboard.html",
+        context! {
+            library_id, book_count,
+            uploads => Value::from(minijinja::value::Serde(uploads)),
+            jobs => Value::from(minijinja::value::Serde(jobs)),
+            ..shell(&state, "dashboard")
+        },
+    )
 }
 
 // ── Settings ─────────────────────────────────────────────

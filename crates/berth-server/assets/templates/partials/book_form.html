@@ -1,0 +1,10 @@
+{% import "partials/book_fields.html" as bf %}
+{# Metadata of a book; after a rejected save it shows the typed values. #}
+<form id="book-form" method="post" action="/book/{{ book.id }}" hx-post="/book/{{ book.id }}" hx-target="this" hx-swap="outerHTML" class="card flex flex-col gap-5">
+  {% if error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
+  {{ bf.fields(form or book, "book", ratings) }}
+  <div class="flex flex-wrap items-center gap-3">
+    <button type="submit" class="btn btn-primary">{{ t('common.save') }}</button>
+    {% if saved %}<span class="alert-ok py-2" role="status">{{ t('common.saved') }}</span>{% endif %}
+  </div>
+</form>

@@ -4,7 +4,10 @@
 //! (e.g. `password_too_short`); the admin UI translates it as `errors.<code>`.
 
 pub mod auth;
+pub mod blobs;
+pub mod books;
 pub mod devices;
+pub mod ingest;
 pub mod pairing;
 pub mod settings;
 pub mod setup;

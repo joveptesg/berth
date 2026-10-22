@@ -5,21 +5,27 @@
 mod access;
 mod csrf;
 mod i18n;
+mod library;
 mod pages;
 mod session;
 mod static_files;
 mod storage;
 pub(crate) mod templates;
+mod upload;
 
 use std::sync::Arc;
 
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     http::{HeaderMap, HeaderValue, StatusCode, header},
     middleware,
     response::{IntoResponse, Redirect, Response},
-    routing::{get, post},
+    routing::{get, post, put},
 };
+
+/// A cover upload with its multipart framing.
+const COVER_LIMIT: usize = 11 << 20;
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 
 use crate::AppState;
@@ -69,6 +75,26 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         .route("/storage/{id}/verify", post(storage::verify))
         .route("/storage/{id}/default", post(storage::make_default))
         .route("/storage/{id}/delete", post(storage::delete))
+        .route("/library", get(library::default_library))
+        .route("/library/{id}", get(library::library))
+        .route("/book/{id}", get(library::book).post(library::book_save))
+        .route(
+            "/book/{id}/cover",
+            get(library::book_cover)
+                .merge(post(library::book_cover_upload).layer(DefaultBodyLimit::max(COVER_LIMIT))),
+        )
+        .route("/book/{id}/delete", post(library::book_delete))
+        .route("/upload", get(upload::page))
+        .route("/upload/new", post(upload::create))
+        .route(
+            "/upload/{id}/files/{idx}",
+            put(upload::put_file).layer(DefaultBodyLimit::disable()),
+        )
+        .route("/upload/{id}", get(upload::status))
+        .route("/upload/{id}/complete", post(upload::complete))
+        .route("/upload/{id}/save", post(upload::save))
+        .route("/upload/{id}/discard", post(upload::discard))
+        .route("/upload/{id}/cover", get(upload::cover))
         .layer(middleware::from_fn_with_state(state, session::require));
 
     public

@@ -655,6 +655,454 @@
         }
       }
     },
+    "/v1/books/{id}/cover": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "The cover image of a book. The URL changes with the cover (`cover_hash` in the sync), so\nit can be cached forever.",
+        "operationId": "cover",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Book id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "JPEG, PNG or WebP",
+            "content": {
+              "image/*": {}
+            }
+          },
+          "304": {
+            "description": "`If-None-Match` matches"
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such book or no cover",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ingest/uploads": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Start an upload of one book. Each file gets a target: `server` (PUT it to\n`/v1/ingest/uploads/{id}/files/{idx}`), `presigned` (PUT it to `url` with `headers`; S3\nrejects other bytes) or `stored` (already on the server).",
+        "operationId": "create_upload",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CreateUpload"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Upload and file targets",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Created"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation`; `detail`: `upload_empty`, `upload_too_many`, `upload_file_unsupported`, `upload_no_audio`, `upload_hash_invalid`, `upload_hash_required` or `invalid_body`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `upload` or `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ingest/uploads/{id}": {
+      "get": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "An upload: its status and, once `ready`, the proposed book.",
+        "operationId": "get_upload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Upload id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Upload",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Upload"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `upload` or `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ingest/uploads/{id}/complete": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "All files are sent: the server checks presigned objects and starts reading the files.\nPoll the upload until `ready`, then save it.",
+        "operationId": "complete_upload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Upload id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "202": {
+            "description": "Being analysed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Upload"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation`; `detail`: `upload_file_missing`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `upload` or `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`conflict`; `detail`: `upload_closed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ingest/uploads/{id}/files/{idx}": {
+      "put": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Send one file through the server (target `server`). The body is the file.",
+        "operationId": "put_file",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Upload id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idx",
+            "in": "path",
+            "description": "File index in the create request",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/octet-stream": {
+              "schema": {
+                "type": "array",
+                "items": {
+                  "type": "integer",
+                  "format": "int32",
+                  "minimum": 0
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "204": {
+            "description": "Stored"
+          },
+          "400": {
+            "description": "`validation`; `detail`: `upload_size_mismatch` or `upload_hash_mismatch`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `upload` or `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`conflict`; `detail`: `upload_closed`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/ingest/uploads/{id}/save": {
+      "post": {
+        "tags": [
+          "ingest"
+        ],
+        "summary": "Create the book from a `ready` upload.",
+        "operationId": "save_upload",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Upload id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SaveBook"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Book created",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SavedBook"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid` or `invalid_body`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: no `upload` or `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`conflict`; `detail`: `upload_not_ready`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/me": {
       "get": {
         "tags": [
@@ -709,6 +1157,51 @@
           {}
         ]
       }
+    },
+    "/v1/sync": {
+      "get": {
+        "tags": [
+          "library"
+        ],
+        "summary": "Library changes since `cursor`: new and changed books with their files and chapters,\nids of removed ones. Without a cursor, or when the reader's access changed, the reply is\na full slice with `reset`: drop every book these pages do not bring. Repeat while\n`has_more`. Responses are gzip-compressed for clients that accept it.",
+        "operationId": "sync",
+        "parameters": [
+          {
+            "name": "cursor",
+            "in": "query",
+            "description": "`cursor` of the previous page; absent for a full slice.",
+            "required": false,
+            "schema": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of the delta",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SyncPage"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
     }
   },
   "components": {
@@ -720,6 +1213,203 @@
           "pairing"
         ]
       },
+      "Book": {
+        "type": "object",
+        "description": "A book with its people.",
+        "required": [
+          "id",
+          "library_id",
+          "title",
+          "authors",
+          "narrators",
+          "duration_ms",
+          "revision",
+          "created_at"
+        ],
+        "properties": {
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Authors in order."
+          },
+          "cover_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cover blob."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When added."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Playing time."
+          },
+          "id": {
+            "type": "string",
+            "description": "Id."
+          },
+          "library_id": {
+            "type": "string",
+            "description": "Library."
+          },
+          "narrators": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Narrators in order."
+          },
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Age rating: 0, 6, 12, 16, 18."
+          },
+          "revision": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Revision of the last change."
+          },
+          "series": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Series name."
+          },
+          "series_no": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Number in the series."
+          },
+          "title": {
+            "type": "string",
+            "description": "Title."
+          }
+        }
+      },
+      "BookFile": {
+        "type": "object",
+        "description": "A file of a book on the book timeline.",
+        "required": [
+          "idx",
+          "blob_hash",
+          "size",
+          "offset_ms",
+          "duration_ms"
+        ],
+        "properties": {
+          "blob_hash": {
+            "type": "string",
+            "description": "Content hash."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Playing time."
+          },
+          "idx": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Order in the book."
+          },
+          "offset_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Start on the book timeline."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes."
+          }
+        }
+      },
+      "Chapter": {
+        "type": "object",
+        "description": "A chapter on the book timeline.",
+        "required": [
+          "idx",
+          "title",
+          "start_ms",
+          "end_ms"
+        ],
+        "properties": {
+          "end_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "End."
+          },
+          "idx": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Order."
+          },
+          "start_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Start."
+          },
+          "title": {
+            "type": "string",
+            "description": "Title."
+          }
+        }
+      },
+      "CreateUpload": {
+        "type": "object",
+        "description": "`POST /v1/ingest/uploads` request.",
+        "required": [
+          "name",
+          "files"
+        ],
+        "properties": {
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/UploadFile"
+            },
+            "description": "Audio files (mp3, m4b, m4a, aac, ogg, opus, flac, wav) and cover images (jpg, png, webp)."
+          },
+          "name": {
+            "type": "string",
+            "description": "The dropped folder or file name; the title is guessed from it when tags are empty."
+          }
+        }
+      },
+      "Created": {
+        "type": "object",
+        "description": "A created upload.",
+        "required": [
+          "id",
+          "targets"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Upload id."
+          },
+          "targets": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/FileTarget"
+            },
+            "description": "Per file, in the given order."
+          }
+        }
+      },
       "DeliveryMode": {
         "type": "string",
         "description": "How clients get the bytes.",
@@ -728,6 +1418,216 @@
           "presigned",
           "cdn"
         ]
+      },
+      "Draft": {
+        "type": "object",
+        "description": "The book proposed from the files; the admin edits it before saving.",
+        "required": [
+          "title",
+          "authors",
+          "narrators",
+          "series",
+          "duration_ms",
+          "files",
+          "chapters"
+        ],
+        "properties": {
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Authors."
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftChapter"
+            },
+            "description": "Chapters."
+          },
+          "cover_hash": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Cover blob."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Playing time.",
+            "minimum": 0
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DraftFile"
+            },
+            "description": "Files in play order."
+          },
+          "narrators": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Narrators."
+          },
+          "series": {
+            "type": "string",
+            "description": "Series."
+          },
+          "series_no": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Number in the series."
+          },
+          "title": {
+            "type": "string",
+            "description": "Title."
+          }
+        }
+      },
+      "DraftChapter": {
+        "type": "object",
+        "description": "A chapter of the proposed book, on the book timeline.",
+        "required": [
+          "title",
+          "start_ms",
+          "end_ms"
+        ],
+        "properties": {
+          "end_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "End.",
+            "minimum": 0
+          },
+          "start_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Start.",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string",
+            "description": "Title."
+          }
+        }
+      },
+      "DraftFile": {
+        "type": "object",
+        "description": "A file of the proposed book.",
+        "required": [
+          "name",
+          "blob_hash",
+          "size",
+          "offset_ms",
+          "duration_ms"
+        ],
+        "properties": {
+          "blob_hash": {
+            "type": "string",
+            "description": "Content hash."
+          },
+          "duration_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Playing time.",
+            "minimum": 0
+          },
+          "name": {
+            "type": "string",
+            "description": "Name in the upload."
+          },
+          "offset_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Start on the book timeline.",
+            "minimum": 0
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes.",
+            "minimum": 0
+          }
+        }
+      },
+      "FileTarget": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "`PUT` the bytes to the upload's file endpoint on this server.",
+            "required": [
+              "method"
+            ],
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "server"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "`PUT` the bytes to `url` with exactly these headers.",
+            "required": [
+              "url",
+              "headers",
+              "method"
+            ],
+            "properties": {
+              "headers": {
+                "type": "array",
+                "items": {
+                  "type": "array",
+                  "items": false,
+                  "prefixItems": [
+                    {
+                      "type": "string"
+                    },
+                    {
+                      "type": "string"
+                    }
+                  ]
+                },
+                "description": "Headers that are part of the signature."
+              },
+              "method": {
+                "type": "string",
+                "enum": [
+                  "presigned"
+                ]
+              },
+              "url": {
+                "type": "string",
+                "description": "Presigned URL."
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Already stored: nothing to send.",
+            "required": [
+              "method"
+            ],
+            "properties": {
+              "method": {
+                "type": "string",
+                "enum": [
+                  "stored"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "How to send one file."
       },
       "Me": {
         "type": "object",
@@ -918,6 +1818,66 @@
           "refresh_token": {
             "type": "string",
             "description": "The current refresh token."
+          }
+        }
+      },
+      "SaveBook": {
+        "type": "object",
+        "description": "The book metadata to save; starts from the proposal.",
+        "required": [
+          "title"
+        ],
+        "properties": {
+          "authors": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Authors in order."
+          },
+          "narrators": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Narrators in order."
+          },
+          "rating": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Age rating: 0, 6, 12, 16 or 18."
+          },
+          "series": {
+            "type": "string",
+            "description": "Series name."
+          },
+          "series_no": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "format": "double",
+            "description": "Number in the series."
+          },
+          "title": {
+            "type": "string",
+            "description": "Title."
+          }
+        }
+      },
+      "SavedBook": {
+        "type": "object",
+        "description": "The created book.",
+        "required": [
+          "book_id"
+        ],
+        "properties": {
+          "book_id": {
+            "type": "string",
+            "description": "Book id."
           }
         }
       },
@@ -1117,6 +2077,77 @@
           }
         }
       },
+      "SyncBook": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/Book",
+            "description": "The book."
+          },
+          {
+            "type": "object",
+            "required": [
+              "files",
+              "chapters"
+            ],
+            "properties": {
+              "chapters": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/Chapter"
+                },
+                "description": "Chapters in order."
+              },
+              "files": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/components/schemas/BookFile"
+                },
+                "description": "Files in order."
+              }
+            }
+          }
+        ],
+        "description": "A book as devices replicate it."
+      },
+      "SyncPage": {
+        "type": "object",
+        "description": "One page of the delta.",
+        "required": [
+          "cursor",
+          "reset",
+          "has_more",
+          "books",
+          "removed"
+        ],
+        "properties": {
+          "books": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/SyncBook"
+            },
+            "description": "New and changed books."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Pass back as `cursor` for the next page or the next sync."
+          },
+          "has_more": {
+            "type": "boolean",
+            "description": "More pages follow right away."
+          },
+          "removed": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Ids of books removed or no longer visible."
+          },
+          "reset": {
+            "type": "boolean",
+            "description": "The client must drop every book that is not in this sync's pages."
+          }
+        }
+      },
       "TokenResponse": {
         "type": "object",
         "description": "A new token pair.",
@@ -1138,6 +2169,105 @@
           "refresh_token": {
             "type": "string",
             "description": "The next refresh token; the presented one is spent."
+          }
+        }
+      },
+      "Upload": {
+        "type": "object",
+        "description": "An upload as the admin sees it.",
+        "required": [
+          "id",
+          "name",
+          "status",
+          "files",
+          "stored",
+          "bytes",
+          "created_at"
+        ],
+        "properties": {
+          "book_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The saved book."
+          },
+          "bytes": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes in the upload."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When started."
+          },
+          "draft": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/Draft",
+                "description": "The proposed book once analysed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Why the analysis failed."
+          },
+          "files": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Files in the upload."
+          },
+          "id": {
+            "type": "string",
+            "description": "Id."
+          },
+          "name": {
+            "type": "string",
+            "description": "Dropped folder or file."
+          },
+          "status": {
+            "type": "string",
+            "description": "`uploading`, `analyzing`, `ready`, `saved` or `failed`."
+          },
+          "stored": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Files stored so far."
+          }
+        }
+      },
+      "UploadFile": {
+        "type": "object",
+        "description": "A file about to be uploaded.",
+        "required": [
+          "name",
+          "size"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Path inside the dropped folder, e.g. `Book/01.mp3`."
+          },
+          "sha256": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Hex sha256; required when the storage takes presigned uploads."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Bytes.",
+            "minimum": 0
           }
         }
       }

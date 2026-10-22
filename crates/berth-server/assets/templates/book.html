@@ -1,0 +1,63 @@
+{% extends "base.html" %}
+{% import "partials/ui.html" as ui %}
+{% block title %}{{ book.title }}{% endblock %}
+{% block width %}max-w-[1200px]{% endblock %}
+{% block content %}
+<a href="/library/{{ book.library_id }}" class="inline-flex items-center gap-2 text-[15px] font-semibold text-text-2 hover:text-text">{{ ui.icon("back", "size-[18px]") }}{{ t('library.title') }}</a>
+
+<header class="mt-4">
+  <h1 class="text-[30px] leading-tight font-bold tracking-[-0.02em] sm:text-[34px]">{{ book.title }}</h1>
+  <p class="mt-1 text-[16px] text-text-2">
+    {{ book.authors | join(", ") or t('library.unknown_author') }}
+    {% if book.narrators %}<span class="text-text-3"> · {{ t('book.read_by', names=book.narrators | join(", ")) }}</span>{% endif %}
+  </p>
+  <dl class="mt-3 flex flex-wrap gap-x-6 gap-y-1 text-[14px] text-text-3">
+    <div class="flex gap-1.5"><dt>{{ t('book.duration') }}</dt><dd class="mono text-[14px] text-text-2">{{ book.duration_ms | clock }}</dd></div>
+    <div class="flex gap-1.5"><dt>{{ t('book.chapters') }}</dt><dd class="text-text-2">{{ book.chapters | length }}</dd></div>
+    <div class="flex gap-1.5"><dt>{{ t('book.files') }}</dt><dd class="text-text-2">{{ book.files | length }}</dd></div>
+    {% if book.storage %}<div class="flex gap-1.5"><dt>{{ t('book.storage') }}</dt><dd class="text-text-2">{{ book.storage }}</dd></div>{% endif %}
+  </dl>
+</header>
+
+<div class="mt-8 grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)] lg:items-start">
+  {% include "partials/book_cover.html" %}
+  {% include "partials/book_form.html" %}
+</div>
+
+<section class="mt-8">
+  <h2 class="text-[20px] font-bold">{{ t('book.chapters') }}</h2>
+  <ol class="card mt-3 divide-y divide-line p-0 sm:p-0">
+    {% for c in book.chapters %}
+    <li class="flex items-baseline gap-4 px-5 py-3 sm:px-6">
+      <span class="mono w-8 shrink-0 text-[13px] text-text-3">{{ loop.index }}</span>
+      <span class="min-w-0 flex-1 truncate text-[15px]">{{ c.title }}</span>
+      <span class="mono shrink-0 text-[13px] text-text-3">{{ c.start_ms | clock }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+<section class="mt-8">
+  <h2 class="text-[20px] font-bold">{{ t('book.files') }}</h2>
+  <ol class="card mt-3 divide-y divide-line p-0 sm:p-0">
+    {% for f in book.files %}
+    <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3 sm:px-6">
+      <span class="mono w-8 shrink-0 text-[13px] text-text-3">{{ loop.index }}</span>
+      <span class="mono min-w-0 flex-1 truncate text-[13px] text-text-2" title="sha256 {{ f.blob_hash }}">{{ f.blob_hash[:16] }}…</span>
+      <span class="mono text-[13px] text-text-3">{{ f.offset_ms | clock }} + {{ f.duration_ms | clock }}</span>
+      <span class="mono w-20 text-right text-[13px] text-text-3">{{ f.size | filesize }}</span>
+    </li>
+    {% endfor %}
+  </ol>
+</section>
+
+<section class="mt-8 flex flex-col items-start gap-3 rounded-card border border-danger/25 p-5 sm:p-6">
+  <div>
+    <h2 class="text-[17px] font-bold">{{ t('book.delete_title') }}</h2>
+    <p class="mt-1 text-[14px] text-text-3">{{ t('book.delete_hint') }}</p>
+  </div>
+  <form method="post" action="/book/{{ book.id }}/delete" hx-post="/book/{{ book.id }}/delete" hx-confirm="{{ t('book.delete_confirm', title=book.title) }}">
+    <button type="submit" class="btn btn-danger">{{ t('book.delete') }}</button>
+  </form>
+</section>
+{% endblock %}

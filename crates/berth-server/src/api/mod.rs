@@ -2,6 +2,8 @@
 
 mod admin;
 mod auth;
+mod ingest;
+pub(crate) mod library;
 mod me;
 mod server_info;
 mod storage;
@@ -11,12 +13,14 @@ use std::sync::Arc;
 use arc_swap::ArcSwap;
 use axum::{
     Router,
+    extract::DefaultBodyLimit,
     http::{Method, header},
     response::IntoResponse,
 };
 use berth_core::BerthError;
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
+    compression::CompressionLayer,
     cors::{AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
@@ -93,6 +97,18 @@ fn routes() -> OpenApiRouter<AppState> {
         ))
         .routes(routes!(storage::verify_storage_profile))
         .routes(routes!(storage::default_storage_profile))
+        .routes(routes!(library::sync))
+        .routes(routes!(library::cover))
+        .routes(routes!(ingest::create_upload))
+        .merge(
+            // Audiobook files are large: no body limit on the file upload.
+            OpenApiRouter::new()
+                .routes(routes!(ingest::put_file))
+                .layer(DefaultBodyLimit::disable()),
+        )
+        .routes(routes!(ingest::get_upload))
+        .routes(routes!(ingest::complete_upload))
+        .routes(routes!(ingest::save_upload))
 }
 
 /// CORS for browser clients of the API (a web build of the app): origins from
@@ -120,7 +136,9 @@ fn cors(config: Arc<ArcSwap<Config>>) -> CorsLayer {
 /// HTTP router of the server.
 pub fn router(state: AppState) -> Router {
     let (api, _) = routes().split_for_parts();
-    api.layer(cors(state.config.clone()))
+    // Large JSON (the sync delta) goes gzip-compressed to clients that accept it.
+    api.layer(CompressionLayer::new())
+        .layer(cors(state.config.clone()))
         .merge(crate::admin::router(state.clone()))
         .fallback(async || ApiError::from(BerthError::NotFound))
         .layer(TraceLayer::new_for_http())

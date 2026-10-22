@@ -1,0 +1,44 @@
+{# Book metadata fields, shared by /book/{id} and the upload cards.
+   f: title, authors, narrators (lists or "A, B" text), series, series_no, rating. #}
+{% macro names(value) -%}
+{%- if value is string %}{{ value }}{% elif value %}{{ value | join(", ") }}{% endif -%}
+{%- endmacro %}
+
+{% macro fields(f, uid, ratings) -%}
+<div class="flex flex-col gap-4">
+  <div>
+    <label for="{{ uid }}-title" class="field-label">{{ t('book.title_label') }}</label>
+    <input id="{{ uid }}-title" name="title" value="{{ f.title or '' }}" required maxlength="300" class="input">
+  </div>
+  <div class="grid gap-4 sm:grid-cols-2">
+    <div>
+      <label for="{{ uid }}-authors" class="field-label">{{ t('book.authors_label') }}</label>
+      <input id="{{ uid }}-authors" name="authors" value="{{ names(f.authors) }}" autocomplete="off" class="input">
+    </div>
+    <div>
+      <label for="{{ uid }}-narrators" class="field-label">{{ t('book.narrators_label') }}</label>
+      <input id="{{ uid }}-narrators" name="narrators" value="{{ names(f.narrators) }}" autocomplete="off" class="input">
+    </div>
+  </div>
+  <p class="-mt-2 text-[13px] text-text-3">{{ t('book.names_hint') }}</p>
+  <div class="grid grid-cols-[minmax(0,1fr)_96px] gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px]">
+    <div>
+      <label for="{{ uid }}-series" class="field-label">{{ t('book.series_label') }}</label>
+      <input id="{{ uid }}-series" name="series" value="{{ f.series or '' }}" autocomplete="off" class="input">
+    </div>
+    <div>
+      <label for="{{ uid }}-series-no" class="field-label">{{ t('book.series_no_label') }}</label>
+      <input id="{{ uid }}-series-no" name="series_no" value="{{ (f.series_no if f.series_no is string else f.series_no | num) if f.series_no is not none and f.series_no != '' else '' }}" inputmode="decimal" autocomplete="off" class="input mono">
+    </div>
+    <div class="col-span-2 sm:col-span-1">
+      <label for="{{ uid }}-rating" class="field-label">{{ t('book.rating_label') }}</label>
+      <select id="{{ uid }}-rating" name="rating" class="input select">
+        <option value="">{{ t('book.rating_none') }}</option>
+        {% for r in ratings %}
+        <option value="{{ r }}" {% if f.rating is not none and f.rating ~ '' == r ~ '' %}selected{% endif %}>{{ r }}+</option>
+        {% endfor %}
+      </select>
+    </div>
+  </div>
+</div>
+{%- endmacro %}

@@ -1,12 +1,14 @@
 {% extends "base.html" %}
 {% import "partials/ui.html" as ui %}
 {% block title %}{{ t('dashboard.title') }}{% endblock %}
+{% block width %}max-w-[1200px]{% endblock %}
 {% block content %}
 <header>
   <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('dashboard.title') }}</h1>
   <p class="mt-1 text-[16px] text-text-2">{{ t('dashboard.subtitle', name=server_name) }}</p>
 </header>
 
+{% if not book_count %}
 <section class="card mt-8 overflow-hidden p-0 sm:p-0">
   <div class="relative flex flex-col items-start gap-4 p-6 sm:p-8">
     <div aria-hidden="true" class="pointer-events-none absolute -top-24 -right-16 size-64 rounded-full bg-accent-soft blur-2xl"></div>
@@ -15,11 +17,16 @@
       <h2 class="text-[22px] font-bold">{{ t('dashboard.empty_title') }}</h2>
       <p class="mt-1.5 max-w-[52ch] text-[16px] text-text-2">{{ t('dashboard.empty_body') }}</p>
     </div>
-    <a href="/settings" class="btn btn-ghost relative">{{ t('dashboard.open_settings') }}{{ ui.icon("arrow", "size-[18px]") }}</a>
+    <a href="/upload" class="btn btn-primary relative">{{ ui.icon("upload", "size-[18px]") }}{{ t('dashboard.upload') }}</a>
   </div>
 </section>
+{% endif %}
 
-<dl class="mt-4 grid gap-4 sm:grid-cols-2">
+<dl class="mt-8 grid gap-4 sm:grid-cols-3">
+  <a href="/library/{{ library_id }}" class="card block hover:border-accent/40">
+    <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.books_card') }}</dt>
+    <dd class="mt-1.5 text-[28px] leading-none font-bold">{{ book_count }}</dd>
+  </a>
   <div class="card">
     <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.server_card') }}</dt>
     <dd class="mt-1.5 truncate text-[17px] font-semibold">{{ server_name }}</dd>
@@ -29,4 +36,42 @@
     <dd class="mono mt-1.5 text-[17px]">{{ version }}</dd>
   </div>
 </dl>
+
+<div class="mt-8 grid gap-6 lg:grid-cols-2">
+  <section>
+    <div class="flex items-baseline justify-between gap-3">
+      <h2 class="text-[20px] font-bold">{{ t('dashboard.uploads') }}</h2>
+      <a href="/upload" class="text-[14px] font-semibold text-accent-fg hover:underline">{{ t('dashboard.all_uploads') }}</a>
+    </div>
+    <ul class="card mt-3 divide-y divide-line p-0 sm:p-0">
+      {% for u in uploads %}
+      <li class="flex items-center gap-3 px-5 py-3">
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-[15px] font-semibold">{{ u.draft.title if u.draft and u.status == "saved" else u.name }}</span>
+          <span class="block text-[13px] text-text-3">{{ ui.time(u.created_at) }}</span>
+        </span>
+        <span class="chip {{ 'bg-ok/15 text-ok' if u.status == 'saved' else 'bg-danger/10 text-danger' if u.status == 'failed' else 'bg-accent-soft text-accent-fg' }}">{{ t('dashboard.upload_' ~ u.status) }}</span>
+      </li>
+      {% else %}
+      <li class="px-5 py-4 text-[15px] text-text-3">{{ t('dashboard.no_uploads') }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+  <section>
+    <h2 class="text-[20px] font-bold">{{ t('dashboard.jobs') }}</h2>
+    <ul class="card mt-3 divide-y divide-line p-0 sm:p-0">
+      {% for j in jobs %}
+      <li class="flex items-center gap-3 px-5 py-3">
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-[15px] font-semibold">{{ t('dashboard.job_' ~ j.kind) }}</span>
+          <span class="block truncate text-[13px] text-text-3">{{ ui.time(j.created_at) }}{% if j.last_error %} · {{ j.last_error }}{% endif %}</span>
+        </span>
+        <span class="chip {{ 'bg-ok/15 text-ok' if j.status == 'done' else 'bg-danger/10 text-danger' if j.status == 'failed' else 'bg-accent-soft text-accent-fg' }}">{{ t('dashboard.job_status_' ~ j.status) }}</span>
+      </li>
+      {% else %}
+      <li class="px-5 py-4 text-[15px] text-text-3">{{ t('dashboard.no_jobs') }}</li>
+      {% endfor %}
+    </ul>
+  </section>
+</div>
 {% endblock %}

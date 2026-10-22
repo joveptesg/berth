@@ -20,6 +20,8 @@ nav:
   theme_dark: Тёмная
   theme_system: Как в системе
   language: Язык
+  library: Библиотека
+  upload: Загрузка
 
 setup:
   title: Настройка сервера
@@ -50,10 +52,27 @@ dashboard:
   title: Обзор
   subtitle: Всё, что происходит на сервере %{name}
   empty_title: Библиотек пока нет
-  empty_body: Загрузка книг — следующий шаг. А пока проверьте название и адреса сервера в настройках.
-  open_settings: Открыть настройки
+  empty_body: "Загрузите папку с аудиокнигой: Berth прочитает теги, главы и обложку, а телефоны получат книгу при следующем синке."
   server_card: Сервер
   version_card: Версия
+  upload: Загрузить книги
+  books_card: Книги
+  uploads: Последние загрузки
+  all_uploads: Все загрузки
+  no_uploads: Пока ничего не загружено.
+  upload_uploading: Загружается
+  upload_analyzing: Читаем
+  upload_ready: Ждёт вас
+  upload_saved: В библиотеке
+  upload_failed: Ошибка
+  jobs: Фоновые задачи
+  no_jobs: Задач пока нет.
+  job_ingest_pipeline: Разбор загрузки
+  job_status_queued: В очереди
+  job_status_running: Выполняется
+  job_status_retrying: Повтор
+  job_status_done: Готово
+  job_status_failed: Ошибка
 
 settings:
   title: Настройки
@@ -161,6 +180,74 @@ storage:
   delete_confirm: Удалить «%{name}»? Удаляется только профиль, файлы остаются на месте.
   footnote: Проверка записывает, читает и удаляет маленький тестовый файл.
 
+library:
+  title: Библиотека
+  subtitle: Все книги этого сервера. Телефоны видят тот же список после синка.
+  upload: Загрузить книги
+  search: Название, автор, чтец или серия
+  author: Автор
+  series: Серия
+  rating: Возрастной рейтинг
+  any_author: Все авторы
+  any_series: Все серии
+  any_rating: Любой возраст
+  view: Вид
+  view_grid: Сетка
+  view_list: Список
+  count: "Книг: %{count}"
+  empty_title: Книг пока нет
+  empty_body: Загрузите папку с аудиокнигой или один файл m4b.
+  no_match_title: Ничего не нашлось
+  no_match_body: Измените поиск или фильтры.
+  unknown_author: Автор не указан
+
+book:
+  title_label: Название
+  authors_label: Авторы
+  narrators_label: Чтецы
+  names_hint: Несколько имён — через запятую.
+  series_label: Серия
+  series_no_label: №
+  rating_label: Возрастной рейтинг
+  rating_none: Не указан
+  read_by: читает %{names}
+  duration: Длительность
+  chapters: Главы
+  files: Файлы
+  storage: Хранилище
+  delete_title: Удалить книгу
+  delete_hint: Телефоны уберут её вместе с загрузками при следующем синке. Аудиофайлы остаются в хранилище.
+  delete: Удалить книгу
+  delete_confirm: Удалить «%{title}»? Телефоны уберут её при следующем синке.
+  cover_replace: Заменить обложку
+  cover_hint: JPEG, PNG или WebP до 10 МБ. Лучше всего — квадратная.
+
+upload:
+  title: Загрузка книг
+  subtitle: "Перетащите папки с аудиокнигами: каждая папка — одна книга. Перед добавлением в библиотеку проверьте данные."
+  hashing: Проверяем файлы
+  sending: Отправляем
+  send_failed: "Не удалось загрузить:"
+  nothing: Здесь нет аудиофайлов. Berth принимает mp3, m4b, m4a, aac, ogg, opus, flac и wav.
+  drop_title: Перетащите сюда папки или файлы
+  drop_hint: "Папка — это одна книга: аудиофайлы по порядку и картинка обложки. Отдельный файл m4b или mp3 — тоже книга."
+  pick_folder: Выбрать папку
+  pick_files: Выбрать файлы
+  formats: "mp3, m4b, m4a, aac, ogg, opus, flac, wav · обложки: jpg, png, webp"
+  queue: Очередь
+  queue_empty: Здесь появятся загрузки.
+  files: "Файлов: %{count}"
+  chapters: "Глав: %{count}"
+  status_uploading: Сохранено %{stored} из %{count} файлов
+  status_analyzing: Читаем теги, главы и обложку…
+  status_saved: В библиотеке
+  open_book: Открыть книгу
+  status_failed: Berth не смог прочитать эти файлы.
+  discard: Убрать из очереди
+  discard_confirm: Убрать «%{name}» из очереди?
+  save: Добавить в библиотеку
+  save_hint: Телефоны получат книгу при следующем синке.
+
 errors:
   name_required: Введите название сервера.
   name_too_long: Слишком длинное название (не больше 64 символов).
@@ -189,3 +276,21 @@ errors:
   storage_mismatch: "Тестовый файл вернулся другим: хранилище портит данные."
   storage_local_unwritable: Berth не может писать в эту папку. Проверьте путь и права.
   storage_failed: Проверка не прошла. Подробности — в логе сервера.
+  book_title_required: Введите название.
+  book_title_too_long: Слишком длинное название (не больше 300 символов).
+  book_rating_invalid: Выберите возрастной рейтинг из списка.
+  book_series_no_invalid: Номер в серии — число, например 2 или 2.5.
+  cover_invalid: Выберите картинку JPEG, PNG или WebP.
+  cover_too_large: Слишком большая картинка (не больше 10 МБ).
+  upload_empty: В загрузке нет файлов.
+  upload_too_many: Слишком много файлов в одной книге (не больше 2000).
+  upload_file_unsupported: Некоторые файлы — не аудио и не картинка обложки.
+  upload_no_audio: В загрузке нет аудиофайлов.
+  upload_hash_invalid: Неверная контрольная сумма файла.
+  upload_hash_required: Этому хранилищу нужна контрольная сумма каждого файла. Обновите страницу и попробуйте снова.
+  upload_size_mismatch: Файл пришёл не полностью. Загрузите его снова.
+  upload_hash_mismatch: Файл пришёл повреждённым. Загрузите его снова.
+  upload_file_missing: Пришли не все файлы. Загрузите папку снова.
+  upload_closed: Эта загрузка уже обрабатывается.
+  upload_not_ready: Эта загрузка ещё не готова к сохранению.
+  upload_saved: Эта книга уже в библиотеке.

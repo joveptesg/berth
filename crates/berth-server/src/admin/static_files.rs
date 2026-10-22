@@ -12,6 +12,22 @@ use rust_embed::RustEmbed;
 #[folder = "assets/static/"]
 struct StaticAssets;
 
+/// Short hash of all assets: pages link `?v=<fingerprint>`, so a release with changed CSS or
+/// scripts is fetched again even when the version number stays the same.
+pub(crate) fn fingerprint() -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    let mut names: Vec<_> = StaticAssets::iter().collect();
+    names.sort();
+    for name in names {
+        if let Some(file) = StaticAssets::get(&name) {
+            hasher.update(name.as_bytes());
+            hasher.update(file.metadata.sha256_hash());
+        }
+    }
+    hex::encode(&hasher.finalize()[..6])
+}
+
 pub(crate) async fn serve(Path(path): Path<String>) -> Response {
     let Some(file) = StaticAssets::get(&path) else {
         return StatusCode::NOT_FOUND.into_response();

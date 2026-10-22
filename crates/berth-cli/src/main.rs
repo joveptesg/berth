@@ -88,6 +88,7 @@ async fn serve(config: Option<PathBuf>) -> anyhow::Result<()> {
         tracing::warn!("server is not set up; open {url} (or run `berth admin bootstrap`)");
     }
     berth_server::cleanup::spawn(state.db.clone());
+    berth_server::jobs::spawn(state.clone());
 
     // Peer addresses feed the rate limits of the login and setup forms.
     let app = berth_server::router(state).into_make_service_with_connect_info::<SocketAddr>();

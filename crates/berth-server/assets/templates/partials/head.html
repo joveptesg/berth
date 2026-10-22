@@ -1,9 +1,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="robots" content="noindex">
-<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ version }}">
+<link rel="icon" type="image/svg+xml" href="/static/favicon.svg?v={{ assets }}">
 <link rel="preload" href="/static/fonts/source-sans-3-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
-<link rel="stylesheet" href="/static/admin.css?v={{ version }}">
+<link rel="stylesheet" href="/static/admin.css?v={{ assets }}">
 <script>
   // Apply the theme before first paint: light | dark | system (default).
   (function () {
@@ -55,5 +55,5 @@
     document.addEventListener('htmx:afterSettle', function (e) { format(e.target); });
   })();
 </script>
-<script src="/static/htmx.min.js?v={{ version }}" defer></script>
-<script src="/static/alpine.min.js?v={{ version }}" defer></script>
+<script src="/static/htmx.min.js?v={{ assets }}" defer></script>
+<script src="/static/alpine.min.js?v={{ assets }}" defer></script>

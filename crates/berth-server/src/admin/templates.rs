@@ -25,9 +25,41 @@ pub(crate) fn environment() -> Environment<'static> {
         env.set_auto_reload(false);
     }
     env.add_global("version", env!("CARGO_PKG_VERSION"));
+    env.add_global("assets", super::static_files::fingerprint());
     env.add_function("t", super::i18n::translate);
     env.add_function("current_locale", super::i18n::current_locale);
+    env.add_filter("clock", clock);
+    env.add_filter("filesize", filesize);
+    env.add_filter("num", num);
     env
+}
+
+/// A number without a pointless `.0`: series numbers 2 and 2.5.
+fn num(value: f64) -> String {
+    let text = value.to_string();
+    text.strip_suffix(".0").map_or(text.clone(), str::to_owned)
+}
+
+/// Milliseconds as `H:MM:SS` (or `M:SS` under an hour).
+fn clock(ms: i64) -> String {
+    let total = ms.max(0) / 1000;
+    let (h, m, s) = (total / 3600, total / 60 % 60, total % 60);
+    if h > 0 {
+        format!("{h}:{m:02}:{s:02}")
+    } else {
+        format!("{m}:{s:02}")
+    }
+}
+
+/// Bytes in KB, MB or GB with one decimal.
+fn filesize(bytes: i64) -> String {
+    #[expect(clippy::cast_precision_loss, reason = "a rounded display value")]
+    let value = bytes.max(0) as f64;
+    match bytes.max(0) {
+        0..1_000_000 => format!("{:.0} KB", value / 1e3),
+        1_000_000..1_000_000_000 => format!("{:.1} MB", value / 1e6),
+        _ => format!("{:.2} GB", value / 1e9),
+    }
 }
 
 #[cfg(test)]
@@ -35,6 +67,15 @@ mod tests {
     use minijinja::context;
 
     use super::*;
+
+    #[test]
+    fn formats_times_and_sizes() {
+        assert_eq!(clock(61_000), "1:01");
+        assert_eq!(clock(3_725_000), "1:02:05");
+        assert_eq!(filesize(36_092), "36 KB");
+        assert_eq!(filesize(21_200_000), "21.2 MB");
+        assert_eq!(filesize(5_200_000_000), "5.20 GB");
+    }
 
     #[test]
     fn all_templates_parse() {

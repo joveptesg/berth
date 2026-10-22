@@ -7,6 +7,8 @@ pub mod config;
 mod crypto;
 mod db;
 pub mod error;
+pub mod jobs;
+pub mod media;
 mod secret;
 pub mod service;
 pub mod storage;
@@ -39,10 +41,17 @@ pub struct AppState {
     pub secret: Arc<SecretKey>,
     /// One-time `/setup` token while the server has no tenant.
     pub setup: Arc<SetupToken>,
+    /// Wakes the job worker when a job is queued.
+    jobs: Arc<tokio::sync::Notify>,
     templates: Arc<minijinja::Environment<'static>>,
 }
 
 impl AppState {
+    /// Lets the job worker pick up a job queued in a committed transaction.
+    pub fn wake_jobs(&self) {
+        self.jobs.notify_one();
+    }
+
     /// Setup link to print on start while the server is not set up.
     #[must_use]
     pub fn setup_url(&self) -> Option<String> {
@@ -95,6 +104,7 @@ pub async fn bootstrap(config_file: Option<&Path>) -> anyhow::Result<AppState> {
         server_id: server_id.into(),
         secret: Arc::new(secret),
         setup: Arc::new(setup),
+        jobs: Arc::new(tokio::sync::Notify::new()),
         templates: Arc::new(admin::templates::environment()),
     })
 }

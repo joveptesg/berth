@@ -1,0 +1,48 @@
+{% extends "base.html" %}
+{% import "partials/ui.html" as ui %}
+{% block title %}{{ t('library.title') }}{% endblock %}
+{% block width %}max-w-none{% endblock %}
+{% block content %}
+<header class="flex flex-wrap items-end justify-between gap-4">
+  <div class="min-w-0 max-w-[60ch]">
+    <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('library.title') }}</h1>
+    <p class="mt-1 text-[16px] text-text-2">{{ t('library.subtitle') }}</p>
+  </div>
+  <a href="/upload" class="btn btn-primary">{{ ui.icon("upload", "size-[18px]") }}{{ t('library.upload') }}</a>
+</header>
+
+{# Filters reload only the grid; the URL keeps them for back and reload. #}
+<form method="get" action="/library/{{ library_id }}" hx-get="/library/{{ library_id }}" hx-target="#books" hx-swap="outerHTML" hx-push-url="true"
+  hx-trigger="input changed delay:300ms from:#book-search, change"
+  class="mt-8 flex flex-col gap-3 xl:flex-row xl:items-center">
+  <label class="relative block min-w-0 xl:flex-1">
+    <span class="sr-only">{{ t('library.search') }}</span>
+    <span class="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-text-3">{{ ui.icon("search", "size-[18px]") }}</span>
+    <input id="book-search" type="search" name="q" value="{{ query.q }}" placeholder="{{ t('library.search') }}" autocomplete="off" class="input pl-11">
+  </label>
+  <div class="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center">
+    <select name="author" aria-label="{{ t('library.author') }}" class="input select sm:w-52">
+      <option value="">{{ t('library.any_author') }}</option>
+      {% for a in authors %}<option value="{{ a }}" {% if query.author == a %}selected{% endif %}>{{ a }}</option>{% endfor %}
+    </select>
+    <select name="series" aria-label="{{ t('library.series') }}" class="input select sm:w-52">
+      <option value="">{{ t('library.any_series') }}</option>
+      {% for s in series %}<option value="{{ s }}" {% if query.series == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
+    </select>
+    <select name="rating" aria-label="{{ t('library.rating') }}" class="input select sm:w-48">
+      <option value="">{{ t('library.any_rating') }}</option>
+      {% for r in ratings %}<option value="{{ r }}" {% if query.rating == r ~ '' %}selected{% endif %}>{{ r }}+</option>{% endfor %}
+    </select>
+    <div class="flex w-fit rounded-[14px] bg-surface-2 p-1 sm:ml-auto" role="radiogroup" aria-label="{{ t('library.view') }}">
+      {% for value, ic, label in [("grid", "grid", t('library.view_grid')), ("list", "list", t('library.view_list'))] %}
+      <label title="{{ label }}" class="grid size-10 cursor-pointer place-items-center rounded-[10px] text-text-3 has-checked:bg-surface has-checked:text-text has-checked:shadow-sm">
+        <input type="radio" name="view" value="{{ value }}" {% if (value == 'list') == list_view %}checked{% endif %} class="sr-only">
+        <span class="sr-only">{{ label }}</span>{{ ui.icon(ic, "size-[18px]") }}
+      </label>
+      {% endfor %}
+    </div>
+  </div>
+</form>
+
+{% include "partials/book_grid.html" %}
+{% endblock %}

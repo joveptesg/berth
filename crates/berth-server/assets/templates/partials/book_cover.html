@@ -1,0 +1,15 @@
+{% import "partials/ui.html" as ui %}
+{# The cover and its replacement form. #}
+<div id="book-cover" class="flex flex-col gap-3 sm:max-w-[240px]">
+  {{ ui.cover("/book/" ~ book.id ~ "/cover?v=" ~ book.cover_hash[:12] if book.cover_hash, book.title, "shadow-[0_14px_40px_-20px_rgb(14_16_20/0.5)]") }}
+  <form method="post" action="/book/{{ book.id }}/cover" enctype="multipart/form-data"
+    hx-post="/book/{{ book.id }}/cover" hx-encoding="multipart/form-data" hx-target="#book-cover" hx-swap="outerHTML"
+    x-data @change="$el.requestSubmit()">
+    <label class="btn btn-ghost w-full cursor-pointer text-[15px]">
+      {{ ui.icon("upload", "size-[18px]") }}{{ t('book.cover_replace') }}
+      <input type="file" name="cover" accept="image/jpeg,image/png,image/webp" class="sr-only">
+    </label>
+  </form>
+  {% if cover_error %}<p class="alert-error" role="alert">{{ t('errors.' ~ cover_error) }}</p>{% endif %}
+  <p class="text-[13px] text-text-3">{{ t('book.cover_hint') }}</p>
+</div>

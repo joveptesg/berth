@@ -196,6 +196,8 @@ fn endpoint_url(config: &S3Config) -> anyhow::Result<Url> {
 pub struct ObjectBlobStore {
     store: Arc<dyn ObjectStore>,
     presigner: Option<Presigner>,
+    /// Folder of a local store: files can be read in place.
+    local: Option<Arc<LocalFileSystem>>,
 }
 
 /// Opens the store of a profile; a local folder is created if missing.
@@ -209,10 +211,12 @@ pub fn open(backend: &Backend, data_dir: &FsPath) -> anyhow::Result<ObjectBlobSt
             std::fs::create_dir_all(&root)
                 .with_context(|| format!("cannot create {}", root.display()))?;
             // Deleting the last blob of a `ab/cd` folder removes the empty folders too.
-            let store = LocalFileSystem::new_with_prefix(&root)?.with_automatic_cleanup(true);
+            let store =
+                Arc::new(LocalFileSystem::new_with_prefix(&root)?.with_automatic_cleanup(true));
             Ok(ObjectBlobStore {
-                store: Arc::new(store),
+                store: store.clone(),
                 presigner: None,
+                local: Some(store),
             })
         }
         Backend::S3(config, keys) => {
@@ -241,6 +245,7 @@ pub fn open(backend: &Backend, data_dir: &FsPath) -> anyhow::Result<ObjectBlobSt
                 .build()?;
             Ok(ObjectBlobStore {
                 store: Arc::new(store),
+                local: None,
                 presigner: Some(Presigner {
                     base,
                     region: config.region.clone(),
@@ -262,6 +267,31 @@ pub fn local_root(config: &LocalConfig, data_dir: &FsPath) -> PathBuf {
 pub type VerifyError = &'static str;
 
 impl ObjectBlobStore {
+    /// Where a blob of a local store is on disk; `None` for remote stores.
+    #[must_use]
+    pub fn local_path(&self, tenant: &str, hash: &ContentHash) -> Option<PathBuf> {
+        self.local
+            .as_ref()?
+            .path_to_filesystem(&blob_path(tenant, hash))
+            .ok()
+    }
+
+    /// Size of a stored blob, `None` when it is missing.
+    ///
+    /// # Errors
+    /// Backend failures other than a missing object.
+    pub async fn size(
+        &self,
+        tenant: &str,
+        hash: &ContentHash,
+    ) -> object_store::Result<Option<u64>> {
+        match self.store.head(&blob_path(tenant, hash)).await {
+            Ok(meta) => Ok(Some(meta.size)),
+            Err(object_store::Error::NotFound { .. }) => Ok(None),
+            Err(err) => Err(err),
+        }
+    }
+
     /// Writes, reads back and deletes a probe object under `prefix`.
     ///
     /// # Errors

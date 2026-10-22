@@ -1,0 +1,48 @@
+{% import "partials/ui.html" as ui %}
+{# Books of the library as a grid or a list. #}
+<section id="books" class="mt-6" aria-live="polite">
+  <p class="mb-3 text-[14px] text-text-3">{{ t('library.count', count=books | length) }}</p>
+  {% if not books %}
+  <div class="card flex flex-col items-start gap-4">
+    <span class="grid size-14 place-items-center rounded-[18px] bg-accent-soft text-accent-fg">{{ ui.icon("library", "size-7") }}</span>
+    <div>
+      <h2 class="text-[20px] font-bold">{{ t('library.no_match_title') if filtered else t('library.empty_title') }}</h2>
+      <p class="mt-1 max-w-[52ch] text-[15px] text-text-2">{{ t('library.no_match_body') if filtered else t('library.empty_body') }}</p>
+    </div>
+    {% if not filtered %}<a href="/upload" class="btn btn-ghost">{{ ui.icon("upload", "size-[18px]") }}{{ t('library.upload') }}</a>{% endif %}
+  </div>
+  {% elif list_view %}
+  <ul class="card divide-y divide-line p-0 sm:p-0">
+    {% for b in books %}
+    <li>
+      <a href="/book/{{ b.id }}" class="flex items-center gap-4 px-4 py-3 hover:bg-surface-2 sm:px-5">
+        <span class="w-12 shrink-0">{{ ui.cover("/book/" ~ b.id ~ "/cover?v=" ~ b.cover_hash[:12] if b.cover_hash, b.title, "rounded-[10px] text-[18px]") }}</span>
+        <span class="min-w-0 flex-1">
+          <span class="block truncate text-[16px] font-semibold">{{ b.title }}</span>
+          <span class="block truncate text-[14px] text-text-3">{{ b.authors | join(", ") or t('library.unknown_author') }}{% if b.series %} · {{ b.series }}{% if b.series_no is not none %} #{{ b.series_no | num }}{% endif %}{% endif %}</span>
+        </span>
+        {% if b.rating is not none %}<span class="chip bg-surface-2 text-text-2">{{ b.rating }}+</span>{% endif %}
+        <span class="mono hidden text-[13px] text-text-3 sm:block">{{ b.duration_ms | clock }}</span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <ul class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-4 gap-y-6 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-x-6">
+    {% for b in books %}
+    <li>
+      <a href="/book/{{ b.id }}" class="group block rounded-[16px] outline-offset-4">
+        <span class="block transition-transform group-hover:-translate-y-0.5">{{ ui.cover("/book/" ~ b.id ~ "/cover?v=" ~ b.cover_hash[:12] if b.cover_hash, b.title, "shadow-[0_10px_30px_-18px_rgb(14_16_20/0.45)]") }}</span>
+        <span class="mt-2.5 line-clamp-2 min-h-[2lh] text-[15px] leading-snug font-semibold">{{ b.title }}</span>
+        <span class="mt-0.5 block truncate text-[13px] text-text-3">{{ b.authors | join(", ") or t('library.unknown_author') }}</span>
+        <span class="mt-1 flex items-center gap-2 text-[12px] text-text-3">
+          <span class="mono text-[12px]">{{ b.duration_ms | clock }}</span>
+          {% if b.series %}<span class="truncate">· {{ b.series }}{% if b.series_no is not none %} #{{ b.series_no | num }}{% endif %}</span>{% endif %}
+          {% if b.rating is not none %}<span class="chip ml-auto bg-surface-2 px-2 text-text-2">{{ b.rating }}+</span>{% endif %}
+        </span>
+      </a>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>

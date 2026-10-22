@@ -7,6 +7,8 @@
 <body x-data="admin" @keydown.escape="menu = false" class="min-h-dvh">
   {% set nav = [
     ("dashboard", "/", t('nav.dashboard')),
+    ("library", "/library", t('nav.library')),
+    ("upload", "/upload", t('nav.upload')),
     ("users", "/users", t('nav.users')),
     ("devices", "/devices", t('nav.devices')),
     ("storage", "/storage", t('nav.storage')),
@@ -58,7 +60,8 @@
       </div>
     </aside>
 
-    <main class="mx-auto w-full max-w-[880px] lg:mx-0 px-4 pt-6 pb-16 sm:px-8 lg:px-12 lg:pt-12">
+    {# Forms read best narrow; pages of books override the width. #}
+    <main class="mx-auto w-full {% block width %}max-w-[880px]{% endblock %} lg:mx-0 px-4 pt-6 pb-16 sm:px-8 lg:px-12 lg:pt-12">
       {% block content %}{% endblock %}
     </main>
   </div>

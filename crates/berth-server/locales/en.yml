@@ -22,6 +22,8 @@ nav:
   theme_dark: Dark
   theme_system: System
   language: Language
+  library: Library
+  upload: Upload
 
 setup:
   title: Set up the server
@@ -52,10 +54,27 @@ dashboard:
   title: Dashboard
   subtitle: Everything happening on %{name}
   empty_title: No libraries yet
-  empty_body: Book upload comes next. Until then, check the server name and addresses in Settings.
-  open_settings: Open settings
+  empty_body: "Upload a folder with an audiobook: Berth reads the tags, chapters and cover, and the phones get it on the next sync."
   server_card: Server
   version_card: Version
+  upload: Upload books
+  books_card: Books
+  uploads: Latest uploads
+  all_uploads: All uploads
+  no_uploads: Nothing uploaded yet.
+  upload_uploading: Uploading
+  upload_analyzing: Reading
+  upload_ready: Waiting for you
+  upload_saved: In the library
+  upload_failed: Failed
+  jobs: Background jobs
+  no_jobs: No jobs yet.
+  job_ingest_pipeline: Reading an upload
+  job_status_queued: Queued
+  job_status_running: Running
+  job_status_retrying: Retrying
+  job_status_done: Done
+  job_status_failed: Failed
 
 settings:
   title: Settings
@@ -163,6 +182,74 @@ storage:
   delete_confirm: Delete %{name}? Only the profile is removed; the files stay where they are.
   footnote: The check writes, reads back and deletes a small test file.
 
+library:
+  title: Library
+  subtitle: Every book on this server. Phones see the same list after a sync.
+  upload: Upload books
+  search: Title, author, narrator or series
+  author: Author
+  series: Series
+  rating: Age rating
+  any_author: Any author
+  any_series: Any series
+  any_rating: Any age
+  view: View
+  view_grid: Grid
+  view_list: List
+  count: "Books: %{count}"
+  empty_title: No books yet
+  empty_body: Upload a folder with an audiobook or a single m4b file.
+  no_match_title: Nothing found
+  no_match_body: Change the search or the filters.
+  unknown_author: Unknown author
+
+book:
+  title_label: Title
+  authors_label: Authors
+  narrators_label: Narrators
+  names_hint: "Several names: separate them with commas."
+  series_label: Series
+  series_no_label: No.
+  rating_label: Age rating
+  rating_none: Not set
+  read_by: read by %{names}
+  duration: Duration
+  chapters: Chapters
+  files: Files
+  storage: Storage
+  delete_title: Delete the book
+  delete_hint: Phones remove it and its downloads on the next sync. The audio files stay in storage.
+  delete: Delete book
+  delete_confirm: Delete %{title}? Phones remove it on the next sync.
+  cover_replace: Replace cover
+  cover_hint: JPEG, PNG or WebP up to 10 MB. Square looks best.
+
+upload:
+  title: Upload books
+  subtitle: "Drop folders with audiobooks: each folder becomes one book. Check the details before it goes to the library."
+  hashing: Checking files of
+  sending: Sending
+  send_failed: "Upload failed:"
+  nothing: No audio files here. Berth takes mp3, m4b, m4a, aac, ogg, opus, flac and wav.
+  drop_title: Drop folders or files here
+  drop_hint: "A folder is one book: its audio files in order and a cover picture. A single m4b or mp3 file is a book too."
+  pick_folder: Choose a folder
+  pick_files: Choose files
+  formats: "mp3, m4b, m4a, aac, ogg, opus, flac, wav · covers: jpg, png, webp"
+  queue: Queue
+  queue_empty: Uploads appear here.
+  files: "Files: %{count}"
+  chapters: "Chapters: %{count}"
+  status_uploading: Stored %{stored} of %{count} files
+  status_analyzing: Reading tags, chapters and the cover…
+  status_saved: In the library
+  open_book: Open the book
+  status_failed: Berth could not read these files.
+  discard: Remove from the queue
+  discard_confirm: Remove %{name} from the queue?
+  save: Add to library
+  save_hint: Phones get the book on their next sync.
+
 errors:
   name_required: Enter a server name.
   name_too_long: The name is too long (64 characters at most).
@@ -191,3 +278,21 @@ errors:
   storage_mismatch: "The test file came back different: the storage corrupts data."
   storage_local_unwritable: Berth cannot write to this folder. Check the path and permissions.
   storage_failed: The check failed. Details are in the server log.
+  book_title_required: Enter a title.
+  book_title_too_long: The title is too long (300 characters at most).
+  book_rating_invalid: Choose an age rating from the list.
+  book_series_no_invalid: The number in the series must be a number, e.g. 2 or 2.5.
+  cover_invalid: Choose a JPEG, PNG or WebP picture.
+  cover_too_large: The picture is too large (10 MB at most).
+  upload_empty: There are no files in this upload.
+  upload_too_many: Too many files in one book (2000 at most).
+  upload_file_unsupported: Some files are neither audio nor a cover picture.
+  upload_no_audio: There is no audio file in this upload.
+  upload_hash_invalid: A file checksum is malformed.
+  upload_hash_required: This storage needs a checksum of every file. Reload the page and try again.
+  upload_size_mismatch: A file arrived incomplete. Upload it again.
+  upload_hash_mismatch: A file arrived damaged. Upload it again.
+  upload_file_missing: Not all files arrived. Upload the folder again.
+  upload_closed: This upload is already being processed.
+  upload_not_ready: This upload is not ready to be saved.
+  upload_saved: This book is already in the library.
