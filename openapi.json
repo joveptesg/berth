@@ -10,6 +10,240 @@
     "version": "0.1.0"
   },
   "paths": {
+    "/v1/admin/pairing-tokens": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Issue a one-time pairing code (lives 120 s).",
+        "operationId": "create_pairing_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairingTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Pairing code",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairingTokenResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device has no `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such user",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/pair": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Exchange a pairing code for device tokens. Rate limited per client address.",
+        "operationId": "pair",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PairRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Device paired",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_body`, `validation` (`platform_invalid`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`pairing_token_invalid`, `pairing_token_used` or `pairing_token_expired`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/v1/auth/refresh": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Rotate the refresh token. A token presented again within 45 s gets the same new pair;\nlater reuse ends the device's session (`session_expired`).",
+        "operationId": "refresh",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RefreshRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "New tokens",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_body`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`session_expired` (pair again, keep downloads) or `device_revoked` (wipe local data)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/v1/auth/revoke": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Revoke the calling device (sign out). Its tokens stop working at once.",
+        "operationId": "revoke",
+        "responses": {
+          "204": {
+            "description": "Device revoked"
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/me": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Current user and device. Clients call it to check the session; errors tell them to\nre-pair (`session_expired` on refresh) or wipe data (`device_revoked`).",
+        "operationId": "me",
+        "responses": {
+          "200": {
+            "description": "Current user and device",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Me"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` (refresh and retry) or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/server-info": {
       "get": {
         "tags": [
@@ -44,6 +278,37 @@
           "pairing"
         ]
       },
+      "Me": {
+        "type": "object",
+        "description": "The calling device and its user.",
+        "required": [
+          "user_id",
+          "user_name",
+          "device_id",
+          "scopes"
+        ],
+        "properties": {
+          "device_id": {
+            "type": "string",
+            "description": "Device id."
+          },
+          "scopes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Device scopes: `listen`, `upload`, `admin`, `feed`."
+          },
+          "user_id": {
+            "type": "string",
+            "description": "User id."
+          },
+          "user_name": {
+            "type": "string",
+            "description": "User name."
+          }
+        }
+      },
       "MinClientVersion": {
         "type": "object",
         "description": "Oldest supported versions per client type.",
@@ -54,6 +319,104 @@
           "mobile": {
             "type": "string",
             "description": "Mobile app."
+          }
+        }
+      },
+      "PairRequest": {
+        "type": "object",
+        "description": "`POST /v1/auth/pair` request.",
+        "required": [
+          "pairing_token",
+          "device_name",
+          "platform"
+        ],
+        "properties": {
+          "device_name": {
+            "type": "string",
+            "description": "Human-readable device name, e.g. \"Pixel 9\"."
+          },
+          "pairing_token": {
+            "type": "string",
+            "description": "Code from the QR or typed by hand (8 characters; case and separators are ignored)."
+          },
+          "platform": {
+            "type": "string",
+            "description": "Lower-case platform: `android`, `ios`, …"
+          }
+        }
+      },
+      "PairResponse": {
+        "type": "object",
+        "description": "Tokens of a newly paired device.",
+        "required": [
+          "device_id",
+          "access_token",
+          "refresh_token",
+          "access_expires_in"
+        ],
+        "properties": {
+          "access_expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until the access token expires; refresh ahead of it."
+          },
+          "access_token": {
+            "type": "string",
+            "description": "JWT for `Authorization: Bearer`."
+          },
+          "device_id": {
+            "type": "string",
+            "description": "Id of the new device."
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "One-time refresh token; every refresh returns the next one."
+          }
+        }
+      },
+      "PairingTokenRequest": {
+        "type": "object",
+        "description": "`POST /v1/admin/pairing-tokens` request.",
+        "required": [
+          "user_id"
+        ],
+        "properties": {
+          "user_id": {
+            "type": "string",
+            "description": "User the phone will belong to."
+          }
+        }
+      },
+      "PairingTokenResponse": {
+        "type": "object",
+        "description": "A pairing code and the QR payload around it.",
+        "required": [
+          "pairing_token",
+          "server_urls",
+          "expires_at",
+          "expires_in"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Expiry, epoch milliseconds."
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until expiry."
+          },
+          "pairing_token": {
+            "type": "string",
+            "description": "8-character one-time code; the QR carries `{server_urls, pairing_token}`."
+          },
+          "server_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Server addresses for the QR: home network first, then internet (from settings)."
           }
         }
       },
@@ -94,6 +457,19 @@
           }
         }
       },
+      "RefreshRequest": {
+        "type": "object",
+        "description": "`POST /v1/auth/refresh` request.",
+        "required": [
+          "refresh_token"
+        ],
+        "properties": {
+          "refresh_token": {
+            "type": "string",
+            "description": "The current refresh token."
+          }
+        }
+      },
       "ServerInfo": {
         "type": "object",
         "description": "Public server description used for discovery before login.",
@@ -129,7 +505,43 @@
             "description": "Server version."
           }
         }
+      },
+      "TokenResponse": {
+        "type": "object",
+        "description": "A new token pair.",
+        "required": [
+          "access_token",
+          "refresh_token",
+          "access_expires_in"
+        ],
+        "properties": {
+          "access_expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until the access token expires; refresh ahead of it."
+          },
+          "access_token": {
+            "type": "string",
+            "description": "JWT for `Authorization: Bearer`."
+          },
+          "refresh_token": {
+            "type": "string",
+            "description": "The next refresh token; the presented one is spent."
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "bearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "bearerFormat": "JWT"
       }
     }
-  }
+  },
+  "security": [
+    {
+      "bearer": []
+    }
+  ]
 }

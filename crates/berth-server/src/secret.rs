@@ -41,9 +41,29 @@ impl SecretKey {
         &self.0
     }
 
+    /// HMAC-SHA256 of `parts` (concatenated) under this key.
+    pub(crate) fn hmac(&self, parts: &[&[u8]]) -> [u8; 32] {
+        hmac_sha256(&self.0, parts)
+    }
+
+    #[cfg(test)]
+    pub(crate) fn from_bytes(key: [u8; 32]) -> Self {
+        Self(key)
+    }
+
     fn from_hex(hex: &str) -> anyhow::Result<Self> {
         let mut key = [0; 32];
         hex::decode_to_slice(hex.trim(), &mut key)?;
         Ok(Self(key))
     }
+}
+
+/// HMAC-SHA256 of `parts` (concatenated) under `key`.
+pub(crate) fn hmac_sha256(key: &[u8], parts: &[&[u8]]) -> [u8; 32] {
+    use hmac::{KeyInit, Mac};
+    let mut mac = hmac::Hmac::<sha2::Sha256>::new_from_slice(key).expect("HMAC takes any key size");
+    for part in parts {
+        mac.update(part);
+    }
+    mac.finalize().into_bytes().into()
 }

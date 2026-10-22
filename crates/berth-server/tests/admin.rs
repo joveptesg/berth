@@ -1,4 +1,5 @@
-//! Integration tests of the web admin: setup wizard, login, sessions, CSRF, settings.
+//! Integration tests of the web admin (setup wizard, login, sessions, CSRF, settings, users,
+//! connect, devices) and of the device API it drives (pairing, refresh, revoke).
 
 use std::{net::SocketAddr, path::Path};
 
@@ -7,7 +8,10 @@ use axum::{
     extract::ConnectInfo,
     http::{HeaderMap, Request, StatusCode, header},
 };
-use berth_server::{AppState, service::auth};
+use berth_server::{
+    AppState,
+    service::{auth, pairing},
+};
 use http_body_util::BodyExt;
 use tower::ServiceExt;
 
@@ -90,6 +94,48 @@ fn post(uri: &str, session: Option<&str>, form: &[(&str, &str)]) -> Request<Body
         req = req.header(header::COOKIE, format!("berth_session={token}"));
     }
     req.body(Body::from(body)).unwrap()
+}
+
+fn json(uri: &str, bearer: Option<&str>, body: &serde_json::Value) -> Request<Body> {
+    let mut req = Request::post(uri).header(header::CONTENT_TYPE, "application/json");
+    if let Some(token) = bearer {
+        req = req.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    req.body(Body::from(body.to_string())).unwrap()
+}
+
+fn bearer_get(uri: &str, token: &str) -> Request<Body> {
+    Request::get(uri)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .body(Body::empty())
+        .unwrap()
+}
+
+impl Reply {
+    fn json(&self) -> serde_json::Value {
+        serde_json::from_str(&self.body).unwrap_or_else(|e| panic!("{e}: {}", self.body))
+    }
+
+    /// `code` of a problem+json reply.
+    fn problem(&self) -> String {
+        assert_eq!(
+            self.headers[header::CONTENT_TYPE],
+            "application/problem+json",
+            "{}",
+            self.body
+        );
+        self.json()["code"].as_str().unwrap().to_owned()
+    }
+}
+
+/// Text between `start` and the next `end`.
+fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
+    let from = text
+        .find(start)
+        .unwrap_or_else(|| panic!("{start} not in {text}"))
+        + start.len();
+    let len = text[from..].find(end).unwrap();
+    &text[from..from + len]
 }
 
 async fn set_up(state: &AppState) -> String {
@@ -355,4 +401,322 @@ async fn static_assets_are_served() {
         send(&state, get("/static/nope.js", None)).await.status,
         StatusCode::NOT_FOUND
     );
+}
+
+/// Admin adds a listener, shows a code; the phone pairs, refreshes, and gets revoked.
+#[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one end-to-end scenario")]
+async fn pairing_flow_from_connect_to_revoke() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+
+    let created = send(&state, post("/users", Some(&session), &[("name", "Anna")])).await;
+    let connect_url = created.location().unwrap().to_owned();
+    assert!(connect_url.starts_with("/connect?user="), "{connect_url}");
+    let user_id = connect_url.trim_start_matches("/connect?user=");
+
+    let page = send(&state, get(&connect_url, Some(&session))).await;
+    assert_eq!(page.status, StatusCode::OK);
+    let status_url = format!(
+        "/connect/status/{}",
+        between(&page.body, "/connect/status/", "\"")
+    );
+    let code = format!(
+        "{}{}",
+        between(&page.body, "select-all\">", "<"),
+        between(&page.body, "</span><span class=\"select-all\">", "<")
+    );
+    assert_eq!(code.len(), 8, "{code}");
+    // No LAN/WAN set: the QR points at the address the page was opened at.
+    assert!(page.body.contains("<svg"));
+    assert_eq!(
+        send(&state, get(&status_url, Some(&session))).await.status,
+        StatusCode::NO_CONTENT
+    );
+
+    // Typed by hand: lower case and a separator are fine.
+    let typed = format!("{}-{}", &code[..4], code[4..].to_lowercase());
+    let paired = send(
+        &state,
+        json(
+            "/v1/auth/pair",
+            None,
+            &serde_json::json!({ "pairing_token": typed, "device_name": "Pixel 9", "platform": "android" }),
+        ),
+    )
+    .await;
+    assert_eq!(paired.status, StatusCode::OK, "{}", paired.body);
+    let tokens = paired.json();
+    assert_eq!(tokens["access_expires_in"], 900);
+    let access = tokens["access_token"].as_str().unwrap().to_owned();
+    let refresh = tokens["refresh_token"].as_str().unwrap().to_owned();
+    let device_id = tokens["device_id"].as_str().unwrap().to_owned();
+
+    let again = send(
+        &state,
+        json(
+            "/v1/auth/pair",
+            None,
+            &serde_json::json!({ "pairing_token": code, "device_name": "Thief", "platform": "android" }),
+        ),
+    )
+    .await;
+    assert_eq!(again.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(again.problem(), "pairing_token_used");
+
+    let done = send(&state, get(&status_url, Some(&session))).await;
+    assert!(done.body.contains("Pixel 9"), "{}", done.body);
+
+    let me = send(&state, bearer_get("/v1/me", &access)).await;
+    assert_eq!(me.status, StatusCode::OK, "{}", me.body);
+    assert_eq!(me.json()["user_id"], user_id);
+    assert_eq!(me.json()["user_name"], "Anna");
+    assert_eq!(me.json()["scopes"], serde_json::json!(["listen"]));
+
+    // A listening device is not an admin.
+    let forbidden = send(
+        &state,
+        json(
+            "/v1/admin/pairing-tokens",
+            Some(&access),
+            &serde_json::json!({ "user_id": user_id }),
+        ),
+    )
+    .await;
+    assert_eq!(forbidden.problem(), "forbidden");
+
+    let rotated = send(
+        &state,
+        json(
+            "/v1/auth/refresh",
+            None,
+            &serde_json::json!({ "refresh_token": refresh }),
+        ),
+    )
+    .await;
+    assert_eq!(rotated.status, StatusCode::OK, "{}", rotated.body);
+    let refresh = rotated.json()["refresh_token"].as_str().unwrap().to_owned();
+
+    // The phone counts for Anna; the admin's browser does not count for the admin.
+    let users = send(&state, get("/users", Some(&session))).await;
+    assert!(users.body.contains("Devices: 1"), "{}", users.body);
+    assert!(users.body.contains("Devices: 0"), "{}", users.body);
+
+    let devices = send(&state, get("/devices", Some(&session))).await;
+    assert!(devices.body.contains("Pixel 9"));
+    assert!(
+        devices
+            .body
+            .contains(&format!("/devices/{device_id}/revoke"))
+    );
+    let revoked = send(
+        &state,
+        post(&format!("/devices/{device_id}/revoke"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(revoked.status, StatusCode::OK);
+    assert!(!revoked.body.contains("hx-post"), "{}", revoked.body);
+
+    let me = send(&state, bearer_get("/v1/me", &access)).await;
+    assert_eq!(me.status, StatusCode::UNAUTHORIZED);
+    assert_eq!(me.problem(), "device_revoked");
+    let refreshed = send(
+        &state,
+        json(
+            "/v1/auth/refresh",
+            None,
+            &serde_json::json!({ "refresh_token": refresh }),
+        ),
+    )
+    .await;
+    assert_eq!(refreshed.problem(), "device_revoked");
+}
+
+#[tokio::test]
+async fn pairing_errors_are_problems() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    set_up(&state).await;
+    let owner: String = sqlx::query_scalar("SELECT id FROM users")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let pair = |code: &str| {
+        json(
+            "/v1/auth/pair",
+            None,
+            &serde_json::json!({ "pairing_token": code, "device_name": "Phone", "platform": "ios" }),
+        )
+    };
+
+    assert_eq!(
+        send(&state, pair("ZZZZZZZZ")).await.problem(),
+        "pairing_token_invalid"
+    );
+    assert_eq!(
+        send(&state, pair("short")).await.problem(),
+        "pairing_token_invalid"
+    );
+
+    // Issued three minutes ago: past its two minutes.
+    let old = pairing::create(&state.db, &tenant(&state).await, &owner, now() - 180_000)
+        .await
+        .unwrap();
+    assert_eq!(
+        send(&state, pair(&old.code)).await.problem(),
+        "pairing_token_expired"
+    );
+
+    let bad = send(
+        &state,
+        Request::post("/v1/auth/pair")
+            .header(header::CONTENT_TYPE, "application/json")
+            .body(Body::from(r#"{"pairing_token": 1}"#))
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+    assert_eq!(bad.problem(), "validation");
+    assert_eq!(bad.json()["detail"], "invalid_body");
+
+    assert_eq!(
+        send(&state, get("/v1/me", None)).await.problem(),
+        "unauthenticated"
+    );
+    assert_eq!(
+        send(&state, bearer_get("/v1/me", "not.a.jwt"))
+            .await
+            .problem(),
+        "unauthenticated"
+    );
+}
+
+#[tokio::test]
+async fn pairing_is_rate_limited() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    // One router for all requests, as in `berth serve`: the limiter lives in it.
+    let app = berth_server::router(state);
+    let mut statuses = Vec::new();
+    let mut last = None;
+    for _ in 0..12 {
+        let mut req = json(
+            "/v1/auth/pair",
+            None,
+            &serde_json::json!({ "pairing_token": "ZZZZZZZZ", "device_name": "x", "platform": "ios" }),
+        );
+        req.extensions_mut()
+            .insert(ConnectInfo(SocketAddr::from(([127, 0, 0, 1], 50_000))));
+        let response = app.clone().oneshot(req).await.unwrap();
+        statuses.push(response.status());
+        last = Some(response);
+    }
+    assert!(
+        statuses[..10]
+            .iter()
+            .all(|s| *s == StatusCode::UNAUTHORIZED)
+    );
+    let last = last.unwrap();
+    assert_eq!(last.status(), StatusCode::TOO_MANY_REQUESTS);
+    assert_eq!(
+        last.headers()[header::CONTENT_TYPE],
+        "application/problem+json"
+    );
+    let body = last.into_body().collect().await.unwrap().to_bytes();
+    let problem: serde_json::Value = serde_json::from_slice(&body).unwrap();
+    assert_eq!(problem["code"], "rate_limited");
+}
+
+#[tokio::test]
+async fn cors_allows_only_known_origins() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let preflight = |origin: &str| {
+        Request::options("/v1/auth/pair")
+            .header(header::ORIGIN, origin)
+            .header(header::ACCESS_CONTROL_REQUEST_METHOD, "POST")
+            .header(header::ACCESS_CONTROL_REQUEST_HEADERS, "content-type")
+            .body(Body::empty())
+            .unwrap()
+    };
+    // Debug builds (tests) accept a local web build of the app.
+    let local = send(&state, preflight("http://localhost:5173")).await;
+    assert_eq!(
+        local.headers[header::ACCESS_CONTROL_ALLOW_ORIGIN],
+        "http://localhost:5173"
+    );
+    let evil = send(&state, preflight("https://evil.example")).await;
+    assert!(
+        !evil
+            .headers
+            .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+    );
+    // The admin pages never answer cross-origin.
+    let admin = send(
+        &state,
+        Request::get("/login")
+            .header(header::ORIGIN, "http://localhost:5173")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert!(
+        !admin
+            .headers
+            .contains_key(header::ACCESS_CONTROL_ALLOW_ORIGIN)
+    );
+}
+
+#[tokio::test]
+async fn connect_can_create_a_listener() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+
+    let empty = send(
+        &state,
+        post(
+            "/connect",
+            Some(&session),
+            &[("user_id", "new"), ("new_name", " ")],
+        ),
+    )
+    .await;
+    assert_eq!(empty.headers["hx-retarget"], "#connect-form");
+    assert!(empty.body.contains("role=\"alert\""));
+
+    let shown = send(
+        &state,
+        post(
+            "/connect",
+            Some(&session),
+            &[("user_id", "new"), ("new_name", "Mark")],
+        ),
+    )
+    .await;
+    assert_eq!(shown.status, StatusCode::OK);
+    assert!(shown.body.contains("/connect/status/"));
+    // The form comes back out of band with the new listener selected.
+    assert!(shown.body.contains("hx-swap-oob"));
+    assert!(shown.body.contains(">Mark<"), "{}", shown.body);
+    let users = send(&state, get("/users", Some(&session))).await;
+    assert!(users.body.contains("Mark"));
+}
+
+async fn tenant(state: &AppState) -> String {
+    sqlx::query_scalar("SELECT id FROM tenants")
+        .fetch_one(&state.db)
+        .await
+        .unwrap()
+}
+
+fn now() -> i64 {
+    i64::try_from(
+        std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_millis(),
+    )
+    .unwrap()
 }

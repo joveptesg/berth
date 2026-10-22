@@ -1,0 +1,19 @@
+{% import "partials/ui.html" as ui %}
+{% if status.state == "connected" %}
+<div class="flex min-h-[272px] flex-col items-center justify-center gap-3 text-center">
+  <span class="grid size-16 place-items-center rounded-full bg-ok/12 text-ok">{{ ui.icon("check", "size-8") }}</span>
+  <h2 class="text-[22px] font-bold">{{ t('connect.connected_title') }}</h2>
+  <p class="text-[16px] text-text-2"><span class="font-semibold text-text">{{ status.device_name }}</span> · {{ ui.platform(status.platform) }}</p>
+  <div class="mt-3 flex flex-wrap justify-center gap-2">
+    <a href="/devices" class="btn btn-ghost">{{ t('connect.open_devices') }}</a>
+    <button type="submit" form="connect-form" class="btn btn-primary">{{ t('connect.connect_another') }}</button>
+  </div>
+</div>
+{% else %}
+<div class="flex min-h-[272px] flex-col items-center justify-center gap-3 text-center">
+  <span class="grid size-16 place-items-center rounded-full bg-surface-2 text-text-3">{{ ui.icon("clock", "size-8") }}</span>
+  <h2 class="text-[22px] font-bold">{{ t('connect.expired_title') }}</h2>
+  <p class="max-w-[40ch] text-[15px] text-text-2">{{ t('connect.expired_body') }}</p>
+  <button type="submit" form="connect-form" class="btn btn-primary mt-3">{{ ui.icon("qr", "size-[18px]") }}{{ t('connect.new_code') }}</button>
+</div>
+{% endif %}

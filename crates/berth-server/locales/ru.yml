@@ -8,6 +8,9 @@ common:
 
 nav:
   dashboard: Обзор
+  users: Пользователи
+  connect: Подключить телефон
+  devices: Устройства
   settings: Настройки
   logout: Выйти
   menu: Меню
@@ -71,6 +74,60 @@ settings:
   about_section: О сервере
   version_label: Версия сервера
 
+users:
+  title: Пользователи
+  subtitle: Вы и те, кто слушает книги на этом сервере. У слушателей нет пароля — их телефоны подключаются по коду.
+  add_title: Добавить слушателя
+  add_hint: Затем покажите QR-код, чтобы подключить его телефон.
+  name_label: Имя
+  name_placeholder: например, Анна
+  add_submit: Добавить и подключить
+  role_owner: Администратор
+  role_admin: Администратор
+  role_member: Слушатель
+  role_restricted: С ограничениями
+  devices: "Устройств: %{count}"
+  connect_phone: Подключить телефон
+
+connect:
+  title: Подключить телефон
+  subtitle: Отсканируйте QR-код в приложении Berth или введите код вручную.
+  who_title: Чей телефон?
+  user_label: Слушатель
+  new_listener: Новый слушатель…
+  submit: Показать QR-код
+  form_hint: Код срабатывает один раз и живёт две минуты.
+  placeholder_title: Здесь появится QR-код
+  placeholder_body: Выберите слушателя и нажмите «Показать QR-код».
+  qr_label: QR-код для приложения Berth
+  for_user: "Для: %{name}"
+  scan_hint: В Berth на телефоне нажмите «Сканировать QR» или «Ввести код» и наберите адрес и код ниже.
+  code_label: Код
+  expires_in: Истекает через
+  waiting: Ждём телефон…
+  addresses_label: Адреса в QR-коде
+  fallback_hint: Адреса не заданы, поэтому в QR — адрес этой страницы. Укажите адреса домашней сети и интернета в разделе
+  connected_title: Телефон подключён
+  connect_another: Подключить ещё
+  open_devices: К устройствам
+  expired_title: Код истёк
+  expired_body: Ничего не подключено. Покажите новый код и отсканируйте его в течение двух минут.
+  new_code: Новый код
+
+devices:
+  title: Устройства
+  subtitle: Телефоны и браузеры с доступом к этому серверу.
+  connect: Подключить телефон
+  empty: Устройств пока нет.
+  this_browser: Этот браузер
+  browser: Браузер
+  revoked: Отозвано
+  paired: Подключено
+  last_seen: Был в сети
+  revoked_at: Отозвано
+  revoke: Отозвать
+  revoke_confirm: Отозвать «%{name}»? Приложение выйдет и удалит загрузки и библиотеку.
+
 errors:
   name_required: Введите название сервера.
   name_too_long: Слишком длинное название (не больше 64 символов).
@@ -79,3 +136,5 @@ errors:
   password_too_short: Слишком короткий пароль.
   password_mismatch: Пароли не совпадают.
   password_wrong: Неверный пароль.
+  user_name_required: Введите имя.
+  user_name_too_long: Слишком длинное имя (не больше 64 символов).

@@ -23,7 +23,7 @@ pub fn spawn(db: SqlitePool) {
 }
 
 /// Deletes expired refresh tokens, web sessions and pairing tokens, used pairing tokens
-/// older than a day and web devices without a session. Idempotent.
+/// older than a day and admin browsers without a session. Idempotent.
 pub(crate) async fn purge_expired(db: &SqlitePool, now: i64) -> sqlx::Result<()> {
     let mut tx = db.begin().await?;
     sqlx::query("DELETE FROM refresh_tokens WHERE expires_at < $1")
@@ -39,8 +39,10 @@ pub(crate) async fn purge_expired(db: &SqlitePool, now: i64) -> sqlx::Result<()>
         .bind(now - USED_PAIRING_TTL_MS)
         .execute(&mut *tx)
         .await?;
+    // Admin browsers are web devices with the admin scope; an app paired from a browser
+    // (scope listen) keeps its device row.
     sqlx::query(
-        "DELETE FROM device_scopes WHERE device_id IN (
+        "DELETE FROM device_scopes WHERE scope = 'admin' AND device_id IN (
              SELECT id FROM devices d WHERE d.platform = 'web'
              AND NOT EXISTS (SELECT 1 FROM web_sessions s WHERE s.device_id = d.id))",
     )
@@ -48,7 +50,8 @@ pub(crate) async fn purge_expired(db: &SqlitePool, now: i64) -> sqlx::Result<()>
     .await?;
     sqlx::query(
         "DELETE FROM devices WHERE platform = 'web'
-         AND NOT EXISTS (SELECT 1 FROM web_sessions s WHERE s.device_id = devices.id)",
+         AND NOT EXISTS (SELECT 1 FROM web_sessions s WHERE s.device_id = devices.id)
+         AND NOT EXISTS (SELECT 1 FROM device_scopes s WHERE s.device_id = devices.id)",
     )
     .execute(&mut *tx)
     .await?;
@@ -78,8 +81,10 @@ mod tests {
             "INSERT INTO devices (id, tenant_id, user_id, name, platform, paired_at)
              VALUES ('phone', 't', 'u', 'Phone', 'android', 0),
                     ('web-live', 't', 'u', 'Browser', 'web', 0),
-                    ('web-dead', 't', 'u', 'Browser', 'web', 0)",
-            "INSERT INTO device_scopes VALUES ('t', 'web-live', 'admin'), ('t', 'web-dead', 'admin')",
+                    ('web-dead', 't', 'u', 'Browser', 'web', 0),
+                    ('web-app', 't', 'u', 'Chrome', 'web', 0)",
+            "INSERT INTO device_scopes VALUES ('t', 'web-live', 'admin'), ('t', 'web-dead', 'admin'),
+                                              ('t', 'web-app', 'listen')",
         ] {
             sqlx::query(sql).execute(&db).await.unwrap();
         }
@@ -98,7 +103,7 @@ mod tests {
             .await
             .unwrap();
         sqlx::query(
-            "INSERT INTO pairing_tokens VALUES
+            "INSERT INTO pairing_tokens (token_hash, tenant_id, user_id, flow_type, expires_at, used_at) VALUES
                 ('expired', 't', 'u', 'qr', $1, NULL),
                 ('used-long-ago', 't', 'u', 'qr', $2, $3),
                 ('used-recently', 't', 'u', 'qr', $2, $4),
@@ -130,8 +135,8 @@ mod tests {
             .fetch_all(&db)
             .await
             .unwrap();
-        assert_eq!(devices, ["phone", "web-live"]);
+        assert_eq!(devices, ["phone", "web-app", "web-live"]);
         assert_eq!(count(&db, "SELECT COUNT(*) FROM web_sessions").await, 1);
-        assert_eq!(count(&db, "SELECT COUNT(*) FROM device_scopes").await, 1);
+        assert_eq!(count(&db, "SELECT COUNT(*) FROM device_scopes").await, 2);
     }
 }

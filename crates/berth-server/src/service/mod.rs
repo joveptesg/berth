@@ -4,8 +4,12 @@
 //! (e.g. `password_too_short`); the admin UI translates it as `errors.<code>`.
 
 pub mod auth;
+pub mod devices;
+pub mod pairing;
 pub mod settings;
 pub mod setup;
+pub mod tokens;
+pub mod users;
 
 use base64::Engine;
 use sha2::{Digest, Sha256};

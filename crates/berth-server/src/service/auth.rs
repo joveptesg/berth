@@ -233,7 +233,8 @@ async fn set_password(
         .execute(&mut *conn)
         .await?;
     let devices: Vec<String> = sqlx::query_scalar(
-        "SELECT id FROM devices WHERE user_id = $1 AND platform = 'web' AND id <> $2",
+        "SELECT id FROM devices WHERE user_id = $1 AND platform = 'web' AND id <> $2
+         AND id IN (SELECT device_id FROM device_scopes WHERE scope = 'admin')",
     )
     .bind(user_id)
     .bind(keep.unwrap_or(""))

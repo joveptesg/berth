@@ -1,0 +1,20 @@
+{% extends "base.html" %}
+{% import "partials/ui.html" as ui %}
+{% block title %}{{ t('devices.title') }}{% endblock %}
+{% block content %}
+<header class="flex flex-wrap items-end justify-between gap-4">
+  <div>
+    <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('devices.title') }}</h1>
+    <p class="mt-1 text-[16px] text-text-2">{{ t('devices.subtitle') }}</p>
+  </div>
+  <a href="/connect" class="btn btn-ghost">{{ ui.icon("connect", "size-[18px]") }}{{ t('devices.connect') }}</a>
+</header>
+
+{% if devices %}
+<ul class="card mt-8 divide-y divide-line p-0 sm:p-0" aria-label="{{ t('devices.title') }}">
+  {% for device in devices %}{% include "partials/device_row.html" %}{% endfor %}
+</ul>
+{% else %}
+<p class="card mt-8 text-[16px] text-text-2">{{ t('devices.empty') }}</p>
+{% endif %}
+{% endblock %}

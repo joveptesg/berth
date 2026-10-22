@@ -145,6 +145,18 @@
   .btn-ghost {
     @apply bg-surface-2 text-text hover:bg-surface-3;
   }
+  .btn-danger {
+    @apply bg-danger/10 text-danger hover:bg-danger/15;
+  }
+  .select {
+    @apply appearance-none bg-no-repeat pr-11;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%23666d78' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+    background-position: right 14px center;
+    background-size: 20px;
+  }
+  .chip {
+    @apply inline-flex items-center rounded-chip px-2.5 py-0.5 text-[12px] font-semibold;
+  }
   .nav-link {
     @apply flex min-h-11 items-center gap-3 rounded-[14px] px-3 text-[15px] font-semibold text-text-2 transition-colors hover:bg-surface-2 hover:text-text;
   }

@@ -5,7 +5,13 @@
   <title>{% block title %}{% endblock %} · {{ server_name }}</title>
 </head>
 <body x-data="admin" @keydown.escape="menu = false" class="min-h-dvh">
-  {% set nav = [("dashboard", "/", t('nav.dashboard')), ("settings", "/settings", t('nav.settings'))] %}
+  {% set nav = [
+    ("dashboard", "/", t('nav.dashboard')),
+    ("users", "/users", t('nav.users')),
+    ("connect", "/connect", t('nav.connect')),
+    ("devices", "/devices", t('nav.devices')),
+    ("settings", "/settings", t('nav.settings')),
+  ] %}
 
   <header class="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-line bg-bg/85 px-4 backdrop-blur-md lg:hidden">
     <a href="/" class="flex min-w-0 items-center gap-2.5">

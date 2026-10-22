@@ -1,0 +1,27 @@
+{% import "partials/ui.html" as ui %}
+{# Default choice: the given user, else the first listener, else a new listener. #}
+{% set listeners = users | rejectattr("role", "eq", "owner") | list %}
+{% set choice = selected or (listeners[0].id if listeners else "new") %}
+<form id="connect-form" method="post" action="/connect" hx-post="/connect" hx-target="#pairing" hx-swap="innerHTML"
+  {% if oob %}hx-swap-oob="true"{% endif %} x-data="{ user: '{{ choice }}' }" class="card flex flex-col gap-4">
+  <h2 class="text-[22px] font-bold">{{ t('connect.who_title') }}</h2>
+  {% if error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
+  <div class="flex flex-col gap-4 sm:flex-row sm:items-end xl:flex-col xl:items-stretch">
+    <div class="min-w-0 flex-1">
+      <label for="connect-user" class="field-label">{{ t('connect.user_label') }}</label>
+      <select id="connect-user" name="user_id" x-model="user" class="input select">
+        {% for user in users %}
+        <option value="{{ user.id }}" {% if user.id == choice %}selected{% endif %}>{{ user.name }}{% if user.role == "owner" %} · {{ t('users.role_owner') }}{% endif %}</option>
+        {% endfor %}
+        <option value="new" {% if choice == "new" %}selected{% endif %}>{{ t('connect.new_listener') }}</option>
+      </select>
+    </div>
+    <div x-show="user === 'new'" {% if choice != "new" %}x-cloak{% endif %} class="min-w-0 flex-1">
+      <label for="connect-new-name" class="field-label">{{ t('users.name_label') }}</label>
+      <input id="connect-new-name" name="new_name" value="{{ new_name or '' }}" maxlength="64" autocomplete="off"
+        :required="user === 'new'" placeholder="{{ t('users.name_placeholder') }}" class="input">
+    </div>
+    <button type="submit" class="btn btn-primary shrink-0">{{ ui.icon("qr", "size-[18px]") }}{{ t('connect.submit') }}</button>
+  </div>
+  <p class="field-hint mt-0">{{ t('connect.form_hint') }}</p>
+</form>

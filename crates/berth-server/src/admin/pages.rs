@@ -20,9 +20,9 @@ use crate::{
     service::{auth, settings, setup},
 };
 
-type Page = Result<Response, ApiError>;
+pub(super) type Page = Result<Response, ApiError>;
 
-fn render(state: &AppState, name: &str, ctx: Value) -> Page {
+pub(super) fn render(state: &AppState, name: &str, ctx: Value) -> Page {
     let html = state
         .templates
         .get_template(name)
@@ -32,7 +32,7 @@ fn render(state: &AppState, name: &str, ctx: Value) -> Page {
 }
 
 /// Renders `fragment` for HTMX requests, `page` otherwise.
-fn render_form(
+pub(super) fn render_form(
     state: &AppState,
     headers: &HeaderMap,
     page: &str,
@@ -43,7 +43,7 @@ fn render_form(
 }
 
 /// Splits a service error into a form error code or a real failure.
-fn form_error(err: BerthError) -> Result<String, ApiError> {
+pub(super) fn form_error(err: BerthError) -> Result<String, ApiError> {
     match err {
         BerthError::Validation(code) => Ok(code),
         err => Err(err.into()),
@@ -70,7 +70,7 @@ fn locked(state: &AppState) -> Value {
     Value::from(minijinja::value::Serde(settings::locked(state)))
 }
 
-fn shell(state: &AppState, page: &str) -> Value {
+pub(super) fn shell(state: &AppState, page: &str) -> Value {
     context! { server_name => state.config.load().name.clone(), page }
 }
 
@@ -225,18 +225,7 @@ pub(crate) struct PasswordForm {
 
 fn current_settings(state: &AppState) -> Value {
     let config = state.config.load();
-    // Shown as typed: without the trailing slash of an empty path.
-    let url = |u: &Option<url::Url>| {
-        u.as_ref()
-            .map(|u| {
-                u.as_str()
-                    .strip_suffix('/')
-                    .filter(|_| u.path() == "/")
-                    .unwrap_or(u.as_str())
-                    .to_owned()
-            })
-            .unwrap_or_default()
-    };
+    let url = |u: &Option<url::Url>| u.as_ref().map(settings::display_url).unwrap_or_default();
     context! {
         name => config.name.clone(),
         lan_url => url(&config.lan_url),

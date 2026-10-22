@@ -31,6 +31,9 @@ pub struct Config {
     pub lan_url: Option<Url>,
     /// Address of the server from the internet, put into pairing QR codes.
     pub wan_url: Option<Url>,
+    /// Browser origins allowed to call the JSON API (CORS), e.g. a web build of the app.
+    /// Debug builds also allow any `localhost` origin.
+    pub cors_origins: Vec<String>,
 }
 
 impl Default for Config {
@@ -42,6 +45,7 @@ impl Default for Config {
             name: "Berth".to_owned(),
             lan_url: None,
             wan_url: None,
+            cors_origins: Vec::new(),
         }
     }
 }

@@ -20,7 +20,9 @@ berth-core = { version = "0.1.0", path = "../berth-core" }
 figment = { version = "0.10.19", features = ["toml", "env"] }
 getrandom = "0.4.3"
 hex = "0.4.3"
+hmac = "0.13.0"
 minijinja = { version = "3.0.2", features = ["serde"] }
+qrcode = { version = "0.14.1", default-features = false, features = ["svg"] }
 rust-embed = "8.13.0"
 rust-i18n = "4.2.4"
 serde = { version = "1.0.229", features = ["derive"] }
@@ -29,7 +31,7 @@ sha2 = "0.11.1"
 sqlx = { version = "0.9.0", default-features = false, features = ["sqlite", "runtime-tokio", "migrate", "macros"] }
 subtle = "2.6.1"
 tokio = { version = "1.54.1", features = ["time", "rt"] }
-tower-http = { version = "0.7.1", features = ["trace"] }
+tower-http = { version = "0.7.1", features = ["cors", "trace"] }
 tower_governor = "0.8.0"
 tracing = "0.1.44"
 url = { version = "2.5.8", features = ["serde"] }

@@ -2,6 +2,7 @@
 //!
 //! HTMX form posts get back only the fragment they replace; pages never fetch JSON.
 
+mod access;
 mod csrf;
 mod i18n;
 mod pages;
@@ -54,6 +55,14 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             get(pages::settings_page).post(pages::settings_server),
         )
         .route("/settings/password", post(pages::settings_password))
+        .route("/users", get(access::users_page).post(access::users_create))
+        .route(
+            "/connect",
+            get(access::connect_page).post(access::connect_create),
+        )
+        .route("/connect/status/{id}", get(access::connect_status))
+        .route("/devices", get(access::devices_page))
+        .route("/devices/{id}/revoke", post(access::devices_revoke))
         .layer(middleware::from_fn_with_state(state, session::require));
 
     public
@@ -78,13 +87,10 @@ fn is_htmx(headers: &HeaderMap) -> bool {
 }
 
 /// Full-page navigation: `HX-Redirect` for HTMX requests, 303 otherwise.
-fn redirect(headers: &HeaderMap, to: &'static str) -> Response {
+fn redirect(headers: &HeaderMap, to: &str) -> Response {
     if is_htmx(headers) {
-        (
-            StatusCode::OK,
-            [("hx-redirect", HeaderValue::from_static(to))],
-        )
-            .into_response()
+        let to = HeaderValue::from_str(to).expect("redirect targets are plain paths");
+        (StatusCode::OK, [("hx-redirect", to)]).into_response()
     } else {
         Redirect::to(to).into_response()
     }

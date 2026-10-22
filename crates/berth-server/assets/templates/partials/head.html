@@ -40,5 +40,20 @@
     });
   });
 </script>
+<script>
+  // <time data-ts="epoch ms">: date and time in the browser's zone and the page language.
+  (function () {
+    function format(root) {
+      var fmt = new Intl.DateTimeFormat(document.documentElement.lang, { dateStyle: 'medium', timeStyle: 'short' });
+      root.querySelectorAll('time[data-ts]').forEach(function (el) {
+        var date = new Date(Number(el.dataset.ts));
+        el.dateTime = date.toISOString();
+        el.textContent = fmt.format(date);
+      });
+    }
+    document.addEventListener('DOMContentLoaded', function () { format(document); });
+    document.addEventListener('htmx:afterSettle', function (e) { format(e.target); });
+  })();
+</script>
 <script src="/static/htmx.min.js?v={{ version }}" defer></script>
 <script src="/static/alpine.min.js?v={{ version }}" defer></script>

@@ -97,6 +97,26 @@ pub(crate) async fn reload(state: &AppState) -> anyhow::Result<()> {
     Ok(())
 }
 
+/// An address as people type it: without the trailing slash of an empty path.
+#[must_use]
+pub fn display_url(url: &Url) -> String {
+    url.as_str()
+        .strip_suffix('/')
+        .filter(|_| url.path() == "/")
+        .unwrap_or(url.as_str())
+        .to_owned()
+}
+
+/// Server addresses for pairing QR codes: home network first, then internet.
+#[must_use]
+pub fn server_urls(config: &Config) -> Vec<String> {
+    [&config.lan_url, &config.wan_url]
+        .into_iter()
+        .flatten()
+        .map(display_url)
+        .collect()
+}
+
 pub(crate) fn validate_name(name: &str) -> Result<String> {
     let name = name.trim();
     if name.is_empty() {

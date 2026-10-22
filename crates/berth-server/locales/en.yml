@@ -10,6 +10,9 @@ common:
 
 nav:
   dashboard: Dashboard
+  users: Users
+  connect: Connect a phone
+  devices: Devices
   settings: Settings
   logout: Sign out
   menu: Menu
@@ -73,6 +76,60 @@ settings:
   about_section: About
   version_label: Server version
 
+users:
+  title: Users
+  subtitle: You and the people who listen on this server. Listeners have no password; their phones pair with a code.
+  add_title: Add a listener
+  add_hint: Then show a QR code to connect their phone.
+  name_label: Name
+  name_placeholder: e.g. Anna
+  add_submit: Add and connect
+  role_owner: Admin
+  role_admin: Admin
+  role_member: Listener
+  role_restricted: Restricted
+  devices: "Devices: %{count}"
+  connect_phone: Connect a phone
+
+connect:
+  title: Connect a phone
+  subtitle: Scan the QR code in the Berth app or type the code by hand.
+  who_title: Whose phone?
+  user_label: Listener
+  new_listener: New listener…
+  submit: Show QR code
+  form_hint: The code works once and for two minutes.
+  placeholder_title: The QR code appears here
+  placeholder_body: Choose a listener and press "Show QR code".
+  qr_label: QR code for the Berth app
+  for_user: For %{name}
+  scan_hint: In Berth on the phone, tap "Scan QR code", or "Enter code" and type the address and the code below.
+  code_label: Code
+  expires_in: Expires in
+  waiting: Waiting for the phone…
+  addresses_label: Addresses in the QR code
+  fallback_hint: No addresses set, so the QR uses the address of this page. Set the home network and internet addresses in
+  connected_title: Phone connected
+  connect_another: Connect another
+  open_devices: Open devices
+  expired_title: The code has expired
+  expired_body: Nothing was connected. Show a new code and scan it within two minutes.
+  new_code: New code
+
+devices:
+  title: Devices
+  subtitle: Phones and browsers with access to this server.
+  connect: Connect a phone
+  empty: No devices yet.
+  this_browser: This browser
+  browser: Browser
+  revoked: Revoked
+  paired: Connected
+  last_seen: Last seen
+  revoked_at: Revoked
+  revoke: Revoke
+  revoke_confirm: Revoke %{name}? The app on it signs out and deletes its downloads and library.
+
 errors:
   name_required: Enter a server name.
   name_too_long: The name is too long (64 characters at most).
@@ -81,3 +138,5 @@ errors:
   password_too_short: The password is too short.
   password_mismatch: The passwords do not match.
   password_wrong: Wrong password.
+  user_name_required: Enter a name.
+  user_name_too_long: The name is too long (64 characters at most).

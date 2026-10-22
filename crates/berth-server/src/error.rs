@@ -5,7 +5,7 @@ use axum::{
     http::{StatusCode, header},
     response::{IntoResponse, Response},
 };
-use berth_core::{AuthError, BerthError};
+use berth_core::BerthError;
 use serde::Serialize;
 use utoipa::ToSchema;
 
@@ -44,15 +44,9 @@ impl IntoResponse for ApiError {
                 (StatusCode::BAD_REQUEST, "validation", Some(msg.clone()))
             }
             BerthError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", Some(msg.clone())),
-            BerthError::Auth(auth) => (
-                StatusCode::UNAUTHORIZED,
-                match auth {
-                    AuthError::Unauthenticated => "unauthenticated",
-                    AuthError::DeviceRevoked => "device_revoked",
-                    AuthError::SessionExpired => "session_expired",
-                },
-                None,
-            ),
+            BerthError::Auth(auth) => (StatusCode::UNAUTHORIZED, auth.code(), None),
+            BerthError::Forbidden => (StatusCode::FORBIDDEN, "forbidden", None),
+            BerthError::RateLimited => (StatusCode::TOO_MANY_REQUESTS, "rate_limited", None),
             BerthError::Internal(err) => {
                 tracing::error!(error = ?err, "internal error");
                 (StatusCode::INTERNAL_SERVER_ERROR, "internal", None)
