@@ -772,7 +772,7 @@ async fn default_storage(state: &AppState) -> String {
     serde_json::from_str(&value).unwrap()
 }
 
-/// A phone of the owner with the `admin` scope granted, and its access token.
+/// A phone of the owner (it gets the `admin` scope) and its access token.
 async fn admin_token(state: &AppState) -> String {
     let tenant_id = tenant(state).await;
     let owner: String = sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner'")
@@ -792,21 +792,17 @@ async fn admin_token(state: &AppState) -> String {
     )
     .await;
     let tokens = paired.json();
-    let token = tokens["access_token"].as_str().unwrap().to_owned();
-    // Listen-only until the scope is granted.
-    let forbidden = send(state, bearer_get("/v1/admin/storage-profiles", &token)).await;
-    assert_eq!(forbidden.problem(), "forbidden");
-    let device: String = sqlx::query_scalar("SELECT id FROM devices WHERE name = 'Tablet'")
-        .fetch_one(&state.db)
-        .await
-        .unwrap();
-    sqlx::query("INSERT INTO device_scopes (tenant_id, device_id, scope) VALUES ($1, $2, 'admin')")
-        .bind(&tenant_id)
-        .bind(&device)
-        .execute(&state.db)
-        .await
-        .unwrap();
-    token
+    // The owner's phone gets the admin scope when it pairs.
+    let scopes: Vec<String> = sqlx::query_scalar(
+        "SELECT s.scope FROM device_scopes s JOIN devices d ON d.id = s.device_id
+         WHERE d.name = 'Tablet' AND d.tenant_id = $1 ORDER BY s.scope",
+    )
+    .bind(&tenant_id)
+    .fetch_all(&state.db)
+    .await
+    .unwrap();
+    assert_eq!(scopes, ["admin", "listen"]);
+    tokens["access_token"].as_str().unwrap().to_owned()
 }
 
 #[tokio::test]
@@ -1756,5 +1752,147 @@ async fn admin_uploads_and_edits_books() {
             .await
             .status,
         StatusCode::NOT_FOUND
+    );
+}
+
+#[tokio::test]
+async fn database_backups() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let data = dir.path().join("data");
+    assert!(
+        berth_server::backup::list(&data).is_empty(),
+        "a fresh database needs no backup"
+    );
+
+    let page = send(&state, get("/settings/backup", Some(&session))).await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(page.body.contains("/settings/backup/download"));
+    assert!(page.body.contains("secret.key"));
+
+    let download = send(&state, get("/settings/backup/download", Some(&session))).await;
+    assert_eq!(download.status, StatusCode::OK);
+    assert!(download.body.starts_with("SQLite format 3"));
+    assert!(
+        download.headers[header::CONTENT_DISPOSITION]
+            .to_str()
+            .unwrap()
+            .starts_with("attachment")
+    );
+    assert!(
+        std::fs::read_dir(data.join("tmp"))
+            .unwrap()
+            .next()
+            .is_none(),
+        "the copy does not stay on disk"
+    );
+    assert_eq!(
+        send(&state, get("/settings/backup/download", None))
+            .await
+            .location(),
+        Some("/login")
+    );
+
+    // Before migrations: a copy each time, the newest three kept.
+    for _ in 0..4 {
+        berth_server::backup::before_migrations(&state.db, &data, true)
+            .await
+            .unwrap();
+        tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+    }
+    let backups = berth_server::backup::list(&data);
+    assert_eq!(backups.len(), berth_server::backup::KEEP);
+    let newest = &backups[0];
+    let page = send(&state, get("/settings/backup", Some(&session))).await;
+    assert!(page.body.contains(&newest.name));
+    let file = send(
+        &state,
+        get(&format!("/settings/backup/{}", newest.name), Some(&session)),
+    )
+    .await;
+    assert!(file.body.starts_with("SQLite format 3"));
+    let sneaky = send(
+        &state,
+        get("/settings/backup/..%2Fberth.sqlite", Some(&session)),
+    )
+    .await;
+    assert_eq!(sneaky.status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn admin_signs_in_with_the_phone() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    set_up(&state).await;
+    let phone = admin_token(&state).await;
+
+    // The sign-in page offers the phone; a code and the browser's claim in a cookie.
+    let page = send(&state, get("/login", None)).await;
+    assert!(page.body.contains("/login/phone"));
+    let started = send(&state, post("/login/phone", None, &[])).await;
+    assert_eq!(started.status, StatusCode::OK, "{}", started.body);
+    let cookie = started.headers[header::SET_COOKIE].to_str().unwrap();
+    let pair = between(cookie, "berth_login=", ";").to_owned();
+    let (code, _) = pair.split_once('.').unwrap();
+    assert!(started.body.contains(&code[..4]) && started.body.contains("<svg"));
+    let poll = |claim: &str| {
+        Request::get("/login/phone/status")
+            .header(header::COOKIE, format!("berth_login={claim}"))
+            .header("hx-request", "true")
+            .header(
+                header::USER_AGENT,
+                "Mozilla/5.0 (Windows NT 10.0) Chrome/150",
+            )
+            .body(Body::empty())
+            .unwrap()
+    };
+    assert_eq!(
+        send(&state, poll(&pair)).await.status,
+        StatusCode::NO_CONTENT
+    );
+
+    // The phone sees which browser asks, then approves once.
+    let asked = send(
+        &state,
+        bearer_get(&format!("/v1/auth/web-login/{code}"), &phone),
+    )
+    .await
+    .json();
+    assert_eq!(
+        asked["browser"], "Browser",
+        "the test request has no user agent"
+    );
+    let anonymous = send(
+        &state,
+        Request::get(format!("/v1/auth/web-login/{code}"))
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(anonymous.problem(), "unauthenticated");
+    let approve = format!("/v1/auth/web-login/{}/approve", code.to_lowercase());
+    let approved = send(&state, api("POST", &approve, &phone, None)).await;
+    assert_eq!(approved.status, StatusCode::NO_CONTENT, "{}", approved.body);
+    let again = send(&state, api("POST", &approve, &phone, None)).await;
+    assert_eq!(again.json()["detail"], "web_login_used");
+
+    // Only the browser with the claim gets the session, and only once.
+    let stranger = send(&state, poll(&format!("{code}.not-the-claim"))).await;
+    assert!(stranger.body.contains("/login/phone"), "{}", stranger.body);
+    assert!(stranger.session().is_none());
+    let signed_in = send(&state, poll(&pair)).await;
+    let session = signed_in.session().expect("session cookie");
+    assert_eq!(signed_in.location(), Some("/"));
+    assert_eq!(
+        send(&state, get("/", Some(&session))).await.status,
+        StatusCode::OK
+    );
+    assert!(send(&state, poll(&pair)).await.session().is_none());
+    assert_eq!(
+        send(&state, bearer_get("/v1/auth/web-login/ABCD2345", &phone))
+            .await
+            .json()["detail"],
+        "web_login_invalid"
     );
 }

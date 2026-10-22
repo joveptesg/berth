@@ -65,6 +65,11 @@ fn qr_urls(state: &AppState, headers: &HeaderMap) -> (Vec<String>, bool) {
 /// `{"server_urls": [lan, wan], "pairing_token": "<code>"}`.
 fn qr_svg(urls: &[String], code: &str) -> anyhow::Result<String> {
     let payload = serde_json::json!({ "server_urls": urls, "pairing_token": code }).to_string();
+    qr(&payload)
+}
+
+/// A QR code of `payload` as inline SVG.
+pub(super) fn qr(payload: &str) -> anyhow::Result<String> {
     let svg = QrCode::new(payload.as_bytes())?
         .render::<svg::Color<'_>>()
         .min_dimensions(232, 232)

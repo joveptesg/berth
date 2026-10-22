@@ -258,7 +258,7 @@ async fn delete_web_device(conn: &mut SqliteConnection, device_id: &str) -> sqlx
 }
 
 /// Short device name for the devices list, e.g. "Chrome on Windows".
-fn browser_name(user_agent: &str) -> String {
+pub(crate) fn browser_name(user_agent: &str) -> String {
     // Order matters: Edge and Chrome UAs also mention Chrome and Safari.
     let browser = ["Edg", "Firefox", "Chrome", "Safari"]
         .into_iter()

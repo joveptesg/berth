@@ -523,6 +523,12 @@ fn stem(name: &str) -> String {
 }
 
 /// The book the files describe.
+/// The largest embedded picture: some rips carry a tiny thumbnail in one file and the real
+/// cover in the others.
+fn largest_cover<'a>(covers: impl Iterator<Item = &'a media::Picture>) -> Option<media::Picture> {
+    covers.max_by_key(|c| c.data.len()).cloned()
+}
+
 fn propose(upload_name: &str, mut audio: Vec<(FileRow, media::AudioInfo)>) -> Draft {
     // Track numbers when they order every file, else names.
     let mut tracks: Vec<u64> = audio.iter().filter_map(|(_, i)| i.track).collect();
@@ -670,7 +676,7 @@ pub(crate) async fn analyze(state: &AppState, tenant_id: &str, id: &str) -> anyh
         .with_context(|| format!("cannot read {}", file.name))?;
         audio.push((file, info));
     }
-    let embedded = audio.iter().find_map(|(_, i)| i.cover.clone());
+    let embedded = largest_cover(audio.iter().filter_map(|(_, i)| i.cover.as_ref()));
     let mut draft = propose(&name, audio);
 
     // A picture next to the audio wins over the embedded one: it is usually larger.
@@ -960,6 +966,17 @@ pub async fn discard(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
 
 #[cfg(test)]
 mod tests {
+    #[test]
+    fn the_largest_embedded_cover_wins() {
+        let picture = |len: usize| media::Picture {
+            mime: "image/jpeg".into(),
+            data: vec![0; len],
+        };
+        let covers = [picture(1305), picture(47_158), picture(20_000)];
+        assert_eq!(largest_cover(covers.iter()).unwrap().data.len(), 47_158);
+        assert!(largest_cover(std::iter::empty()).is_none());
+    }
+
     use super::*;
 
     #[test]

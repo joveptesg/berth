@@ -16,6 +16,7 @@ pub mod setup;
 pub mod storage;
 pub mod tokens;
 pub mod users;
+pub mod web_login;
 
 use base64::Engine;
 use sha2::{Digest, Sha256};

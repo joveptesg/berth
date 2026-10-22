@@ -15,9 +15,10 @@ use serde::Deserialize;
 
 use super::{is_htmx, redirect, session, storage::StorageForm};
 use crate::{
-    AppState,
+    AppState, backup,
+    db::now_ms,
     error::ApiError,
-    service::{auth, books, ingest, settings, setup},
+    service::{auth, books, ingest, settings, setup, web_login},
 };
 
 pub(super) type Page = Result<Response, ApiError>;
@@ -244,6 +245,49 @@ pub(crate) async fn login_submit(
     }
 }
 
+const LOGIN_COOKIE: &str = "berth_login";
+
+/// Starts a sign-in with the phone: a code (and QR) for the administrator's phone, and the
+/// claim of this browser in a short-lived cookie.
+pub(crate) async fn login_phone_start(State(state): State<AppState>, headers: HeaderMap) -> Page {
+    let started = web_login::start(&state.db, user_agent(&headers), now_ms()).await?;
+    let payload = serde_json::json!({ "server_id": &*state.server_id, "web_login": started.code })
+        .to_string();
+    let qr = Value::from_safe_string(super::access::qr(&payload)?);
+    let expires_in = (started.expires_at - now_ms()) / 1000;
+    let mut response = render(
+        &state,
+        "partials/login_phone.html",
+        context! { phone => context! { state => "waiting", code => started.code.clone(), qr, expires_in } },
+    )?;
+    let cookie = format!(
+        "{LOGIN_COOKIE}={}.{}; Path=/login; Max-Age={}; HttpOnly; SameSite=Strict",
+        started.code,
+        started.claim,
+        web_login::TTL_MS / 1000 + 120
+    );
+    response.headers_mut().insert(
+        header::SET_COOKIE,
+        cookie.parse().map_err(anyhow::Error::from)?,
+    );
+    Ok(response)
+}
+
+/// Polled by the sign-in page: nothing while waiting, the session once the phone approves.
+pub(crate) async fn login_phone_status(State(state): State<AppState>, headers: HeaderMap) -> Page {
+    let (code, claim) = super::cookie(&headers, LOGIN_COOKIE)
+        .and_then(|v| v.split_once('.'))
+        .unwrap_or_default();
+    match web_login::claim(&state.db, code, claim, user_agent(&headers), now_ms()).await? {
+        web_login::Status::Waiting { .. } => Ok(axum::http::StatusCode::NO_CONTENT.into_response()),
+        web_login::Status::Expired => render(
+            &state,
+            "partials/login_phone.html",
+            context! { phone => context! { state => "expired" } },
+        ),
+        web_login::Status::SignedIn(token) => Ok(signed_in(&headers, &token)),
+    }
+}
 pub(crate) async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Page {
     if let Some(token) = session::token(&headers) {
         auth::logout(&state.db, token).await?;
@@ -315,17 +359,65 @@ fn current_settings(state: &AppState) -> Value {
     }
 }
 
-/// Settings are split into tabs, each a page of its own: `/settings` (server) and
-/// `/settings/password`.
+/// Settings are split into tabs, each a page of its own: `/settings` (server),
+/// `/settings/password` and `/settings/backup`.
 fn settings_tab(state: &AppState, tab: &str) -> Page {
+    let backups = backup::list(&state.config.load().data_dir);
     render(
         state,
         "settings.html",
         context! {
             ..shell(state, "settings"),
-            ..context! { tab, settings => current_settings(state), locked => locked(state) },
+            ..context! {
+                tab, settings => current_settings(state), locked => locked(state),
+                backups => Value::from(minijinja::value::Serde(backups)), keep => backup::KEEP,
+            },
         },
     )
+}
+
+pub(crate) async fn settings_backup_page(State(state): State<AppState>) -> Page {
+    settings_tab(&state, "backup")
+}
+
+/// A fresh copy of the database as a download.
+pub(crate) async fn backup_download(State(state): State<AppState>) -> Page {
+    let tmp = state.config.load().data_dir.join("tmp");
+    tokio::fs::create_dir_all(&tmp)
+        .await
+        .map_err(anyhow::Error::from)?;
+    let name = format!("berth-{}.sqlite", now_ms());
+    let path = tmp.join(&name);
+    backup::snapshot(&state.db, &path).await?;
+    let bytes = tokio::fs::read(&path).await.map_err(anyhow::Error::from);
+    // The copy has the storage keys (encrypted): it must not linger in tmp.
+    let _ = tokio::fs::remove_file(&path).await;
+    Ok(attachment(&name, bytes?))
+}
+
+/// An automatic backup as a download.
+pub(crate) async fn backup_file(
+    State(state): State<AppState>,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Page {
+    let path = backup::path_of(&state.config.load().data_dir, &name).ok_or(BerthError::NotFound)?;
+    let bytes = tokio::fs::read(&path).await.map_err(anyhow::Error::from)?;
+    Ok(attachment(&name, bytes))
+}
+
+fn attachment(name: &str, bytes: Vec<u8>) -> Response {
+    (
+        [
+            (header::CONTENT_TYPE, "application/vnd.sqlite3".to_owned()),
+            (
+                header::CONTENT_DISPOSITION,
+                format!("attachment; filename=\"{name}\""),
+            ),
+            (header::CACHE_CONTROL, "no-store".to_owned()),
+        ],
+        bytes,
+    )
+        .into_response()
 }
 
 pub(crate) async fn settings_page(State(state): State<AppState>) -> Page {

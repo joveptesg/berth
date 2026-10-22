@@ -25,7 +25,19 @@ pub(crate) async fn connect(path: &Path) -> anyhow::Result<SqlitePool> {
         .connect_with(options)
         .await
         .with_context(|| format!("failed to open database {}", path.display()))?;
-    sqlx::migrate!()
+    let migrator = sqlx::migrate!();
+    // A fresh database has no migrations table yet and nothing to lose.
+    let applied: Vec<i64> =
+        sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success = TRUE")
+            .fetch_all(&pool)
+            .await
+            .unwrap_or_default();
+    let pending = !applied.is_empty() && migrator.iter().any(|m| !applied.contains(&m.version));
+    let data_dir = path.parent().unwrap_or_else(|| Path::new("."));
+    crate::backup::before_migrations(&pool, data_dir, pending)
+        .await
+        .context("failed to back up the database before migrations")?;
+    migrator
         .run(&pool)
         .await
         .context("failed to apply migrations")?;

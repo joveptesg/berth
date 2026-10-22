@@ -5,6 +5,10 @@
 {% if configured %}
 <p class="mt-1.5 text-[15px] text-text-2">{{ t('login.subtitle', name=server_name) }}</p>
 <div class="mt-6">{% include "partials/login_form.html" %}</div>
+<div class="my-5 flex items-center gap-3 text-[13px] text-text-3" aria-hidden="true">
+  <span class="h-px grow bg-line"></span>{{ t('login.or') }}<span class="h-px grow bg-line"></span>
+</div>
+{% with phone = {"state": "idle"} %}{% include "partials/login_phone.html" %}{% endwith %}
 <p class="mt-5 text-[13px] text-text-3">{{ t('login.forgot') }}</p>
 {% else %}
 <p class="mt-4 rounded-[14px] bg-surface-2 px-4 py-3 text-[15px] text-text-2">{{ t('login.not_configured') }}</p>

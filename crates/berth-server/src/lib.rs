@@ -2,6 +2,7 @@
 
 mod admin;
 pub mod api;
+pub mod backup;
 pub mod cleanup;
 pub mod config;
 mod crypto;

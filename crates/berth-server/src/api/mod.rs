@@ -8,6 +8,7 @@ pub(crate) mod library;
 mod me;
 mod server_info;
 mod storage;
+mod web_login;
 
 use std::sync::Arc;
 
@@ -88,6 +89,8 @@ fn routes() -> OpenApiRouter<AppState> {
         )
         .routes(routes!(auth::refresh))
         .routes(routes!(auth::revoke))
+        .routes(routes!(web_login::describe_web_login))
+        .routes(routes!(web_login::approve_web_login))
         .routes(routes!(me::me))
         .routes(routes!(admin::create_pairing_token))
         .routes(routes!(

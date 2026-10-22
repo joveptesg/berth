@@ -78,11 +78,15 @@
   class="absolute top-3 right-3 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-3 hover:text-text">{{ icon("close") }}</button>
 {%- endmacro %}
 
-{# A book cover, or a tinted tile with the first letter of the title. #}
+{# A book cover in a 2:3 portrait frame, or a tinted tile with the first letter of the title.
+   The picture is shown whole; a blurred copy of it fills the margins of square covers. #}
 {% macro cover(url, title, cls="") -%}
 {% if url -%}
-<img src="{{ url }}" alt="" loading="lazy" decoding="async" class="{{ cls }} aspect-square w-full rounded-[14px] bg-surface-2 object-cover">
+<span class="{{ cls }} relative block aspect-[2/3] w-full overflow-hidden rounded-[14px] bg-surface-2">
+  <img src="{{ url }}" alt="" aria-hidden="true" loading="lazy" decoding="async" class="absolute inset-0 size-full scale-125 object-cover opacity-80 blur-xl">
+  <img src="{{ url }}" alt="" loading="lazy" decoding="async" class="relative size-full object-contain">
+</span>
 {%- else -%}
-<span aria-hidden="true" class="{{ cls }} grid aspect-square w-full place-items-center rounded-[14px] bg-gradient-to-br from-accent-soft to-surface-3 text-[34px] font-bold text-accent-fg">{{ (title or '?')[:1] | upper }}</span>
+<span aria-hidden="true" class="{{ cls }} grid aspect-[2/3] w-full place-items-center rounded-[14px] bg-gradient-to-br from-accent-soft to-surface-3 text-[34px] font-bold text-accent-fg">{{ (title or '?')[:1] | upper }}</span>
 {%- endif %}
 {%- endmacro %}

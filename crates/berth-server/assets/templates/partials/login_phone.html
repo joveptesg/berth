@@ -1,0 +1,32 @@
+{# Sign-in with the phone: a code for the administrator's phone; polls until it approves. #}
+<div id="login-phone" class="flex flex-col gap-4">
+  {% if phone.state == "waiting" %}
+  <div class="flex flex-col items-center gap-4"
+    x-data="{ left: {{ phone.expires_in }}, timer: null,
+              init() { this.timer = setInterval(() => { if (this.left > 0) this.left-- }, 1000) },
+              destroy() { clearInterval(this.timer) } }">
+    <figure class="rounded-[22px] bg-white p-3 shadow-[0_18px_40px_-24px_rgb(14_16_20/0.45)] ring-1 ring-black/5">
+      <div class="[&_svg]:block [&_svg]:size-[200px]" role="img" aria-label="{{ t('login.phone_qr_label') }}">{{ phone.qr }}</div>
+    </figure>
+    <p class="font-mono text-[28px] leading-none font-semibold tracking-[0.12em] tabular-nums">
+      <span class="select-all">{{ phone.code[:4] }}</span><span class="mx-[0.1em] text-text-3" aria-hidden="true">·</span><span class="select-all">{{ phone.code[4:] }}</span>
+    </p>
+    <p class="text-center text-[15px] text-text-2">{{ t('login.phone_hint') }}</p>
+    <div hx-get="/login/phone/status" hx-trigger="every 2s" hx-target="#login-phone" hx-swap="outerHTML"
+      class="flex w-full items-center gap-3 rounded-[14px] bg-surface-2 px-4 py-3 text-[15px] font-semibold" role="status">
+      <span class="relative flex size-2.5" aria-hidden="true">
+        <span class="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60 motion-reduce:animate-none"></span>
+        <span class="relative inline-flex size-2.5 rounded-full bg-accent"></span>
+      </span>
+      <span class="grow">{{ t('login.phone_waiting') }}</span>
+      <span class="mono tabular-nums" :class="left <= 20 && 'text-danger'"
+        x-text="Math.floor(left / 60) + ':' + String(left % 60).padStart(2, '0')">{{ phone.expires_in // 60 }}:{{ "%02d" | format(phone.expires_in % 60) }}</span>
+    </div>
+  </div>
+  {% else %}
+  {% if phone.state == "expired" %}<p class="alert-error" role="alert">{{ t('login.phone_expired') }}</p>{% endif %}
+  <button type="button" hx-post="/login/phone" hx-target="#login-phone" hx-swap="outerHTML" class="btn btn-ghost w-full">
+    {{ t('login.phone_start') }}
+  </button>
+  {% endif %}
+</div>

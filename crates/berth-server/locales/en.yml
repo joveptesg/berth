@@ -49,6 +49,12 @@ login:
   submit: Sign in
   forgot: Forgot it? Run berth admin reset-password on the server.
   not_configured: This server is not set up yet. Open the setup link printed in the server log.
+  or: or
+  phone_start: Sign in with the phone
+  phone_qr_label: QR code to sign in with the phone
+  phone_hint: "On the administrator's phone: Berth → Settings → Sign in to the web admin. Point the camera at the code or type it."
+  phone_waiting: Waiting for the phone to confirm
+  phone_expired: The code expired. Get a new one.
 
 dashboard:
   title: Dashboard
@@ -222,7 +228,7 @@ book:
   delete: Delete book
   delete_confirm: Delete %{title}? Phones remove it on the next sync.
   cover_replace: Replace cover
-  cover_hint: JPEG, PNG or WebP up to 10 MB. Square looks best.
+  cover_hint: JPEG, PNG or WebP up to 10 MB. Portrait 2:3 looks best; a square one is shown whole too.
 
 upload:
   title: Upload books
@@ -251,6 +257,9 @@ upload:
   save_hint: Phones get the book on their next sync.
 
 errors:
+  web_login_invalid: No such code. Check it on the sign-in page.
+  web_login_expired: The code expired. Get a new one on the sign-in page.
+  web_login_used: This code was already used.
   name_required: Enter a server name.
   name_too_long: The name is too long (64 characters at most).
   lan_url_invalid: Enter a full address starting with http:// or https://.
@@ -296,3 +305,14 @@ errors:
   upload_closed: This upload is already being processed.
   upload_not_ready: This upload is not ready to be saved.
   upload_saved: This book is already in the library.
+
+backup:
+  section: Backup
+  now_title: Database backup
+  now_hint: A copy of the library, users, devices, progress and settings as of now. Audio files are not in it — they stay in the storages.
+  download: Download database backup
+  secret_note: secret.key is not in the backup. Keep it separately — without it the storage keys in the backup cannot be decrypted.
+  auto_title: Automatic backups
+  auto_hint: The server saves a copy before every database schema update. The last %{keep} are kept.
+  auto_empty: No automatic backups yet — the first appears with the first server update.
+  download_one: Download

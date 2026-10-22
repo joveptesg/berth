@@ -53,6 +53,11 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             "/login",
             get(pages::login_page).merge(post(pages::login_submit).layer(limit(12, 5))),
         )
+        .route(
+            "/login/phone",
+            post(pages::login_phone_start).layer(limit(6, 10)),
+        )
+        .route("/login/phone/status", get(pages::login_phone_status))
         .route("/logout", post(pages::logout));
 
     let protected = Router::new()
@@ -65,6 +70,9 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             "/settings/password",
             get(pages::settings_password_page).post(pages::settings_password),
         )
+        .route("/settings/backup", get(pages::settings_backup_page))
+        .route("/settings/backup/download", get(pages::backup_download))
+        .route("/settings/backup/{name}", get(pages::backup_file))
         .route("/users", get(access::users_page).post(access::users_create))
         .route("/users/{id}/connect", post(access::user_connect))
         .route("/users/{user}/pairing/{id}", get(access::pairing_status))

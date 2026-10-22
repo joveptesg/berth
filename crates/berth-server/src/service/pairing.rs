@@ -71,7 +71,7 @@ pub fn normalize(code: &str) -> String {
         .collect()
 }
 
-fn generate_code() -> anyhow::Result<String> {
+pub(crate) fn generate_code() -> anyhow::Result<String> {
     // Rejection sampling keeps every character equally likely.
     let limit = u8::try_from(256 - 256 % ALPHABET.len()).expect("fits");
     let mut code = String::with_capacity(CODE_LEN);
@@ -176,7 +176,8 @@ fn validate_device(device_name: &str, platform: &str) -> Result<(String, String)
     Ok((name, platform))
 }
 
-/// Exchanges a pairing code for a new device with the `listen` scope and its first tokens.
+/// Exchanges a pairing code for a new device with the `listen` scope (and `admin` for an
+/// administrator) and its first tokens.
 ///
 /// # Errors
 /// `Auth` with `PairingTokenInvalid`, `PairingTokenUsed` or `PairingTokenExpired`;
@@ -246,6 +247,17 @@ pub async fn pair(
     .execute(&mut *tx)
     .await
     .context("insert scope")?;
+    // An administrator's phone may also approve web sign-ins.
+    sqlx::query(
+        "INSERT INTO device_scopes (tenant_id, device_id, scope)
+         SELECT $1, $2, 'admin' FROM users WHERE id = $3 AND role IN ('owner', 'admin')",
+    )
+    .bind(&tenant_id)
+    .bind(&device_id)
+    .bind(&user_id)
+    .execute(&mut *tx)
+    .await
+    .context("insert admin scope")?;
     sqlx::query("UPDATE pairing_tokens SET device_id = $2 WHERE token_hash = $1")
         .bind(&hash)
         .bind(&device_id)

@@ -655,6 +655,123 @@
         }
       }
     },
+    "/v1/auth/web-login/{code}": {
+      "get": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Which browser asks to sign in with this code: the phone shows it before approving.",
+        "operationId": "describe_web_login",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "Code from the web admin's sign-in page",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The waiting sign-in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/WebLoginRequest"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`web_login_invalid`, `web_login_expired` or `web_login_used`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device lacks the `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/auth/web-login/{code}/approve": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Approves the sign-in: the browser that shows the code is signed in as this phone's user.",
+        "operationId": "approve_web_login",
+        "parameters": [
+          {
+            "name": "code",
+            "in": "path",
+            "description": "Code from the web admin's sign-in page",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Approved"
+          },
+          "400": {
+            "description": "`web_login_invalid`, `web_login_expired` or `web_login_used`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device lacks the `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/blobs/{token}": {
       "get": {
         "tags": [
@@ -2719,6 +2836,31 @@
             "format": "int64",
             "description": "Bytes.",
             "minimum": 0
+          }
+        }
+      },
+      "WebLoginRequest": {
+        "type": "object",
+        "description": "What the phone shows before approving.",
+        "required": [
+          "browser",
+          "created_at",
+          "expires_at"
+        ],
+        "properties": {
+          "browser": {
+            "type": "string",
+            "description": "The browser asking, e.g. \"Chrome on Windows\"."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it asked, epoch milliseconds."
+          },
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the code expires, epoch milliseconds."
           }
         }
       }

@@ -1,0 +1,33 @@
+{% import "partials/ui.html" as ui %}
+<section id="settings-backup" class="flex flex-col gap-6">
+  <div class="card flex flex-col gap-4">
+    <div>
+      <h2 class="text-[20px] font-bold tracking-[-0.01em]">{{ t('backup.now_title') }}</h2>
+      <p class="mt-1 text-[15px] text-text-2">{{ t('backup.now_hint') }}</p>
+    </div>
+    <div>
+      <a href="/settings/backup/download" download class="btn btn-primary">{{ t('backup.download') }}</a>
+    </div>
+    <p class="alert-warn">{{ t('backup.secret_note') }}</p>
+  </div>
+
+  <div class="card flex flex-col gap-3">
+    <div>
+      <h2 class="text-[20px] font-bold tracking-[-0.01em]">{{ t('backup.auto_title') }}</h2>
+      <p class="mt-1 text-[15px] text-text-2">{{ t('backup.auto_hint', keep=keep) }}</p>
+    </div>
+    {% if backups %}
+    <ul class="divide-y divide-line">
+      {% for b in backups %}
+      <li class="flex flex-wrap items-center gap-x-4 gap-y-1 py-3">
+        <span class="grow">{{ ui.time(b.created_at) }}</span>
+        <span class="mono text-[13px] text-text-3">{{ b.size | filesize }}</span>
+        <a href="/settings/backup/{{ b.name }}" download class="text-[15px] font-semibold text-accent-fg">{{ t('backup.download_one') }}</a>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="text-[15px] text-text-3">{{ t('backup.auto_empty') }}</p>
+    {% endif %}
+  </div>
+</section>

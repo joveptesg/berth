@@ -7,15 +7,17 @@
 </header>
 
 {# Tabs are plain links: each tab is its own page, so it can be bookmarked and needs no script. #}
-<nav class="mt-6 flex gap-1 overflow-x-auto border-b border-line" aria-label="{{ t('settings.title') }}">
-  {% for key, href, label in [("server", "/settings", t('settings.server_section')), ("password", "/settings/password", t('settings.password_section'))] %}
+<nav class="mt-6 flex gap-1 overflow-x-auto overflow-y-hidden border-b border-line" aria-label="{{ t('settings.title') }}">
+  {% for key, href, label in [("server", "/settings", t('settings.server_section')), ("password", "/settings/password", t('settings.password_section')), ("backup", "/settings/backup", t('backup.section'))] %}
   <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}
     class="-mb-px shrink-0 border-b-2 border-transparent px-4 py-3 text-[15px] font-semibold whitespace-nowrap text-text-2 transition-colors hover:text-text aria-[current=page]:border-accent aria-[current=page]:text-text">{{ label }}</a>
   {% endfor %}
 </nav>
 
 <div class="mt-6">
-  {% if tab == "password" %}
+  {% if tab == "backup" %}
+  {% include "partials/settings_backup.html" %}
+  {% elif tab == "password" %}
   {% include "partials/settings_password.html" %}
   {% else %}
   {% include "partials/settings_server.html" %}
