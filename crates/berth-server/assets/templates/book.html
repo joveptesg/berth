@@ -1,7 +1,6 @@
 {% extends "base.html" %}
 {% import "partials/ui.html" as ui %}
 {% block title %}{{ book.title }}{% endblock %}
-{% block width %}max-w-[1200px]{% endblock %}
 {% block content %}
 <a href="/library/{{ book.library_id }}" class="inline-flex items-center gap-2 text-[15px] font-semibold text-text-2 hover:text-text">{{ ui.icon("back", "size-[18px]") }}{{ t('library.title') }}</a>
 
