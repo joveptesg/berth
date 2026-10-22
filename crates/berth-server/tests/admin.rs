@@ -1353,6 +1353,145 @@ async fn upload_analyse_save_and_sync() {
     .json();
     assert_eq!(dedup["targets"][0]["method"], "stored");
 
+    // A file streams by a signed URL without headers, with range requests, and not gzipped.
+    let link = send(
+        &state,
+        bearer_get(&format!("/v1/books/{book_id}/files/1/stream"), &token),
+    )
+    .await
+    .json();
+    let url = link["url"].as_str().unwrap().to_owned();
+    assert!(url.starts_with("/v1/blobs/"), "{url}");
+    assert!(link["expires_at"].as_i64().unwrap() > now());
+    let whole = send(&state, Request::get(&url).body(Body::empty()).unwrap()).await;
+    assert_eq!(whole.status, StatusCode::OK);
+    assert_eq!(whole.headers[header::CONTENT_TYPE], "audio/mpeg");
+    assert_eq!(whole.headers[header::ACCEPT_RANGES], "bytes");
+    assert_eq!(
+        whole.headers[header::CONTENT_LENGTH],
+        second.len().to_string().as_str()
+    );
+    let part = send(
+        &state,
+        Request::get(&url)
+            .header(header::RANGE, "bytes=0-9")
+            .header(header::ACCEPT_ENCODING, "gzip")
+            .body(Body::empty())
+            .unwrap(),
+    )
+    .await;
+    assert_eq!(part.status, StatusCode::PARTIAL_CONTENT);
+    assert_eq!(
+        part.headers[header::CONTENT_RANGE],
+        format!("bytes 0-9/{}", second.len()).as_str()
+    );
+    assert!(part.headers.get(header::CONTENT_ENCODING).is_none());
+    assert_eq!(part.body, String::from_utf8_lossy(&second[..10]));
+    let beyond = Request::get(&url)
+        .header(header::RANGE, format!("bytes={}-", second.len()))
+        .body(Body::empty())
+        .unwrap();
+    assert_eq!(
+        send(&state, beyond).await.status,
+        StatusCode::RANGE_NOT_SATISFIABLE
+    );
+    let tampered = format!("{url}x");
+    assert_eq!(
+        send(&state, Request::get(&tampered).body(Body::empty()).unwrap())
+            .await
+            .problem(),
+        "unauthenticated"
+    );
+    let redirect = send(
+        &state,
+        bearer_get(
+            &format!("/v1/books/{book_id}/files/0/stream?redirect=1"),
+            &token,
+        ),
+    )
+    .await;
+    assert_eq!(redirect.status, StatusCode::FOUND);
+    assert!(redirect.location().unwrap().starts_with("/v1/blobs/"));
+    let missing = send(
+        &state,
+        bearer_get(&format!("/v1/books/{book_id}/files/9/stream"), &token),
+    )
+    .await;
+    assert_eq!(missing.problem(), "not_found");
+
+    // The download manifest has every file with its URL and hash, and the chapters.
+    let manifest = send(
+        &state,
+        bearer_get(&format!("/v1/books/{book_id}/download-manifest"), &token),
+    )
+    .await
+    .json();
+    assert_eq!(manifest["files"].as_array().unwrap().len(), 2);
+    assert_eq!(manifest["files"][1]["blob_hash"], digest_of(&second));
+    assert!(
+        manifest["files"][0]["url"]
+            .as_str()
+            .unwrap()
+            .starts_with("/v1/blobs/")
+    );
+    assert_eq!(manifest["chapters"].as_array().unwrap().len(), 2);
+    assert_eq!(
+        manifest["size"].as_i64().unwrap(),
+        book["files"][0]["size"].as_i64().unwrap() + book["files"][1]["size"].as_i64().unwrap()
+    );
+
+    // Progress: last write wins by the device time corrected for its clock; resends are no-ops.
+    let event = |id: &str, at: i64, position: i64| serde_json::json!({ "event_id": id, "book_id": book_id, "position_ms": position, "type": "position", "client_ts": at });
+    let ids: Vec<String> = (0..3).map(|_| uuid::Uuid::now_v7().to_string()).collect();
+    // This device's clock is an hour behind: its event a minute ago is still the latest.
+    let behind = now() - 3_600_000;
+    let first_batch = serde_json::json!({ "client_now": behind, "events": [event(&ids[0], behind - 60_000, 5_000)] });
+    let positions = send(
+        &state,
+        api("POST", "/v1/progress/batch", &token, Some(&first_batch)),
+    )
+    .await
+    .json();
+    assert_eq!(positions["positions"][0]["position_ms"], 5_000);
+    // A late offline event from two hours ago does not overwrite it.
+    let late = serde_json::json!({ "client_now": now(), "events": [event(&ids[1], now() - 7_200_000, 1_000)] });
+    send(
+        &state,
+        api("POST", "/v1/progress/batch", &token, Some(&late)),
+    )
+    .await;
+    // Resending the first event with another position changes nothing.
+    let resend =
+        serde_json::json!({ "client_now": behind, "events": [event(&ids[0], behind, 9_000)] });
+    send(
+        &state,
+        api("POST", "/v1/progress/batch", &token, Some(&resend)),
+    )
+    .await;
+    let current = send(&state, bearer_get("/v1/progress", &token))
+        .await
+        .json();
+    assert_eq!(current["positions"][0]["position_ms"], 5_000);
+    assert_eq!(current["positions"][0]["finished"], false);
+    let finished = serde_json::json!({ "client_now": now(), "events": [{ "event_id": ids[2], "book_id": book_id, "position_ms": 7_000, "type": "finished", "client_ts": now() }] });
+    let done = send(
+        &state,
+        api("POST", "/v1/progress/batch", &token, Some(&finished)),
+    )
+    .await
+    .json();
+    assert_eq!(done["positions"][0]["finished"], true);
+    let bad = serde_json::json!({ "client_now": now(), "events": [event("nope", now(), 1)] });
+    assert_eq!(
+        send(
+            &state,
+            api("POST", "/v1/progress/batch", &token, Some(&bad))
+        )
+        .await
+        .json()["detail"],
+        "progress_event_invalid"
+    );
+
     // A deleted book is removed on the next sync.
     let tenant_id = tenant(&state).await;
     berth_server::service::books::delete(&state.db, &tenant_id, &book_id)
@@ -1374,6 +1513,25 @@ async fn upload_analyse_save_and_sync() {
         .problem(),
         "not_found"
     );
+
+    // A revoked device loses its stream URLs at once.
+    let device: String = sqlx::query_scalar("SELECT id FROM devices WHERE name = 'Tablet'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    berth_server::service::devices::revoke(&state.db, &tenant_id, &device, now())
+        .await
+        .unwrap();
+    assert_eq!(
+        send(&state, Request::get(&url).body(Body::empty()).unwrap())
+            .await
+            .problem(),
+        "device_revoked"
+    );
+}
+
+fn digest_of(bytes: &[u8]) -> String {
+    hex::encode(sha2::Sha256::digest(bytes))
 }
 
 /// A same-origin browser request with the session cookie.

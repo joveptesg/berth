@@ -2,6 +2,7 @@
 
 mod admin;
 mod auth;
+mod delivery;
 mod ingest;
 pub(crate) mod library;
 mod me;
@@ -20,7 +21,10 @@ use axum::{
 use berth_core::BerthError;
 use tower_governor::{GovernorLayer, governor::GovernorConfigBuilder};
 use tower_http::{
-    compression::CompressionLayer,
+    compression::{
+        CompressionLayer,
+        predicate::{DefaultPredicate, NotForContentType, Predicate},
+    },
     cors::{AllowOrigin, CorsLayer},
     trace::TraceLayer,
 };
@@ -99,6 +103,11 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(storage::default_storage_profile))
         .routes(routes!(library::sync))
         .routes(routes!(library::cover))
+        .routes(routes!(delivery::stream))
+        .routes(routes!(delivery::download_manifest))
+        .routes(routes!(delivery::blob))
+        .routes(routes!(delivery::progress_batch))
+        .routes(routes!(delivery::progress))
         .routes(routes!(ingest::create_upload))
         .merge(
             // Audiobook files are large: no body limit on the file upload.
@@ -130,14 +139,23 @@ fn cors(config: Arc<ArcSwap<Config>>) -> CorsLayer {
                     .any(|allowed| allowed.trim_end_matches('/') == origin)
         }))
         .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
-        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
+        .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE, header::RANGE])
+        .expose_headers([
+            header::CONTENT_LENGTH,
+            header::CONTENT_RANGE,
+            header::ACCEPT_RANGES,
+        ])
 }
 
 /// HTTP router of the server.
 pub fn router(state: AppState) -> Router {
     let (api, _) = routes().split_for_parts();
-    // Large JSON (the sync delta) goes gzip-compressed to clients that accept it.
-    api.layer(CompressionLayer::new())
+    // Large JSON (the sync delta) goes gzip-compressed to clients that accept it; audio does
+    // not: it is compressed already, and gzip would break range requests.
+    let compress = DefaultPredicate::new()
+        .and(NotForContentType::const_new("audio/"))
+        .and(NotForContentType::const_new("application/octet-stream"));
+    api.layer(CompressionLayer::new().compress_when(compress))
         .layer(cors(state.config.clone()))
         .merge(crate::admin::router(state.clone()))
         .fallback(async || ApiError::from(BerthError::NotFound))

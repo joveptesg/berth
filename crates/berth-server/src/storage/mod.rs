@@ -18,8 +18,8 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream::BoxStream};
 use object_store::{
-    ObjectStore, ObjectStoreExt, PutPayload, RetryConfig, aws::AmazonS3Builder,
-    buffered::BufWriter, local::LocalFileSystem, path::Path,
+    GetOptions, GetRange, ObjectStore, ObjectStoreExt, PutPayload, RetryConfig,
+    aws::AmazonS3Builder, buffered::BufWriter, local::LocalFileSystem, path::Path,
 };
 use presign::Presigner;
 pub use presign::put_headers;
@@ -290,6 +290,30 @@ impl ObjectBlobStore {
             Err(object_store::Error::NotFound { .. }) => Ok(None),
             Err(err) => Err(err),
         }
+    }
+
+    /// Bytes `range` of a blob (all of it for `None`) with the range actually returned and the
+    /// blob size, for range requests of players and resumed downloads.
+    ///
+    /// # Errors
+    /// A missing blob, a range past its end, or backend failures.
+    pub async fn get_range(
+        &self,
+        tenant: &str,
+        hash: &ContentHash,
+        range: Option<GetRange>,
+    ) -> object_store::Result<(ByteStream, std::ops::Range<u64>, u64)> {
+        let options = GetOptions::default().with_range(range);
+        let result = self
+            .store
+            .get_opts(&blob_path(tenant, hash), options)
+            .await?;
+        let (range, size) = (result.range.clone(), result.meta.size);
+        Ok((
+            result.into_stream().map_err(Into::into).boxed(),
+            range,
+            size,
+        ))
     }
 
     /// Writes, reads back and deletes a probe object under `prefix`.

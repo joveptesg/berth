@@ -6,9 +6,11 @@
 pub mod auth;
 pub mod blobs;
 pub mod books;
+pub mod delivery;
 pub mod devices;
 pub mod ingest;
 pub mod pairing;
+pub mod progress;
 pub mod settings;
 pub mod setup;
 pub mod storage;

@@ -655,6 +655,66 @@
         }
       }
     },
+    "/v1/blobs/{token}": {
+      "get": {
+        "tags": [
+          "delivery"
+        ],
+        "summary": "Bytes of a blob by a signed token from `/stream`, with range requests; no authorization\nheader. Stops working when the token expires or the device is revoked.",
+        "operationId": "blob",
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "description": "Signed token from a stream URL",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The whole file",
+            "content": {
+              "audio/*": {}
+            }
+          },
+          "206": {
+            "description": "The requested `Range`",
+            "content": {
+              "audio/*": {}
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` (bad or expired token) or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: the bytes are gone",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "416": {
+            "description": "The range starts past the end"
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/v1/books/{id}/cover": {
       "get": {
         "tags": [
@@ -695,6 +755,134 @@
           },
           "404": {
             "description": "`not_found`: no such book or no cover",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/books/{id}/download-manifest": {
+      "get": {
+        "tags": [
+          "delivery"
+        ],
+        "summary": "Files with URLs, sizes, hashes and chapters to keep a book on the device. Verify each file\nby its sha256; to resume a download whose URL expired, ask `/stream` for that file.",
+        "operationId": "download_manifest",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Book id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The manifest",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadManifest"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such book",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/books/{id}/files/{idx}/stream": {
+      "get": {
+        "tags": [
+          "delivery"
+        ],
+        "summary": "A short-lived URL for file `idx` of a book, playable without authorization headers: a\npresigned S3 GET or a signed `/v1/blobs/{token}` (relative to the server address). Do not\nkeep it: ask again when it expires or fails.",
+        "operationId": "stream",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Book id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "idx",
+            "in": "path",
+            "description": "File index",
+            "required": true,
+            "schema": {
+              "type": "integer",
+              "format": "int64"
+            }
+          },
+          {
+            "name": "redirect",
+            "in": "query",
+            "description": "`1`: answer with a 302 to the URL instead of JSON, for simple clients.",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "format": "int32",
+              "minimum": 0
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Where to fetch the file",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StreamLink"
+                }
+              }
+            }
+          },
+          "302": {
+            "description": "With `redirect=1`: `Location` is the URL"
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: no such book or file",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1134,6 +1322,88 @@
         }
       }
     },
+    "/v1/progress": {
+      "get": {
+        "tags": [
+          "progress"
+        ],
+        "summary": "The user's current position in every book, as other devices left it. A device applies a\nposition only when it is newer than its own (compare in one clock with `server_now`).",
+        "operationId": "progress",
+        "responses": {
+          "200": {
+            "description": "Current positions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Positions"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/progress/batch": {
+      "post": {
+        "tags": [
+          "progress"
+        ],
+        "summary": "Sends events of the device's offline progress queue. The batch is accepted as a whole:\ndrop it from the queue after 200. Resending an event (same `event_id`) is a no-op. The\nreply has the user's current positions.",
+        "operationId": "progress_batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProgressBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted; current positions",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Positions"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_body`, `progress_batch_too_long` or `progress_event_invalid`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/server-info": {
       "get": {
         "tags": [
@@ -1419,6 +1689,41 @@
           "cdn"
         ]
       },
+      "DownloadManifest": {
+        "type": "object",
+        "description": "Everything to keep a book on the phone.",
+        "required": [
+          "book_id",
+          "size",
+          "files",
+          "chapters"
+        ],
+        "properties": {
+          "book_id": {
+            "type": "string",
+            "description": "Book id."
+          },
+          "chapters": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Chapter"
+            },
+            "description": "Chapters on the book timeline."
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ManifestFile"
+            },
+            "description": "Files in order; verify each by its `blob_hash` (sha256) before use."
+          },
+          "size": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Sum of file sizes."
+          }
+        }
+      },
       "Draft": {
         "type": "object",
         "description": "The book proposed from the files; the admin edits it before saving.",
@@ -1629,6 +1934,19 @@
         ],
         "description": "How to send one file."
       },
+      "ManifestFile": {
+        "allOf": [
+          {
+            "$ref": "#/components/schemas/BookFile",
+            "description": "The file."
+          },
+          {
+            "$ref": "#/components/schemas/StreamLink",
+            "description": "Its bytes; for a resumed download ask `/stream` again instead of reusing this."
+          }
+        ],
+        "description": "A file of the download manifest."
+      },
       "Me": {
         "type": "object",
         "description": "The calling device and its user.",
@@ -1771,6 +2089,58 @@
           }
         }
       },
+      "Position": {
+        "type": "object",
+        "description": "The current position in a book.",
+        "required": [
+          "book_id",
+          "position_ms",
+          "finished",
+          "updated_at"
+        ],
+        "properties": {
+          "book_id": {
+            "type": "string",
+            "description": "Book id."
+          },
+          "finished": {
+            "type": "boolean",
+            "description": "Listened to the end."
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Position on the book timeline."
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was set, server clock (corrected client time), epoch milliseconds."
+          }
+        }
+      },
+      "Positions": {
+        "type": "object",
+        "description": "Current positions of the user.",
+        "required": [
+          "server_now",
+          "positions"
+        ],
+        "properties": {
+          "positions": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Position"
+            },
+            "description": "Every book the user has a position in."
+          },
+          "server_now": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Server clock, epoch milliseconds: `updated_at - server_now + device_now` is device time."
+          }
+        }
+      },
       "Problem": {
         "type": "object",
         "description": "Problem details (RFC 9457).",
@@ -1805,6 +2175,68 @@
           "type": {
             "type": "string",
             "description": "URI identifying the problem type: `urn:berth:problem:<code>`."
+          }
+        }
+      },
+      "ProgressBatch": {
+        "type": "object",
+        "description": "`POST /v1/progress/batch` body.",
+        "required": [
+          "client_now",
+          "events"
+        ],
+        "properties": {
+          "client_now": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Device clock at sending, epoch milliseconds: the server corrects `client_ts` by it."
+          },
+          "events": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/ProgressEvent"
+            },
+            "description": "Events, oldest first."
+          }
+        }
+      },
+      "ProgressEvent": {
+        "type": "object",
+        "description": "One event of the device's queue.",
+        "required": [
+          "event_id",
+          "book_id",
+          "position_ms",
+          "type",
+          "client_ts"
+        ],
+        "properties": {
+          "book_id": {
+            "type": "string",
+            "description": "Book id."
+          },
+          "client_ts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Device clock when it happened, epoch milliseconds."
+          },
+          "event_id": {
+            "type": "string",
+            "description": "`UUIDv7` made by the device; resending the same id is a no-op."
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Position on the book timeline."
+          },
+          "speed": {
+            "type": "number",
+            "format": "double",
+            "description": "Playback speed."
+          },
+          "type": {
+            "type": "string",
+            "description": "`position` (listening, a seek, a pause) or `finished` (the book was listened to the end)."
           }
         }
       },
@@ -2074,6 +2506,25 @@
               "null"
             ],
             "description": "`s3`: secret access key; sent together with `access_key_id`. Never returned."
+          }
+        }
+      },
+      "StreamLink": {
+        "type": "object",
+        "description": "Where to fetch a file's bytes.",
+        "required": [
+          "url",
+          "expires_at"
+        ],
+        "properties": {
+          "expires_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When the URL stops working, epoch milliseconds: ask for a new one then."
+          },
+          "url": {
+            "type": "string",
+            "description": "Absolute (presigned) or server-relative (`/v1/blobs/...`) URL; a relative one resolves\nagainst the server address the client is using. Send no authorization header."
           }
         }
       },
