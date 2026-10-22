@@ -1,0 +1,32 @@
+{% extends "base.html" %}
+{% import "partials/ui.html" as ui %}
+{% block title %}{{ t('dashboard.title') }}{% endblock %}
+{% block content %}
+<header>
+  <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('dashboard.title') }}</h1>
+  <p class="mt-1 text-[16px] text-text-2">{{ t('dashboard.subtitle', name=server_name) }}</p>
+</header>
+
+<section class="card mt-8 overflow-hidden p-0 sm:p-0">
+  <div class="relative flex flex-col items-start gap-4 p-6 sm:p-8">
+    <div aria-hidden="true" class="pointer-events-none absolute -top-24 -right-16 size-64 rounded-full bg-accent-soft blur-2xl"></div>
+    <span class="grid size-14 place-items-center rounded-[18px] bg-accent-soft text-accent-fg">{{ ui.icon("books", "size-7") }}</span>
+    <div class="relative">
+      <h2 class="text-[22px] font-bold">{{ t('dashboard.empty_title') }}</h2>
+      <p class="mt-1.5 max-w-[52ch] text-[16px] text-text-2">{{ t('dashboard.empty_body') }}</p>
+    </div>
+    <a href="/settings" class="btn btn-ghost relative">{{ t('dashboard.open_settings') }}{{ ui.icon("arrow", "size-[18px]") }}</a>
+  </div>
+</section>
+
+<dl class="mt-4 grid gap-4 sm:grid-cols-2">
+  <div class="card">
+    <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.server_card') }}</dt>
+    <dd class="mt-1.5 truncate text-[17px] font-semibold">{{ server_name }}</dd>
+  </div>
+  <div class="card">
+    <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.version_card') }}</dt>
+    <dd class="mono mt-1.5 text-[17px]">{{ version }}</dd>
+  </div>
+</dl>
+{% endblock %}

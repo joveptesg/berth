@@ -1,0 +1,8 @@
+<form method="post" action="/login" hx-post="/login" hx-target="this" hx-swap="outerHTML" class="flex flex-col gap-4">
+  {% if error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
+  <div>
+    <label for="password" class="field-label">{{ t('login.password_label') }}</label>
+    <input id="password" name="password" type="password" required autofocus autocomplete="current-password" class="input">
+  </div>
+  <button type="submit" class="btn btn-primary w-full">{{ t('login.submit') }}</button>
+</form>

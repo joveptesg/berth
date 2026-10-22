@@ -43,6 +43,7 @@ impl IntoResponse for ApiError {
             BerthError::Validation(msg) => {
                 (StatusCode::BAD_REQUEST, "validation", Some(msg.clone()))
             }
+            BerthError::Conflict(msg) => (StatusCode::CONFLICT, "conflict", Some(msg.clone())),
             BerthError::Auth(auth) => (
                 StatusCode::UNAUTHORIZED,
                 match auth {
@@ -63,6 +64,7 @@ impl IntoResponse for ApiError {
             title: match self.0 {
                 BerthError::Internal(_) => "internal server error".to_owned(),
                 BerthError::Validation(_) => "invalid request".to_owned(),
+                BerthError::Conflict(_) => "conflict".to_owned(),
                 ref err => err.to_string(),
             },
             status: status.as_u16(),

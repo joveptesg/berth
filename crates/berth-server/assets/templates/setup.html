@@ -1,0 +1,7 @@
+{% extends "auth_base.html" %}
+{% block title %}{{ t('setup.title') }}{% endblock %}
+{% block card %}
+<h1 class="text-[30px] leading-tight font-bold tracking-tight">{{ t('setup.title') }}</h1>
+<p class="mt-1.5 text-[15px] text-text-2">{{ t('setup.subtitle') }}</p>
+<div class="mt-6">{% include "partials/setup_form.html" %}</div>
+{% endblock %}

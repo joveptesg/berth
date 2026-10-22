@@ -3,7 +3,7 @@ use std::{path::Path, str::FromStr, time::Duration};
 use anyhow::Context;
 use serde_json::{Map, Value};
 use sqlx::{
-    SqlitePool,
+    SqliteConnection, SqlitePool,
     sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions, SqliteSynchronous},
 };
 
@@ -71,6 +71,33 @@ pub(crate) async fn server_settings(pool: &SqlitePool) -> anyhow::Result<Map<Str
             Ok((key, value))
         })
         .collect()
+}
+
+/// Writes a server-scope plain setting; `None` removes it.
+pub(crate) async fn put_server_setting(
+    conn: &mut SqliteConnection,
+    key: &str,
+    value: Option<&Value>,
+) -> sqlx::Result<()> {
+    let Some(value) = value else {
+        sqlx::query("DELETE FROM settings WHERE scope = $1 AND key = $2")
+            .bind(SERVER_SCOPE)
+            .bind(key)
+            .execute(conn)
+            .await?;
+        return Ok(());
+    };
+    sqlx::query(
+        "INSERT INTO settings (scope, key, value, updated_at) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (scope, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+    .bind(SERVER_SCOPE)
+    .bind(key)
+    .bind(value.to_string())
+    .bind(now_ms())
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 pub(crate) fn now_ms() -> i64 {

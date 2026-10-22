@@ -1,0 +1,21 @@
+{% extends "base.html" %}
+{% block title %}{{ t('settings.title') }}{% endblock %}
+{% block content %}
+<header>
+  <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('settings.title') }}</h1>
+  <p class="mt-1 text-[16px] text-text-2">{{ t('settings.subtitle', name=server_name) }}</p>
+</header>
+
+<div class="mt-8 flex flex-col gap-4">
+  {% include "partials/settings_server.html" %}
+  {% include "partials/settings_password.html" %}
+
+  <section class="card">
+    <h2 class="text-[22px] font-bold">{{ t('settings.about_section') }}</h2>
+    <dl class="mt-4 flex items-baseline justify-between gap-4 border-t border-line pt-4">
+      <dt class="text-[15px] text-text-2">{{ t('settings.version_label') }}</dt>
+      <dd class="mono">{{ version }}</dd>
+    </dl>
+  </section>
+</div>
+{% endblock %}

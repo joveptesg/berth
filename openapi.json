@@ -1,0 +1,135 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Berth API",
+    "description": "",
+    "license": {
+      "name": "Apache-2.0",
+      "identifier": "Apache-2.0"
+    },
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/v1/server-info": {
+      "get": {
+        "tags": [
+          "server"
+        ],
+        "summary": "Server info (no authentication).",
+        "operationId": "server_info",
+        "responses": {
+          "200": {
+            "description": "Server info",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ServerInfo"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AuthMode": {
+        "type": "string",
+        "description": "Client login method.",
+        "enum": [
+          "pairing"
+        ]
+      },
+      "MinClientVersion": {
+        "type": "object",
+        "description": "Oldest supported versions per client type.",
+        "required": [
+          "mobile"
+        ],
+        "properties": {
+          "mobile": {
+            "type": "string",
+            "description": "Mobile app."
+          }
+        }
+      },
+      "Problem": {
+        "type": "object",
+        "description": "Problem details (RFC 9457).",
+        "required": [
+          "type",
+          "title",
+          "status",
+          "code"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "Machine-readable code, e.g. `device_revoked` (wipe local data) or `session_expired` (re-pair)."
+          },
+          "detail": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Human-readable explanation of this occurrence."
+          },
+          "status": {
+            "type": "integer",
+            "format": "int32",
+            "description": "HTTP status code.",
+            "minimum": 0
+          },
+          "title": {
+            "type": "string",
+            "description": "Short human-readable summary."
+          },
+          "type": {
+            "type": "string",
+            "description": "URI identifying the problem type: `urn:berth:problem:<code>`."
+          }
+        }
+      },
+      "ServerInfo": {
+        "type": "object",
+        "description": "Public server description used for discovery before login.",
+        "required": [
+          "name",
+          "server_id",
+          "version",
+          "auth_modes",
+          "min_client_version"
+        ],
+        "properties": {
+          "auth_modes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/AuthMode"
+            },
+            "description": "Login methods available to clients."
+          },
+          "min_client_version": {
+            "$ref": "#/components/schemas/MinClientVersion",
+            "description": "Oldest client versions the server supports."
+          },
+          "name": {
+            "type": "string",
+            "description": "Server name set by the admin."
+          },
+          "server_id": {
+            "type": "string",
+            "description": "Stable server identity: a client switching between LAN and WAN addresses\naccepts only the address that reports the same id."
+          },
+          "version": {
+            "type": "string",
+            "description": "Server version."
+          }
+        }
+      }
+    }
+  }
+}

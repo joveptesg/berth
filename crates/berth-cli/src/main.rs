@@ -1,8 +1,13 @@
 //! `berth` — the Berth server binary.
 
-use std::{net::SocketAddr, path::PathBuf};
+use std::{
+    io::{BufRead, IsTerminal},
+    net::SocketAddr,
+    path::PathBuf,
+};
 
 use anyhow::Context;
+use berth_server::service::{auth, setup};
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
@@ -17,42 +22,122 @@ struct Cli {
 enum Command {
     /// Run the server.
     Serve {
-        /// Path to `berth.toml` (default: `./berth.toml` if it exists).
-        #[arg(long, env = "BERTH_CONFIG")]
-        config: Option<PathBuf>,
+        #[command(flatten)]
+        config: ConfigArg,
     },
     /// Print the `OpenAPI` specification as JSON.
     Openapi,
+    /// Server administration from the console.
+    Admin {
+        #[command(subcommand)]
+        command: AdminCommand,
+    },
+}
+
+#[derive(clap::Args)]
+struct ConfigArg {
+    /// Path to `berth.toml` (default: `./berth.toml` if it exists).
+    #[arg(long, env = "BERTH_CONFIG")]
+    config: Option<PathBuf>,
+}
+
+#[derive(Subcommand)]
+enum AdminCommand {
+    /// Set up the server without the web wizard: create the tenant and the admin password.
+    Bootstrap {
+        #[command(flatten)]
+        config: ConfigArg,
+        /// Server name.
+        #[arg(long, default_value = "Berth")]
+        name: String,
+    },
+    /// Set a new admin password and sign out all admin browsers.
+    ResetPassword {
+        #[command(flatten)]
+        config: ConfigArg,
+    },
 }
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    tracing_subscriber::fmt()
+        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
+        .with_writer(std::io::stderr)
+        .init();
     match Cli::parse().command {
-        Command::Serve { config } => serve(config).await,
+        Command::Serve { config } => serve(config.config).await,
         Command::Openapi => {
             println!("{}", berth_server::openapi().to_pretty_json()?);
             Ok(())
         }
+        Command::Admin { command } => admin(command).await,
     }
 }
 
 async fn serve(config: Option<PathBuf>) -> anyhow::Result<()> {
-    tracing_subscriber::fmt()
-        .with_env_filter(EnvFilter::try_from_default_env().unwrap_or_else(|_| "info".into()))
-        .init();
-
     let state = berth_server::bootstrap(config.as_deref()).await?;
-    let addr = SocketAddr::new(state.config.host, state.config.port);
+    let addr = {
+        let config = state.config.load();
+        SocketAddr::new(config.host, config.port)
+    };
     let listener = tokio::net::TcpListener::bind(addr)
         .await
         .with_context(|| format!("failed to bind {addr}"))?;
     tracing::info!(%addr, server_id = %state.server_id, "listening");
+    if let Some(url) = state.setup_url() {
+        tracing::warn!("server is not set up; open {url} (or run `berth admin bootstrap`)");
+    }
     berth_server::cleanup::spawn(state.db.clone());
 
-    axum::serve(listener, berth_server::router(state))
+    // Peer addresses feed the rate limits of the login and setup forms.
+    let app = berth_server::router(state).into_make_service_with_connect_info::<SocketAddr>();
+    axum::serve(listener, app)
         .with_graceful_shutdown(async {
             let _ = tokio::signal::ctrl_c().await;
         })
         .await?;
     Ok(())
+}
+
+async fn admin(command: AdminCommand) -> anyhow::Result<()> {
+    match command {
+        AdminCommand::Bootstrap { config, name } => {
+            let state = berth_server::bootstrap(config.config.as_deref()).await?;
+            anyhow::ensure!(
+                !setup::is_configured(&state.db).await?,
+                "the server is already set up; use `berth admin reset-password` to change the password"
+            );
+            let (password, confirm) = read_new_password()?;
+            setup::create_owner(&state, &name, &password, &confirm)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            println!("Server \"{name}\" is set up. Sign in at /login with the new password.");
+        }
+        AdminCommand::ResetPassword { config } => {
+            let state = berth_server::bootstrap(config.config.as_deref()).await?;
+            let (password, confirm) = read_new_password()?;
+            auth::reset_password(&state.db, &password, &confirm)
+                .await
+                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            println!("Password changed; all admin browsers were signed out.");
+        }
+    }
+    Ok(())
+}
+
+/// Asks twice on a terminal; otherwise reads one line from stdin (for scripts).
+fn read_new_password() -> anyhow::Result<(String, String)> {
+    if std::io::stdin().is_terminal() {
+        let password = rpassword::prompt_password(format!(
+            "New admin password (at least {} characters): ",
+            auth::MIN_PASSWORD_LEN
+        ))?;
+        let confirm = rpassword::prompt_password("Repeat the password: ")?;
+        Ok((password, confirm))
+    } else {
+        let mut line = String::new();
+        std::io::stdin().lock().read_line(&mut line)?;
+        let password = line.trim_end_matches(['\r', '\n']).to_owned();
+        Ok((password.clone(), password))
+    }
 }

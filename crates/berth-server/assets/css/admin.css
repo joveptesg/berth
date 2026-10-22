@@ -1,0 +1,200 @@
+/*
+ * Tailwind v4 input for the admin. The compiled assets/static/admin.css is committed so that
+ * `cargo build` needs no Node; rebuild after changing templates (see CONTRIBUTING.md).
+ * Tokens: docs/berth-mobile-design.md §5, scheme "Beacon" (Маяк), light and dark.
+ */
+@import "tailwindcss";
+@source "../templates";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@font-face {
+  font-family: "Source Sans 3";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("/static/fonts/source-sans-3-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Source Sans 3";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("/static/fonts/source-sans-3-cyrillic-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+@font-face {
+  font-family: "Source Code Pro";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("/static/fonts/source-code-pro-latin-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304,
+    U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Source Code Pro";
+  font-style: normal;
+  font-display: swap;
+  font-weight: 200 900;
+  src: url("/static/fonts/source-code-pro-cyrillic-wght-normal.woff2") format("woff2-variations");
+  unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116;
+}
+
+:root {
+  color-scheme: light;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #eceef1;
+  --surface-3: #dfe2e7;
+  --text: #0e1014;
+  --text-2: #4a505a;
+  --text-3: #666d78;
+  --line: rgb(14 16 20 / 0.08);
+  --accent: #f2662b;
+  --accent-ink: #1a0b03;
+  --accent-fg: #c2410c;
+  --ok: #1e7b4c;
+  --warn: #9a5b05;
+  --danger: #c8321e;
+}
+.dark {
+  color-scheme: dark;
+  --bg: #0b0d10;
+  --surface: #14171c;
+  --surface-2: #1c2027;
+  --surface-3: #282d35;
+  --text: #f2f4f7;
+  --text-2: #a9b0bb;
+  --text-3: #8a929e;
+  --line: rgb(255 255 255 / 0.07);
+  --accent: #ff7a3d;
+  --accent-fg: #ff9b6e;
+  --ok: #5fcb8f;
+  --warn: #f0b54e;
+  --danger: #ff7b6e;
+}
+
+@theme inline {
+  --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "Source Code Pro", ui-monospace, monospace;
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-surface-3: var(--surface-3);
+  --color-text: var(--text);
+  --color-text-2: var(--text-2);
+  --color-text-3: var(--text-3);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-fg: var(--accent-fg);
+  --color-accent-soft: color-mix(in srgb, var(--accent) 14%, transparent);
+  --color-ok: var(--ok);
+  --color-warn: var(--warn);
+  --color-danger: var(--danger);
+  --radius-btn: 17px;
+  --radius-card: 22px;
+  --radius-chip: 18px;
+}
+
+@layer base {
+  html {
+    background: var(--bg);
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    @apply bg-bg font-sans text-text antialiased;
+  }
+  [x-cloak] {
+    display: none !important;
+  }
+  :focus-visible {
+    outline: 2px solid var(--accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  .card {
+    @apply rounded-card border border-line bg-surface p-5 sm:p-6;
+  }
+  .field-label {
+    @apply mb-1.5 block text-[14px] font-semibold text-text;
+  }
+  .field-hint {
+    @apply mt-1.5 text-[13px] text-text-3;
+  }
+  .input {
+    @apply block min-h-12 w-full rounded-[14px] border border-line bg-surface-2 px-4 text-[16px] text-text transition-colors outline-none placeholder:text-text-3;
+  }
+  .input:focus {
+    @apply border-accent bg-surface;
+  }
+  .input[readonly] {
+    @apply cursor-not-allowed text-text-2;
+  }
+  .btn {
+    @apply inline-flex min-h-12 items-center justify-center gap-2 rounded-btn px-5 text-[16px] font-semibold transition-[background-color,transform] active:scale-[0.98] disabled:opacity-60;
+  }
+  .btn-primary {
+    @apply bg-accent text-accent-ink hover:brightness-105;
+  }
+  .btn-ghost {
+    @apply bg-surface-2 text-text hover:bg-surface-3;
+  }
+  .nav-link {
+    @apply flex min-h-11 items-center gap-3 rounded-[14px] px-3 text-[15px] font-semibold text-text-2 transition-colors hover:bg-surface-2 hover:text-text;
+  }
+  .nav-link[aria-current="page"] {
+    @apply bg-accent-soft text-accent-fg;
+  }
+  .alert-error {
+    @apply rounded-[14px] bg-danger/10 px-4 py-3 text-[14px] font-semibold text-danger;
+  }
+  .alert-ok {
+    @apply rounded-[14px] bg-ok/10 px-4 py-3 text-[14px] font-semibold text-ok;
+  }
+  .mono {
+    @apply font-mono text-[14px] font-medium tracking-tight;
+  }
+}
+
+/* The beam: a thin warm line that sweeps across the top of auth cards. */
+@keyframes beam {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(250%);
+  }
+}
+.beam {
+  position: relative;
+  overflow: hidden;
+}
+.beam::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto auto 0;
+  width: 40%;
+  height: 3px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  animation: beam 3.2s cubic-bezier(0.6, 0, 0.4, 1) infinite;
+}
+.htmx-request .htmx-indicator {
+  opacity: 1;
+}
+.htmx-indicator {
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+@media (prefers-reduced-motion: reduce) {
+  .beam::before {
+    animation: none;
+    width: 100%;
+    opacity: 0.6;
+  }
+}

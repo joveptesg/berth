@@ -12,6 +12,9 @@ pub enum BerthError {
     /// The request is malformed or violates a domain rule.
     #[error("{0}")]
     Validation(String),
+    /// The request conflicts with the current state, e.g. the server is already set up.
+    #[error("{0}")]
+    Conflict(String),
     /// Authentication failed.
     #[error(transparent)]
     Auth(#[from] AuthError),

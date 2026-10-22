@@ -47,7 +47,7 @@ pub(crate) struct MinClientVersion {
 )]
 pub(crate) async fn server_info(State(state): State<AppState>) -> Json<ServerInfo> {
     Json(ServerInfo {
-        name: state.config.name.clone(),
+        name: state.config.load().name.clone(),
         server_id: state.server_id.to_string(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
         auth_modes: vec![AuthMode::Pairing],

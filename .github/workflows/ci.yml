@@ -7,6 +7,8 @@ on:
 
 env:
   CARGO_TERM_COLOR: always
+  # Keep in sync with CONTRIBUTING.md.
+  TAILWIND_VERSION: v4.3.3
 
 jobs:
   check:
@@ -17,6 +19,19 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test
+
+  admin-css:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Rebuild the committed admin CSS
+        run: |
+          curl -fsSL -o tailwindcss "https://github.com/tailwindlabs/tailwindcss/releases/download/${TAILWIND_VERSION}/tailwindcss-linux-x64"
+          chmod +x tailwindcss
+          cd crates/berth-server
+          ../../tailwindcss -i assets/css/admin.css -o assets/static/admin.css --minify
+      - name: Fail if the committed CSS is stale
+        run: git diff --exit-code -- crates/berth-server/assets/static/admin.css
 
   build:
     runs-on: ubuntu-latest

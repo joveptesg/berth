@@ -1,0 +1,22 @@
+{% macro field(key, label, hint, type="text", mono=false) -%}
+<div>
+  <label for="{{ key }}" class="field-label">{{ label }}</label>
+  <input id="{{ key }}" name="{{ key }}" type="{{ type }}" value="{{ settings[key] }}"
+    class="input {{ 'mono' if mono }}" {% if locked[key] %}readonly{% endif %} {% if key == 'name' %}required maxlength="64"{% else %}inputmode="url" spellcheck="false"{% endif %}>
+  <p class="field-hint">{{ t('setup.locked') if locked[key] else hint }}</p>
+</div>
+{%- endmacro %}
+<form id="settings-server" method="post" action="/settings" hx-post="/settings" hx-target="this" hx-swap="outerHTML" class="card flex flex-col gap-5">
+  <div>
+    <h2 class="text-[22px] font-bold">{{ t('settings.server_section') }}</h2>
+    <p class="mt-1 text-[14px] text-text-3">{{ t('settings.server_hint') }}</p>
+  </div>
+  {% if error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
+  {{ field("name", t('settings.name_label'), t('setup.name_hint')) }}
+  {{ field("lan_url", t('settings.lan_label'), t('settings.lan_hint'), type="url", mono=true) }}
+  {{ field("wan_url", t('settings.wan_label'), t('settings.wan_hint'), type="url", mono=true) }}
+  <div class="flex flex-wrap items-center gap-3">
+    <button type="submit" class="btn btn-primary">{{ t('common.save') }}</button>
+    {% if saved %}<span class="alert-ok py-2" role="status">{{ t('common.saved') }}</span>{% endif %}
+  </div>
+</form>

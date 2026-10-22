@@ -3,6 +3,9 @@
 **/*.rs.bk
 *.pdb
 
+# Downloaded build tools (Tailwind CLI)
+/.tools/
+
 # Local runtime data and secrets
 /data/
 .env

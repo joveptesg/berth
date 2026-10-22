@@ -1,0 +1,25 @@
+{% import "partials/ui.html" as ui %}<!doctype html>
+<html lang="{{ current_locale() }}">
+<head>
+  {% include "partials/head.html" %}
+  <title>{% block title %}{% endblock %} · Berth</title>
+</head>
+<body x-data="admin" class="min-h-dvh">
+  <div class="relative isolate flex min-h-dvh flex-col items-center px-4 py-10 sm:justify-center">
+    {# Horizon: cold water below, a faint warm glow where the beam is. #}
+    <div aria-hidden="true" class="pointer-events-none absolute inset-x-0 top-0 -z-10 h-[420px] bg-[radial-gradient(60%_70%_at_50%_0%,var(--color-accent-soft),transparent_70%)]"></div>
+
+    <div class="w-full max-w-[440px]">
+      <div class="mb-7 flex items-center gap-3 px-1">
+        {{ ui.mark(40) }}
+        <span class="text-[24px] font-bold tracking-tight">Berth</span>
+      </div>
+      <section class="card beam shadow-[0_24px_60px_-28px_rgb(14_16_20/0.35)]">
+        {% block card %}{% endblock %}
+      </section>
+      <div class="mt-6">{{ ui.preferences(compact=true) }}</div>
+      <p class="mono mt-4 text-center text-[12px] text-text-3">berth {{ version }}</p>
+    </div>
+  </div>
+</body>
+</html>

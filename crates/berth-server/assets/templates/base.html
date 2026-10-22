@@ -1,0 +1,60 @@
+{% import "partials/ui.html" as ui %}<!doctype html>
+<html lang="{{ current_locale() }}">
+<head>
+  {% include "partials/head.html" %}
+  <title>{% block title %}{% endblock %} · {{ server_name }}</title>
+</head>
+<body x-data="admin" @keydown.escape="menu = false" class="min-h-dvh">
+  {% set nav = [("dashboard", "/", t('nav.dashboard')), ("settings", "/settings", t('nav.settings'))] %}
+
+  <header class="sticky top-0 z-20 flex h-14 items-center justify-between border-b border-line bg-bg/85 px-4 backdrop-blur-md lg:hidden">
+    <a href="/" class="flex min-w-0 items-center gap-2.5">
+      {{ ui.mark(28) }}
+      <span class="truncate text-[17px] font-bold tracking-tight">{{ server_name }}</span>
+    </a>
+    <button type="button" @click="menu = true" class="grid size-11 place-items-center rounded-[14px] text-text-2 hover:bg-surface-2" aria-label="{{ t('nav.menu') }}">
+      {{ ui.icon("menu", "size-6") }}
+    </button>
+  </header>
+
+  <div x-show="menu" x-cloak x-transition.opacity @click="menu = false" class="fixed inset-0 z-30 bg-black/45 lg:hidden"></div>
+
+  <div class="lg:grid lg:min-h-dvh lg:grid-cols-[272px_minmax(0,1fr)]">
+    <aside :class="menu && 'translate-x-0!'" :inert="!menu && !desktop"
+      class="fixed inset-y-0 left-0 z-40 flex w-[min(86vw,288px)] -translate-x-full flex-col border-r border-line bg-surface px-4 pt-5 pb-4 transition-transform duration-300 ease-out lg:sticky lg:top-0 lg:h-dvh lg:w-auto lg:translate-x-0 lg:bg-transparent">
+      <div class="flex items-center justify-between gap-2 px-2">
+        <a href="/" class="flex min-w-0 items-center gap-3">
+          {{ ui.mark(36) }}
+          <span class="min-w-0">
+            <span class="block text-[19px] leading-tight font-bold tracking-tight">Berth</span>
+            <span class="block truncate text-[13px] text-text-3">{{ server_name }}</span>
+          </span>
+        </a>
+        <button type="button" @click="menu = false" class="grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 lg:hidden" aria-label="{{ t('nav.close') }}">
+          {{ ui.icon("close") }}
+        </button>
+      </div>
+
+      <nav class="mt-8 flex flex-col gap-1">
+        {% for key, href, label in nav %}
+        <a href="{{ href }}" class="nav-link" {% if page == key %}aria-current="page"{% endif %}>
+          {{ ui.icon(key) }}<span>{{ label }}</span>
+        </a>
+        {% endfor %}
+      </nav>
+
+      <div class="mt-auto flex flex-col gap-3 border-t border-line pt-4">
+        {{ ui.preferences() }}
+        <form method="post" action="/logout">
+          <button type="submit" class="nav-link w-full">{{ ui.icon("logout") }}<span>{{ t('nav.logout') }}</span></button>
+        </form>
+        <p class="mono px-3 text-[12px] text-text-3">berth {{ version }}</p>
+      </div>
+    </aside>
+
+    <main class="mx-auto w-full max-w-[880px] lg:mx-0 px-4 pt-6 pb-16 sm:px-8 lg:px-12 lg:pt-12">
+      {% block content %}{% endblock %}
+    </main>
+  </div>
+</body>
+</html>

@@ -28,6 +28,7 @@ fn routes() -> OpenApiRouter<AppState> {
 pub fn router(state: AppState) -> Router {
     let (router, _) = routes().split_for_parts();
     router
+        .merge(crate::admin::router(state.clone()))
         .fallback(async || ApiError::from(BerthError::NotFound))
         .layer(TraceLayer::new_for_http())
         .with_state(state)

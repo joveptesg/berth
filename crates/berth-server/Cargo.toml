@@ -10,18 +10,29 @@ rust-version.workspace = true
 workspace = true
 
 [dependencies]
+accept-language = "3.1.0"
 anyhow = "1.0.104"
+arc-swap = "1.9.3"
+argon2 = "0.6.0"
 axum = "0.8.9"
+base64 = "0.23.1"
 berth-core = { version = "0.1.0", path = "../berth-core" }
 figment = { version = "0.10.19", features = ["toml", "env"] }
 getrandom = "0.4.3"
 hex = "0.4.3"
+minijinja = { version = "3.0.2", features = ["serde"] }
+rust-embed = "8.13.0"
+rust-i18n = "4.2.4"
 serde = { version = "1.0.229", features = ["derive"] }
 serde_json = "1.0.154"
+sha2 = "0.11.1"
 sqlx = { version = "0.9.0", default-features = false, features = ["sqlite", "runtime-tokio", "migrate", "macros"] }
+subtle = "2.6.1"
 tokio = { version = "1.54.1", features = ["time", "rt"] }
 tower-http = { version = "0.7.1", features = ["trace"] }
+tower_governor = "0.8.0"
 tracing = "0.1.44"
+url = { version = "2.5.8", features = ["serde"] }
 utoipa = { version = "6.0.0", features = ["axum_extras"] }
 utoipa-axum = "0.3.0"
 uuid = { version = "1.28.0", features = ["v7"] }

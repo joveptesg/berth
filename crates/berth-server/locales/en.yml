@@ -1,0 +1,83 @@
+# English: source locale of the admin and the fallback for missing keys.
+# Keys: <area>.<element>; form error codes from the service layer live under errors.<code>.
+# Placeholders: %{name}, filled from t() keyword arguments.
+
+common:
+  save: Save
+  saved: Saved
+  optional: optional
+  version: Version %{version}
+
+nav:
+  dashboard: Dashboard
+  settings: Settings
+  logout: Sign out
+  menu: Menu
+  close: Close menu
+  theme: Theme
+  theme_light: Light
+  theme_dark: Dark
+  theme_system: System
+  language: Language
+
+setup:
+  title: Set up the server
+  subtitle: Three steps and Berth is ready for your family's audiobooks.
+  step_token: Setup link
+  step_token_done: Opened with the token from the server log
+  step_name: Server name
+  step_password: Admin password
+  name_label: Server name
+  name_hint: Shown in the app when someone connects.
+  password_label: Password
+  confirm_label: Repeat password
+  password_hint: At least %{min} characters. Reset it later with berth admin reset-password on the server.
+  storage_note: Books are stored on this server in the data folder. Other storage arrives with storage profiles.
+  submit: Finish setup
+  locked: Set in berth.toml or environment
+
+login:
+  title: Sign in
+  subtitle: Admin of %{name}
+  password_label: Admin password
+  submit: Sign in
+  forgot: Forgot it? Run berth admin reset-password on the server.
+  not_configured: This server is not set up yet. Open the setup link printed in the server log.
+
+dashboard:
+  title: Dashboard
+  subtitle: Everything happening on %{name}
+  empty_title: No libraries yet
+  empty_body: Book upload comes next. Until then, check the server name and addresses in Settings.
+  open_settings: Open settings
+  server_card: Server
+  version_card: Version
+
+settings:
+  title: Settings
+  subtitle: Name, addresses and access to %{name}
+  server_section: Server
+  server_hint: The app gets both addresses in the QR code and switches between them by itself.
+  name_label: Server name
+  lan_label: Home network address
+  lan_hint: e.g. http://192.168.0.4:8080
+  wan_label: Internet address
+  wan_hint: e.g. https://books.example.com
+  password_section: Admin password
+  password_hint: Your other browsers are signed out after the change.
+  current_label: Current password
+  new_label: New password
+  confirm_label: Repeat new password
+  password_saved: Password changed
+  password_submit: Change password
+  about_section: About
+  version_label: Server version
+
+errors:
+  name_required: Enter a server name.
+  name_too_long: The name is too long (64 characters at most).
+  lan_url_invalid: Enter a full address starting with http:// or https://.
+  wan_url_invalid: Enter a full address starting with http:// or https://.
+  password_too_short: The password is too short.
+  password_mismatch: The passwords do not match.
+  password_wrong: Wrong password.

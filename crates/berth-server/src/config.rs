@@ -12,6 +12,7 @@ use figment::{
     providers::{Env, Format, Serialized, Toml},
 };
 use serde::{Deserialize, Serialize};
+use url::Url;
 
 const DEFAULT_CONFIG_FILE: &str = "berth.toml";
 
@@ -26,6 +27,10 @@ pub struct Config {
     pub port: u16,
     /// Server name shown to clients.
     pub name: String,
+    /// Address of the server in the home network, put into pairing QR codes.
+    pub lan_url: Option<Url>,
+    /// Address of the server from the internet, put into pairing QR codes.
+    pub wan_url: Option<Url>,
 }
 
 impl Default for Config {
@@ -35,6 +40,8 @@ impl Default for Config {
             host: IpAddr::V4(Ipv4Addr::UNSPECIFIED),
             port: 8080,
             name: "Berth".to_owned(),
+            lan_url: None,
+            wan_url: None,
         }
     }
 }
@@ -44,9 +51,15 @@ pub(crate) fn layers(
     file: Option<&Path>,
     db: &serde_json::Map<String, serde_json::Value>,
 ) -> Figment {
+    Figment::from(Serialized::defaults(Config::default()))
+        .merge(Serialized::defaults(db))
+        .merge(external(file))
+}
+
+/// Layers that override the database: `berth.toml` and env. Keys set here are read-only in the UI.
+pub(crate) fn external(file: Option<&Path>) -> Figment {
     let path = file.unwrap_or(Path::new(DEFAULT_CONFIG_FILE));
-    let mut figment =
-        Figment::from(Serialized::defaults(Config::default())).merge(Serialized::defaults(db));
+    let mut figment = Figment::new();
     if path.is_file() {
         figment = figment.merge(Toml::file_exact(path));
     }
@@ -87,6 +100,9 @@ mod tests {
             assert_eq!(config.port, 9100);
             assert_eq!(config.name, "from-file");
             assert_eq!(config.data_dir, PathBuf::from("data"));
+
+            assert!(external(None).contains("name"));
+            assert!(!external(None).contains("lan_url"));
             Ok(())
         });
     }
