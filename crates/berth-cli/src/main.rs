@@ -47,6 +47,7 @@ async fn serve(config: Option<PathBuf>) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("failed to bind {addr}"))?;
     tracing::info!(%addr, server_id = %state.server_id, "listening");
+    berth_server::cleanup::spawn(state.db.clone());
 
     axum::serve(listener, berth_server::router(state))
         .with_graceful_shutdown(async {

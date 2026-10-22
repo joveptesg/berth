@@ -1,12 +1,13 @@
 CREATE TABLE storage_profiles (
-    id               TEXT PRIMARY KEY,
-    tenant_id        TEXT NOT NULL REFERENCES tenants (id),
-    name             TEXT NOT NULL,
-    kind             TEXT NOT NULL CHECK (kind IN ('local', 's3', 'r2', 'gdrive')),
-    config_encrypted TEXT NOT NULL, -- AES-256-GCM, base64 (BLOB is not dialect-neutral)
-    delivery_mode    TEXT NOT NULL CHECK (delivery_mode IN ('proxy', 'presigned', 'cdn')),
-    created_at       BIGINT NOT NULL,
-    deleted_at       BIGINT
+    id                TEXT PRIMARY KEY,
+    tenant_id         TEXT NOT NULL REFERENCES tenants (id),
+    name              TEXT NOT NULL,
+    kind              TEXT NOT NULL CHECK (kind IN ('local', 's3', 'r2', 'gdrive')),
+    config            TEXT NOT NULL, -- JSON without secrets: path, endpoint, bucket, region, path_style
+    secrets_encrypted TEXT,          -- JSON with access keys / OAuth tokens, AES-256-GCM, base64
+    delivery_mode     TEXT NOT NULL CHECK (delivery_mode IN ('proxy', 'presigned', 'cdn')),
+    created_at        BIGINT NOT NULL,
+    deleted_at        BIGINT
 );
 CREATE UNIQUE INDEX storage_profiles_name_idx ON storage_profiles (tenant_id, name) WHERE deleted_at IS NULL;
 

@@ -73,7 +73,7 @@ pub(crate) async fn server_settings(pool: &SqlitePool) -> anyhow::Result<Map<Str
         .collect()
 }
 
-fn now_ms() -> i64 {
+pub(crate) fn now_ms() -> i64 {
     let since_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .unwrap_or_default();

@@ -1,6 +1,7 @@
 //! Berth HTTP server: JSON API v1 on axum.
 
 pub mod api;
+pub mod cleanup;
 pub mod config;
 mod db;
 pub mod error;
