@@ -154,6 +154,9 @@ r2:
   submit: Подключить
   connecting: Подключаем…
 storage:
+  presets: "Заполнить для:"
+  endpoint_placeholder: https://s3.example.com
+  endpoint_aws: для AWS оставьте пустым
   title: Хранилища
   subtitle: Где лежат файлы аудиокниг. Новые книги попадают в хранилище по умолчанию.
   add_title: Добавить хранилище
@@ -170,10 +173,8 @@ storage:
   path_label: Папка
   path_hint: "Абсолютный путь или путь относительно папки данных:"
   endpoint_label: Адрес сервиса (endpoint)
-  endpoint_hint: Для AWS S3 оставьте пустым.
   bucket_label: Бакет
   region_label: Регион
-  region_hint: auto для Cloudflare R2; пусто — us-east-1.
   access_key_label: Идентификатор ключа
   secret_key_label: Секретный ключ
   keys_hint: Хранятся зашифрованными ключом сервера (secret.key) и больше не показываются.

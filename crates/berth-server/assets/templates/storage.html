@@ -7,7 +7,7 @@
     <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('storage.title') }}</h1>
     <p class="mt-1 text-[16px] text-text-2">{{ t('storage.subtitle') }}</p>
   </div>
-  <div class="flex flex-wrap gap-2">
+  <div class="flex w-full flex-col-reverse gap-2 sm:w-auto sm:flex-row">
     <button type="button" onclick="document.getElementById('r2-storage').showModal()" class="btn btn-ghost">{{ ui.icon("cloud", "size-[18px]") }}{{ t('r2.open') }}</button>
     <button type="button" onclick="document.getElementById('add-storage').showModal()" class="btn btn-primary">{{ ui.icon("plus", "size-[18px]") }}{{ t('storage.add_title') }}</button>
   </div>

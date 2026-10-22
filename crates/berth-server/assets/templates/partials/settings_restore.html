@@ -12,7 +12,7 @@
       hx-post="/settings/backup/restore" hx-encoding="multipart/form-data" hx-target="#settings-restore" hx-swap="outerHTML"
       hx-confirm="{{ t('backup.restore_confirm') }}" x-data="{ name: '' }"
       class="flex flex-col gap-3 sm:flex-row sm:items-center">
-      <label class="flex h-[52px] min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[14px] border border-dashed border-line bg-surface-2 px-4 transition-colors hover:border-accent">
+      <label class="flex h-[52px] min-w-0 shrink-0 cursor-pointer sm:flex-1 items-center gap-3 rounded-[14px] border border-dashed border-line bg-surface-2 px-4 transition-colors hover:border-accent">
         {{ ui.icon("upload", "size-[18px] shrink-0 text-text-3") }}
         <span class="truncate text-[15px]" :class="name ? 'text-text' : 'text-text-3'"
           x-text="name || '{{ t('backup.restore_pick') }}'">{{ t('backup.restore_pick') }}</span>

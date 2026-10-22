@@ -42,8 +42,8 @@
     {% for f in book.files %}
     <li class="flex flex-wrap items-baseline gap-x-4 gap-y-1 px-5 py-3 sm:px-6">
       <span class="mono w-8 shrink-0 text-[13px] text-text-3">{{ loop.index }}</span>
-      <span class="mono min-w-0 flex-1 truncate text-[13px] text-text-2" title="sha256 {{ f.blob_hash }}">{{ f.blob_hash[:16] }}…</span>
-      <span class="mono text-[13px] text-text-3">{{ f.offset_ms | clock }} + {{ f.duration_ms | clock }}</span>
+      <span class="mono hidden min-w-0 flex-1 truncate text-[13px] text-text-2 sm:block" title="sha256 {{ f.blob_hash }}">{{ f.blob_hash[:16] }}…</span>
+      <span class="mono flex-1 text-[13px] text-text-3 sm:flex-none">{{ f.offset_ms | clock }} + {{ f.duration_ms | clock }}</span>
       <span class="mono w-20 text-right text-[13px] text-text-3">{{ f.size | filesize }}</span>
     </li>
     {% endfor %}

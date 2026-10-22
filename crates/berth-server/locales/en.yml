@@ -156,6 +156,9 @@ r2:
   submit: Connect
   connecting: Connecting…
 storage:
+  presets: "Fill in for:"
+  endpoint_placeholder: https://s3.example.com
+  endpoint_aws: empty for AWS
   title: Storage
   subtitle: Where audiobook files are kept. New books go to the default storage.
   add_title: Add storage
@@ -172,10 +175,8 @@ storage:
   path_label: Folder
   path_hint: "Absolute path, or relative to the data folder:"
   endpoint_label: Endpoint
-  endpoint_hint: Leave empty for AWS S3.
   bucket_label: Bucket
   region_label: Region
-  region_hint: auto for Cloudflare R2; empty means us-east-1.
   access_key_label: Access key ID
   secret_key_label: Secret access key
   keys_hint: Stored encrypted with the server key (secret.key) and never shown again.

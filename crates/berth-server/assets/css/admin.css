@@ -130,6 +130,16 @@
   .input {
     @apply block min-h-12 w-full rounded-[14px] border border-line bg-surface-2 px-4 text-[16px] text-text transition-colors outline-none placeholder:text-text-3;
   }
+  /* Dense forms (dialogs): 44 px fields, labels closer. */
+  .form-dense .input {
+    @apply min-h-11 rounded-[12px] px-3.5 text-[15px];
+  }
+  .form-dense .field-label {
+    @apply mb-1 text-[13px];
+  }
+  .form-dense .field-hint {
+    @apply mt-1 text-[12.5px] leading-snug;
+  }
   .input:focus {
     @apply border-accent bg-surface;
   }
