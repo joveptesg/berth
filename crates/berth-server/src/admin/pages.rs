@@ -233,15 +233,25 @@ fn current_settings(state: &AppState) -> Value {
     }
 }
 
-pub(crate) async fn settings_page(State(state): State<AppState>) -> Page {
+/// Settings are split into tabs, each a page of its own: `/settings` (server) and
+/// `/settings/password`.
+fn settings_tab(state: &AppState, tab: &str) -> Page {
     render(
-        &state,
+        state,
         "settings.html",
         context! {
-            ..shell(&state, "settings"),
-            ..context! { settings => current_settings(&state), locked => locked(&state) },
+            ..shell(state, "settings"),
+            ..context! { tab, settings => current_settings(state), locked => locked(state) },
         },
     )
+}
+
+pub(crate) async fn settings_page(State(state): State<AppState>) -> Page {
+    settings_tab(&state, "server")
+}
+
+pub(crate) async fn settings_password_page(State(state): State<AppState>) -> Page {
+    settings_tab(&state, "password")
 }
 
 pub(crate) async fn settings_server(
@@ -270,7 +280,7 @@ pub(crate) async fn settings_server(
         context! {
             ..shell(&state, "settings"),
             ..context! {
-                settings => settings_ctx, locked => locked(&state),
+                tab => "server", settings => settings_ctx, locked => locked(&state),
                 saved => error.is_none(), error,
             },
         },
@@ -303,7 +313,7 @@ pub(crate) async fn settings_password(
         context! {
             ..shell(&state, "settings"),
             ..context! {
-                settings => current_settings(&state), locked => locked(&state),
+                tab => "password", settings => current_settings(&state), locked => locked(&state),
                 password_saved => error.is_none(), password_error => error,
             },
         },

@@ -77,6 +77,14 @@ mod tests {
             let settings = render(locale, "settings.html", base.clone());
             assert!(settings.contains("name=\"wan_url\""));
             assert!(settings.contains("readonly"));
+            assert!(!settings.contains("name=\"current\""), "one tab at a time");
+            let password = render(
+                locale,
+                "settings.html",
+                context! { tab => "password", ..base.clone() },
+            );
+            assert!(password.contains("name=\"current\""));
+            assert!(!password.contains("name=\"wan_url\""));
 
             let users = context! {
                 users => vec![

@@ -6,16 +6,19 @@
   <p class="mt-1 text-[16px] text-text-2">{{ t('settings.subtitle', name=server_name) }}</p>
 </header>
 
-<div class="mt-8 flex flex-col gap-4">
-  {% include "partials/settings_server.html" %}
-  {% include "partials/settings_password.html" %}
+{# Tabs are plain links: each tab is its own page, so it can be bookmarked and needs no script. #}
+<nav class="mt-6 flex gap-1 overflow-x-auto border-b border-line" aria-label="{{ t('settings.title') }}">
+  {% for key, href, label in [("server", "/settings", t('settings.server_section')), ("password", "/settings/password", t('settings.password_section'))] %}
+  <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}
+    class="-mb-px shrink-0 border-b-2 border-transparent px-4 py-3 text-[15px] font-semibold whitespace-nowrap text-text-2 transition-colors hover:text-text aria-[current=page]:border-accent aria-[current=page]:text-text">{{ label }}</a>
+  {% endfor %}
+</nav>
 
-  <section class="card">
-    <h2 class="text-[22px] font-bold">{{ t('settings.about_section') }}</h2>
-    <dl class="mt-4 flex items-baseline justify-between gap-4 border-t border-line pt-4">
-      <dt class="text-[15px] text-text-2">{{ t('settings.version_label') }}</dt>
-      <dd class="mono">{{ version }}</dd>
-    </dl>
-  </section>
+<div class="mt-6">
+  {% if tab == "password" %}
+  {% include "partials/settings_password.html" %}
+  {% else %}
+  {% include "partials/settings_server.html" %}
+  {% endif %}
 </div>
 {% endblock %}

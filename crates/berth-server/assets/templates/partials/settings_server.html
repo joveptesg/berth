@@ -7,10 +7,7 @@
 </div>
 {%- endmacro %}
 <form id="settings-server" method="post" action="/settings" hx-post="/settings" hx-target="this" hx-swap="outerHTML" class="card flex flex-col gap-5">
-  <div>
-    <h2 class="text-[22px] font-bold">{{ t('settings.server_section') }}</h2>
-    <p class="mt-1 text-[14px] text-text-3">{{ t('settings.server_hint') }}</p>
-  </div>
+  <p class="text-[14px] text-text-3">{{ t('settings.server_hint') }}</p>
   {% if error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
   {{ field("name", t('settings.name_label'), t('setup.name_hint')) }}
   {{ field("lan_url", t('settings.lan_label'), t('settings.lan_hint'), type="url", mono=true) }}

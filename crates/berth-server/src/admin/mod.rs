@@ -54,7 +54,10 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             "/settings",
             get(pages::settings_page).post(pages::settings_server),
         )
-        .route("/settings/password", post(pages::settings_password))
+        .route(
+            "/settings/password",
+            get(pages::settings_password_page).post(pages::settings_password),
+        )
         .route("/users", get(access::users_page).post(access::users_create))
         .route("/users/{id}/connect", post(access::user_connect))
         .route("/users/{user}/pairing/{id}", get(access::pairing_status))

@@ -244,6 +244,8 @@ async fn login_and_logout() {
         send(&state, get("/settings", Some(&session))).await.status,
         StatusCode::OK
     );
+    let password_tab = send(&state, get("/settings/password", Some(&session))).await;
+    assert!(password_tab.body.contains("name=\"current\""));
 
     let out = send(&state, post("/logout", Some(&session), &[])).await;
     assert_eq!(out.location(), Some("/login"));

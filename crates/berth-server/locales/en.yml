@@ -72,8 +72,6 @@ settings:
   confirm_label: Repeat new password
   password_saved: Password changed
   password_submit: Change password
-  about_section: About
-  version_label: Server version
 
 users:
   title: Users

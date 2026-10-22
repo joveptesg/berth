@@ -70,8 +70,6 @@ settings:
   confirm_label: Повторите новый пароль
   password_saved: Пароль изменён
   password_submit: Сменить пароль
-  about_section: О сервере
-  version_label: Версия сервера
 
 users:
   title: Пользователи
