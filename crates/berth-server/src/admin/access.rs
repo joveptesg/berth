@@ -1,9 +1,9 @@
-//! Users, phone pairing (`/connect`) and devices: thin wrappers over `crate::service`.
+//! Users with phone pairing, and devices: thin wrappers over `crate::service`.
 
 use axum::{
     Extension, Form,
     extract::{Path, Query, State},
-    http::{HeaderMap, HeaderValue, StatusCode, header},
+    http::{HeaderMap, StatusCode, header},
     response::IntoResponse,
 };
 use minijinja::{Value, context};
@@ -18,6 +18,7 @@ use super::{
 use crate::{
     AppState,
     db::now_ms,
+    error::ApiError,
     service::{
         devices,
         pairing::{self, PairingStatus},
@@ -29,7 +30,7 @@ fn serde(value: impl serde::Serialize) -> Value {
     Value::from(minijinja::value::Serde(value))
 }
 
-// ── Users ────────────────────────────────────────────────
+// ── Users and phone pairing ──────────────────────────────
 
 #[derive(Deserialize)]
 pub(crate) struct UserForm {
@@ -37,54 +38,10 @@ pub(crate) struct UserForm {
     name: String,
 }
 
-async fn users_ctx(state: &AppState, session: &AdminSession) -> Result<Value, anyhow::Error> {
-    let list = users::list(&state.db, &session.0.tenant_id).await?;
-    Ok(context! { users => serde(list), ..shell(state, "users") })
-}
-
-pub(crate) async fn users_page(
-    State(state): State<AppState>,
-    Extension(session): Extension<AdminSession>,
-) -> Page {
-    render(&state, "users.html", users_ctx(&state, &session).await?)
-}
-
-/// Creates a listener and goes straight to pairing their phone.
-pub(crate) async fn users_create(
-    State(state): State<AppState>,
-    Extension(session): Extension<AdminSession>,
-    headers: HeaderMap,
-    Form(form): Form<UserForm>,
-) -> Page {
-    match users::create_listener(&state.db, &session.0.tenant_id, &form.name).await {
-        Ok(id) => Ok(redirect(&headers, &format!("/connect?user={id}"))),
-        Err(err) => {
-            let error = form_error(err)?;
-            let ctx = context! { error, name => form.name, ..users_ctx(&state, &session).await? };
-            render_form(
-                &state,
-                &headers,
-                "users.html",
-                "partials/user_form.html",
-                ctx,
-            )
-        }
-    }
-}
-
-// ── Connect ──────────────────────────────────────────────
-
 #[derive(Deserialize)]
-pub(crate) struct ConnectQuery {
-    user: Option<String>,
-}
-
-#[derive(Deserialize)]
-pub(crate) struct ConnectForm {
-    #[serde(default)]
-    user_id: String,
-    #[serde(default)]
-    new_name: String,
+pub(crate) struct UsersQuery {
+    /// Open the QR panel of this user (link without JavaScript, or after adding a listener).
+    connect: Option<String>,
 }
 
 /// QR addresses: LAN and WAN from settings; without them, the address this page was opened at.
@@ -121,121 +78,123 @@ fn qr_svg(urls: &[String], code: &str) -> anyhow::Result<String> {
         .to_owned())
 }
 
-/// Issues a code for `user_id` and renders the QR panel.
+/// Issues a code for `user_id`: the context of the QR panel.
 async fn code_panel(
     state: &AppState,
     headers: &HeaderMap,
     tenant_id: &str,
     user_id: &str,
-) -> Result<Value, crate::error::ApiError> {
+) -> Result<Value, ApiError> {
     let now = now_ms();
     let code = pairing::create(&state.db, tenant_id, user_id, now).await?;
     let (urls, fallback) = qr_urls(state, headers);
-    let user_name = users::list(&state.db, tenant_id)
-        .await?
-        .into_iter()
-        .find(|u| u.id == user_id)
-        .map(|u| u.name);
     let qr = Value::from_safe_string(qr_svg(&urls, &code.code)?);
     Ok(context! {
-        pairing => context! {
-            id => code.id,
-            code => code.code,
-            qr,
-            urls,
-            fallback,
-            user_id,
-            user_name,
-            expires_in => (code.expires_at - now) / 1000,
-        },
+        id => code.id,
+        code => code.code,
+        qr,
+        urls,
+        fallback,
+        user_id,
+        expires_in => (code.expires_at - now) / 1000,
     })
 }
 
-pub(crate) async fn connect_page(
+/// The users list; `open` gets a fresh QR panel under its row.
+async fn users_ctx(
+    state: &AppState,
+    headers: &HeaderMap,
+    session: &AdminSession,
+    open: Option<&str>,
+) -> Result<Value, ApiError> {
+    let tenant_id = &session.0.tenant_id;
+    let list = users::list(&state.db, tenant_id).await?;
+    let open = open.filter(|id| list.iter().any(|u| u.id == *id));
+    let pairing = match open {
+        Some(user_id) => Some(code_panel(state, headers, tenant_id, user_id).await?),
+        None => None,
+    };
+    Ok(context! { users => serde(list), pairing, ..shell(state, "users") })
+}
+
+pub(crate) async fn users_page(
     State(state): State<AppState>,
     Extension(session): Extension<AdminSession>,
     headers: HeaderMap,
-    Query(query): Query<ConnectQuery>,
+    Query(query): Query<UsersQuery>,
 ) -> Page {
-    let list = users::list(&state.db, &session.0.tenant_id).await?;
-    let selected = query.user.filter(|id| list.iter().any(|u| u.id == *id));
-    // Coming from "add listener" or "connect a phone": show the code right away.
-    let pairing = match &selected {
-        Some(user_id) => code_panel(&state, &headers, &session.0.tenant_id, user_id).await?,
-        None => context! {},
-    };
-    render(
+    let ctx = users_ctx(&state, &headers, &session, query.connect.as_deref()).await?;
+    render(&state, "users.html", ctx)
+}
+
+/// Adds a listener and opens the QR panel for their phone right away.
+pub(crate) async fn users_create(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    headers: HeaderMap,
+    Form(form): Form<UserForm>,
+) -> Page {
+    let (ctx, error) =
+        match users::create_listener(&state.db, &session.0.tenant_id, &form.name).await {
+            Ok(id) => {
+                if !super::is_htmx(&headers) {
+                    return Ok(redirect(&headers, &format!("/users?connect={id}")));
+                }
+                (
+                    users_ctx(&state, &headers, &session, Some(&id)).await?,
+                    None,
+                )
+            }
+            Err(err) => (
+                users_ctx(&state, &headers, &session, None).await?,
+                Some(form_error(err)?),
+            ),
+        };
+    let name = error.as_ref().map(|_| form.name);
+    let ctx = context! { error, name, ..ctx };
+    render_form(
         &state,
-        "connect.html",
-        context! { ..pairing, ..context! { users => serde(list), selected, ..shell(&state, "connect") } },
+        &headers,
+        "users.html",
+        "partials/users_section.html",
+        ctx,
     )
 }
 
-pub(crate) async fn connect_create(
+/// QR panel under a user's row.
+pub(crate) async fn user_connect(
     State(state): State<AppState>,
     Extension(session): Extension<AdminSession>,
     headers: HeaderMap,
-    Form(form): Form<ConnectForm>,
+    Path(user_id): Path<String>,
+) -> Page {
+    if !super::is_htmx(&headers) {
+        return Ok(redirect(&headers, &format!("/users?connect={user_id}")));
+    }
+    let pairing = code_panel(&state, &headers, &session.0.tenant_id, &user_id).await?;
+    render(&state, "partials/connect_code.html", context! { pairing })
+}
+
+/// Polled by the QR panel every 2 s: 204 while waiting, then the final panel and, once the
+/// phone is connected, the user's new device count.
+pub(crate) async fn pairing_status(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    Path((user_id, id)): Path<(String, String)>,
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
-    let user_id = if form.user_id == "new" {
-        match users::create_listener(&state.db, tenant_id, &form.new_name).await {
-            Ok(id) => id,
-            Err(err) => {
-                let error = form_error(err)?;
-                let list = users::list(&state.db, tenant_id).await?;
-                let mut response = render_form(
-                    &state,
-                    &headers,
-                    "connect.html",
-                    "partials/connect_form.html",
-                    context! {
-                        users => serde(list), selected => "new", new_name => form.new_name, error,
-                        ..shell(&state, "connect")
-                    },
-                )?;
-                // The form targets the QR panel; an error goes back into the form itself.
-                let headers = response.headers_mut();
-                headers.insert("hx-retarget", HeaderValue::from_static("#connect-form"));
-                headers.insert("hx-reswap", HeaderValue::from_static("outerHTML"));
-                return Ok(response);
-            }
-        }
-    } else {
-        form.user_id
-    };
-    let panel = code_panel(&state, &headers, tenant_id, &user_id).await?;
-    if super::is_htmx(&headers) {
-        // The form is re-rendered out of band so a new listener shows up in the list.
-        let list = users::list(&state.db, tenant_id).await?;
-        return render(
-            &state,
-            "partials/connect_swap.html",
-            context! { users => serde(list), selected => user_id, ..panel },
-        );
-    }
-    let list = users::list(&state.db, tenant_id).await?;
-    render(
-        &state,
-        "connect.html",
-        context! { ..panel, ..context! { users => serde(list), selected => user_id, ..shell(&state, "connect") } },
-    )
-}
-
-/// Polled by the QR panel every 2 s: 204 while waiting, then the final panel.
-pub(crate) async fn connect_status(
-    State(state): State<AppState>,
-    Extension(session): Extension<AdminSession>,
-    Path(id): Path<String>,
-) -> Page {
-    let status = pairing::status(&state.db, &session.0.tenant_id, &id, now_ms()).await?;
+    let status = pairing::status(&state.db, tenant_id, &id, now_ms()).await?;
     if matches!(status, PairingStatus::Waiting { .. }) {
         return Ok(StatusCode::NO_CONTENT.into_response());
     }
+    let user = users::list(&state.db, tenant_id)
+        .await?
+        .into_iter()
+        .find(|u| u.id == user_id);
     render(
         &state,
         "partials/connect_result.html",
-        context! { status => serde(status) },
+        context! { status => serde(status), user_id, user => serde(user) },
     )
 }
 
@@ -250,8 +209,7 @@ pub(crate) async fn devices_page(
         &state,
         "devices.html",
         context! {
-            devices => serde(list), current => session.0.device_id.clone(),
-            ..shell(&state, "devices")
+            devices => serde(list), ..shell(&state, "devices")
         },
     )
 }
@@ -264,17 +222,9 @@ pub(crate) async fn devices_revoke(
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
     devices::revoke(&state.db, tenant_id, &id, now_ms()).await?;
-    if id == session.0.device_id {
-        // Revoking this very browser signs it out.
-        return Ok(redirect(&headers, "/login"));
-    }
     if !super::is_htmx(&headers) {
         return Ok(redirect(&headers, "/devices"));
     }
-    let device = devices::get(&state.db, tenant_id, &id).await?;
-    render(
-        &state,
-        "partials/device_row.html",
-        context! { device => serde(device), current => session.0.device_id.clone() },
-    )
+    // The row is swapped for nothing: revoked devices are not listed.
+    Ok(().into_response())
 }

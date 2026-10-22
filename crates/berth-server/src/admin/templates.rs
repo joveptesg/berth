@@ -85,43 +85,47 @@ mod tests {
                 ],
                 ..base.clone()
             };
-            assert!(render(locale, "users.html", users.clone()).contains("/connect?user=u2"));
-            let connect = render(locale, "connect.html", users.clone());
-            // The first listener is preselected, not the owner.
-            assert!(connect.contains("user: 'u2'"), "{connect}");
+            let list = render(locale, "users.html", users.clone());
+            assert!(list.contains("/users/u2/connect") && list.contains("/users?connect=u2"));
+            assert!(!list.contains("/pairing/"), "no panel is open");
             let pairing = context! {
                 pairing => context! {
                     id => "abc", code => "K7P29QXM", qr => "<svg></svg>", urls => vec!["http://lan"],
-                    fallback => true, user_id => "u2", user_name => "Anna", expires_in => 120,
+                    fallback => true, user_id => "u2", expires_in => 120,
                 },
                 ..users.clone()
             };
-            let code = render(locale, "connect.html", pairing);
+            let code = render(locale, "users.html", pairing);
             assert!(code.contains("K7P2") && code.contains("9QXM") && code.contains("2:00"));
-            assert!(code.contains("/connect/status/abc"));
+            assert!(code.contains("/users/u2/pairing/abc"));
             let done = render(
                 locale,
                 "partials/connect_result.html",
-                context! { status => context! { state => "connected", device_name => "Pixel 9", platform => "android" } },
+                context! {
+                    status => context! { state => "connected", device_name => "Pixel 9", platform => "android" },
+                    user_id => "u2", user => context! { devices => 3 },
+                },
             );
             assert!(
                 done.contains("Pixel 9 ") || done.contains("Pixel 9<"),
                 "{done}"
             );
+            // The user's device count is updated out of band.
+            assert!(
+                done.contains("id=\"devices-u2\" hx-swap-oob=\"true\""),
+                "{done}"
+            );
             let devices = context! {
                 devices => vec![
-                    context! { id => "d1", name => "Pixel 9", platform => "android", user_name => "Anna", paired_at => 1, last_seen_at => 2, revoked_at => () },
-                    context! { id => "d2", name => "Chrome on Windows", platform => "web", user_name => "Admin", paired_at => 1, revoked_at => () },
-                    context! { id => "d3", name => "Old phone", platform => "ios", user_name => "Anna", paired_at => 1, revoked_at => 3 },
+                    context! { id => "d1", name => "Pixel 9", platform => "android", user_name => "Anna", paired_at => 1, last_seen_at => 2 },
+                    context! { id => "d3", name => "iPhone", platform => "ios", user_name => "Mark", paired_at => 1 },
                 ],
-                current => "d2",
                 ..base.clone()
             };
             let devices = render(locale, "devices.html", devices);
-            // Only the active phone can be revoked: not this browser, not the revoked one.
             assert_eq!(
                 devices.matches("hx-post=\"/devices/").count(),
-                1,
+                2,
                 "{devices}"
             );
             assert!(devices.contains("/devices/d1/revoke"));

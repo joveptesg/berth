@@ -9,7 +9,6 @@ common:
 nav:
   dashboard: Обзор
   users: Пользователи
-  connect: Подключить телефон
   devices: Устройства
   settings: Настройки
   logout: Выйти
@@ -88,19 +87,10 @@ users:
   role_restricted: С ограничениями
   devices: "Устройств: %{count}"
   connect_phone: Подключить телефон
+  cancel: Отмена
 
 connect:
-  title: Подключить телефон
-  subtitle: Отсканируйте QR-код в приложении Berth или введите код вручную.
-  who_title: Чей телефон?
-  user_label: Слушатель
-  new_listener: Новый слушатель…
-  submit: Показать QR-код
-  form_hint: Код срабатывает один раз и живёт две минуты.
-  placeholder_title: Здесь появится QR-код
-  placeholder_body: Выберите слушателя и нажмите «Показать QR-код».
   qr_label: QR-код для приложения Berth
-  for_user: "Для: %{name}"
   scan_hint: В Berth на телефоне нажмите «Сканировать QR» или «Ввести код» и наберите адрес и код ниже.
   code_label: Код
   expires_in: Истекает через
@@ -113,18 +103,15 @@ connect:
   expired_title: Код истёк
   expired_body: Ничего не подключено. Покажите новый код и отсканируйте его в течение двух минут.
   new_code: Новый код
+  close: Закрыть
 
 devices:
   title: Устройства
-  subtitle: Телефоны и браузеры с доступом к этому серверу.
-  connect: Подключить телефон
+  subtitle: Телефоны, подключённые к этому серверу.
   empty: Устройств пока нет.
-  this_browser: Этот браузер
   browser: Браузер
-  revoked: Отозвано
   paired: Подключено
   last_seen: Был в сети
-  revoked_at: Отозвано
   revoke: Отозвать
   revoke_confirm: Отозвать «%{name}»? Приложение выйдет и удалит загрузки и библиотеку.
 

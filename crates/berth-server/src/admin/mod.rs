@@ -56,11 +56,8 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         )
         .route("/settings/password", post(pages::settings_password))
         .route("/users", get(access::users_page).post(access::users_create))
-        .route(
-            "/connect",
-            get(access::connect_page).post(access::connect_create),
-        )
-        .route("/connect/status/{id}", get(access::connect_status))
+        .route("/users/{id}/connect", post(access::user_connect))
+        .route("/users/{user}/pairing/{id}", get(access::pairing_status))
         .route("/devices", get(access::devices_page))
         .route("/devices/{id}/revoke", post(access::devices_revoke))
         .layer(middleware::from_fn_with_state(state, session::require));

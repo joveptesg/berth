@@ -17,6 +17,7 @@
 {%- elif name == "logout" %}<path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 17l5-5-5-5M15 12H4"/>
 {%- elif name == "menu" %}<path d="M4 7h16M4 12h16M4 17h10"/>
 {%- elif name == "close" %}<path d="M6 6l12 12M18 6 6 18"/>
+{%- elif name == "plus" %}<path d="M12 5v14M5 12h14"/>
 {%- elif name == "sun" %}<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/>
 {%- elif name == "moon" %}<path d="M20 14.5A8 8 0 0 1 9.5 4 8 8 0 1 0 20 14.5Z"/>
 {%- elif name == "system" %}<rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/>
@@ -24,7 +25,7 @@
 {%- elif name == "books" %}<path d="M4 19V5a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v14M9 19V8a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v11M14.5 9.2l2.9-.8a1 1 0 0 1 1.2.7l2.6 9.7M3 19h18"/>
 {%- elif name == "arrow" %}<path d="M5 12h14M13 6l6 6-6 6"/>
 {%- elif name == "users" %}<circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0M16 4.6a3.5 3.5 0 0 1 0 6.8M18.5 14.2A6.5 6.5 0 0 1 21.5 20"/>
-{%- elif name == "connect" or name == "qr" %}<rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.5"/><path d="M14 14h2.5v2.5M20.5 14v.01M14 20.5h.01M17.5 17.5h3v3h-3z"/>
+{%- elif name == "qr" %}<rect x="3.5" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="14" y="3.5" width="6.5" height="6.5" rx="1.5"/><rect x="3.5" y="14" width="6.5" height="6.5" rx="1.5"/><path d="M14 14h2.5v2.5M20.5 14v.01M14 20.5h.01M17.5 17.5h3v3h-3z"/>
 {%- elif name == "devices" %}<rect x="6.5" y="2.5" width="11" height="19" rx="2.5"/><path d="M10.5 18.5h3"/>
 {%- elif name == "browser" %}<rect x="2.5" y="4" width="19" height="16" rx="2.5"/><path d="M2.5 8.5h19M6 6.25h.01M8.5 6.25h.01"/>
 {%- elif name == "clock" %}<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>
@@ -60,4 +61,10 @@
 {# Epoch milliseconds, formatted in the browser's time zone by the script in head.html. #}
 {% macro time(ms) -%}
 <time data-ts="{{ ms }}" class="mono text-[13px] font-normal">{{ ms }}</time>
+{%- endmacro %}
+
+{# Closes the QR panel around it; the status polling stops with it. #}
+{% macro close_panel() -%}
+<button type="button" onclick="this.closest('[id^=pairing-]').replaceChildren()" aria-label="{{ t('connect.close') }}" title="{{ t('connect.close') }}"
+  class="absolute top-3 right-3 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-3 hover:text-text">{{ icon("close") }}</button>
 {%- endmacro %}

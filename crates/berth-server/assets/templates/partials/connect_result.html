@@ -1,19 +1,19 @@
 {% import "partials/ui.html" as ui %}
-{% if status.state == "connected" %}
-<div class="flex min-h-[272px] flex-col items-center justify-center gap-3 text-center">
-  <span class="grid size-16 place-items-center rounded-full bg-ok/12 text-ok">{{ ui.icon("check", "size-8") }}</span>
-  <h2 class="text-[22px] font-bold">{{ t('connect.connected_title') }}</h2>
+<div class="relative flex flex-col items-center gap-3 border-t border-line bg-surface-2/50 px-5 py-8 text-center sm:px-6">
+  {{ ui.close_panel() }}
+  {% if status.state == "connected" %}
+  <span class="grid size-14 place-items-center rounded-full bg-ok/12 text-ok">{{ ui.icon("check", "size-7") }}</span>
+  <h2 class="text-[20px] font-bold">{{ t('connect.connected_title') }}</h2>
   <p class="text-[16px] text-text-2"><span class="font-semibold text-text">{{ status.device_name }}</span> · {{ ui.platform(status.platform) }}</p>
-  <div class="mt-3 flex flex-wrap justify-center gap-2">
-    <a href="/devices" class="btn btn-ghost">{{ t('connect.open_devices') }}</a>
-    <button type="submit" form="connect-form" class="btn btn-primary">{{ t('connect.connect_another') }}</button>
+  <div class="mt-2 flex flex-wrap justify-center gap-2">
+    <a href="/devices" class="btn btn-ghost bg-surface">{{ t('connect.open_devices') }}</a>
+    <button type="button" hx-post="/users/{{ user_id }}/connect" hx-target="#pairing-{{ user_id }}" hx-swap="innerHTML" class="btn btn-primary">{{ t('connect.connect_another') }}</button>
   </div>
-</div>
-{% else %}
-<div class="flex min-h-[272px] flex-col items-center justify-center gap-3 text-center">
-  <span class="grid size-16 place-items-center rounded-full bg-surface-2 text-text-3">{{ ui.icon("clock", "size-8") }}</span>
-  <h2 class="text-[22px] font-bold">{{ t('connect.expired_title') }}</h2>
+  {% if user %}<span id="devices-{{ user_id }}" hx-swap-oob="true">{{ t('users.devices', count=user.devices) }}</span>{% endif %}
+  {% else %}
+  <span class="grid size-14 place-items-center rounded-full bg-surface-3 text-text-3">{{ ui.icon("clock", "size-7") }}</span>
+  <h2 class="text-[20px] font-bold">{{ t('connect.expired_title') }}</h2>
   <p class="max-w-[40ch] text-[15px] text-text-2">{{ t('connect.expired_body') }}</p>
-  <button type="submit" form="connect-form" class="btn btn-primary mt-3">{{ ui.icon("qr", "size-[18px]") }}{{ t('connect.new_code') }}</button>
+  <button type="button" hx-post="/users/{{ user_id }}/connect" hx-target="#pairing-{{ user_id }}" hx-swap="innerHTML" class="btn btn-primary mt-2">{{ ui.icon("qr", "size-[18px]") }}{{ t('connect.new_code') }}</button>
+  {% endif %}
 </div>
-{% endif %}

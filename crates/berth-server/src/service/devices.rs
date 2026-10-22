@@ -1,4 +1,7 @@
-//! Devices of the tenant: paired apps and admin browsers, and their revocation.
+//! Paired devices of the tenant and their revocation.
+//!
+//! Admin browsers are rows in `devices` too (`platform = 'web'` with the `admin` scope), but they
+//! are sign-in sessions, not devices: they are neither listed nor revoked here.
 
 use anyhow::Context;
 use berth_core::{BerthError, Result};
@@ -10,59 +13,49 @@ use sqlx::SqlitePool;
 pub struct Device {
     /// Device id.
     pub id: String,
-    /// Name the device reported, e.g. "Pixel 9" or "Chrome on Windows".
+    /// Name the device reported, e.g. "Pixel 9".
     pub name: String,
-    /// `android`, `ios`, … or `web` for an admin browser.
+    /// `android`, `ios`, … (`web` for a browser build of the app).
     pub platform: String,
     /// Owner's name.
     pub user_name: String,
-    /// Pairing or sign-in time, epoch milliseconds.
+    /// Pairing time, epoch milliseconds.
     pub paired_at: i64,
-    /// Last token refresh or sign-in, epoch milliseconds.
+    /// Last token refresh, epoch milliseconds.
     pub last_seen_at: Option<i64>,
-    /// Revocation time, epoch milliseconds.
-    pub revoked_at: Option<i64>,
 }
 
-/// Devices of the tenant: active first, most recently seen first.
+/// Active paired devices of the tenant, most recently seen first. Revoked rows stay in the
+/// database (their tokens must keep answering `device_revoked`) but are not listed.
 ///
 /// # Errors
 /// Database failures.
 pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<Device>> {
     Ok(sqlx::query_as(
-        "SELECT d.id, d.name, d.platform, u.name AS user_name, d.paired_at, d.last_seen_at,
-                d.revoked_at
+        "SELECT d.id, d.name, d.platform, u.name AS user_name, d.paired_at, d.last_seen_at
          FROM devices d JOIN users u ON u.id = d.user_id
-         WHERE d.tenant_id = $1
-         ORDER BY d.revoked_at IS NOT NULL, COALESCE(d.last_seen_at, d.paired_at) DESC",
+         WHERE d.tenant_id = $1 AND NOT (d.platform = 'web' AND EXISTS (
+               SELECT 1 FROM device_scopes s WHERE s.device_id = d.id AND s.scope = 'admin'))
+           AND d.revoked_at IS NULL
+         ORDER BY COALESCE(d.last_seen_at, d.paired_at) DESC",
     )
     .bind(tenant_id)
     .fetch_all(db)
     .await?)
 }
 
-/// One device of the tenant.
-///
-/// # Errors
-/// `NotFound` for an unknown device.
-pub async fn get(db: &SqlitePool, tenant_id: &str, device_id: &str) -> Result<Device> {
-    list(db, tenant_id)
-        .await?
-        .into_iter()
-        .find(|d| d.id == device_id)
-        .ok_or(BerthError::NotFound)
-}
-
-/// Revokes a device: its refresh chain and browser session go at once; its next request gets
+/// Revokes a paired device: its refresh chain goes at once; its next request gets
 /// `device_revoked` (an access token still in flight is rejected by the revocation check).
 /// Idempotent.
 ///
 /// # Errors
-/// `NotFound` for an unknown device.
+/// `NotFound` for an unknown device or an admin browser.
 pub async fn revoke(db: &SqlitePool, tenant_id: &str, device_id: &str, now_ms: i64) -> Result<()> {
     let mut tx = db.begin().await.context("begin")?;
     let found = sqlx::query(
-        "UPDATE devices SET revoked_at = COALESCE(revoked_at, $3) WHERE id = $1 AND tenant_id = $2",
+        "UPDATE devices SET revoked_at = COALESCE(revoked_at, $3)
+         WHERE id = $1 AND tenant_id = $2 AND NOT (platform = 'web' AND EXISTS (
+             SELECT 1 FROM device_scopes s WHERE s.device_id = devices.id AND s.scope = 'admin'))",
     )
     .bind(device_id)
     .bind(tenant_id)

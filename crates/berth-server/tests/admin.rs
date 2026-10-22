@@ -411,17 +411,12 @@ async fn pairing_flow_from_connect_to_revoke() {
     let state = start(dir.path()).await;
     let session = set_up(&state).await;
 
-    let created = send(&state, post("/users", Some(&session), &[("name", "Anna")])).await;
-    let connect_url = created.location().unwrap().to_owned();
-    assert!(connect_url.starts_with("/connect?user="), "{connect_url}");
-    let user_id = connect_url.trim_start_matches("/connect?user=");
-
-    let page = send(&state, get(&connect_url, Some(&session))).await;
+    // Adding a listener opens the QR panel under their row right away.
+    let page = send(&state, post("/users", Some(&session), &[("name", "Anna")])).await;
     assert_eq!(page.status, StatusCode::OK);
-    let status_url = format!(
-        "/connect/status/{}",
-        between(&page.body, "/connect/status/", "\"")
-    );
+    let status_url = format!("/users/{}", between(&page.body, "hx-get=\"/users/", "\""));
+    let user_id = between(&status_url, "/users/", "/pairing/").to_owned();
+    assert!(page.body.contains(&format!("id=\"pairing-{user_id}\"")));
     let code = format!(
         "{}{}",
         between(&page.body, "select-all\">", "<"),
@@ -515,8 +510,23 @@ async fn pairing_flow_from_connect_to_revoke() {
         post(&format!("/devices/{device_id}/revoke"), Some(&session), &[]),
     )
     .await;
+    // The row goes away; only active devices are listed.
     assert_eq!(revoked.status, StatusCode::OK);
-    assert!(!revoked.body.contains("hx-post"), "{}", revoked.body);
+    assert!(revoked.body.trim().is_empty(), "{}", revoked.body);
+    let devices = send(&state, get("/devices", Some(&session))).await;
+    assert!(!devices.body.contains("Pixel 9"), "{}", devices.body);
+    // The admin's own browser is a session, not a device: not listed, not revocable here.
+    let browser: String = sqlx::query_scalar("SELECT id FROM devices WHERE platform = 'web'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert!(!devices.body.contains(&browser));
+    let own = send(
+        &state,
+        post(&format!("/devices/{browser}/revoke"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(own.status, StatusCode::NOT_FOUND);
 
     let me = send(&state, bearer_get("/v1/me", &access)).await;
     assert_eq!(me.status, StatusCode::UNAUTHORIZED);
@@ -669,39 +679,41 @@ async fn cors_allows_only_known_origins() {
 }
 
 #[tokio::test]
-async fn connect_can_create_a_listener() {
+async fn users_page_adds_listeners_and_opens_qr() {
     let dir = tempfile::tempdir().unwrap();
     let state = start(dir.path()).await;
     let session = set_up(&state).await;
 
-    let empty = send(
-        &state,
-        post(
-            "/connect",
-            Some(&session),
-            &[("user_id", "new"), ("new_name", " ")],
-        ),
-    )
-    .await;
-    assert_eq!(empty.headers["hx-retarget"], "#connect-form");
+    // A rejected name reopens the popup with the error.
+    let empty = send(&state, post("/users", Some(&session), &[("name", " ")])).await;
     assert!(empty.body.contains("role=\"alert\""));
+    assert!(empty.body.contains("showModal()"));
+    assert!(!empty.body.contains("/pairing/"));
 
-    let shown = send(
+    let owner: String = sqlx::query_scalar("SELECT id FROM users")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    // The row button: a QR panel for that user only.
+    let panel = send(
         &state,
-        post(
-            "/connect",
-            Some(&session),
-            &[("user_id", "new"), ("new_name", "Mark")],
-        ),
+        post(&format!("/users/{owner}/connect"), Some(&session), &[]),
     )
     .await;
-    assert_eq!(shown.status, StatusCode::OK);
-    assert!(shown.body.contains("/connect/status/"));
-    // The form comes back out of band with the new listener selected.
-    assert!(shown.body.contains("hx-swap-oob"));
-    assert!(shown.body.contains(">Mark<"), "{}", shown.body);
-    let users = send(&state, get("/users", Some(&session))).await;
-    assert!(users.body.contains("Mark"));
+    assert!(panel.body.contains(&format!("/users/{owner}/pairing/")));
+    assert!(!panel.body.contains("<html"));
+    // Without JavaScript the link opens the page with the panel.
+    let page = send(
+        &state,
+        get(&format!("/users?connect={owner}"), Some(&session)),
+    )
+    .await;
+    assert!(page.body.contains(&format!("/users/{owner}/pairing/")));
+    // The old page is gone.
+    assert_eq!(
+        send(&state, get("/connect", Some(&session))).await.status,
+        StatusCode::NOT_FOUND
+    );
 }
 
 async fn tenant(state: &AppState) -> String {
