@@ -1,7 +1,7 @@
 //! Delivery of audio bytes (design doc §7, §22.A7): a device asks for a book file and gets a
 //! short-lived URL that works without authorization headers. Presigned profiles hand out a
-//! presigned S3 GET; everything else a signed `/v1/blobs/{token}` that the server streams with
-//! range requests.
+//! presigned S3 GET, CDN profiles a public URL under their CDN address; everything else a
+//! signed `/v1/blobs/{token}` that the server streams with range requests.
 //!
 //! A blob token is `base64url(tenant \n hash \n device \n exp) . base64url(HMAC)`. It lives
 //! longer than a presigned URL because players keep one URL for hours of range requests;
@@ -23,7 +23,7 @@ use crate::{
     AppState,
     db::now_ms,
     secret::SecretKey,
-    storage::{BlobStore, ContentHash},
+    storage::{self, BlobStore, ContentHash, S3Config},
 };
 
 const TOKEN_LABEL: &[u8] = b"berth blob token v1";
@@ -167,27 +167,38 @@ async fn files(
     Ok(files)
 }
 
-/// A URL for a blob: presigned when its profile delivers that way, a proxy token otherwise.
+/// A URL for a blob: public under the CDN address or presigned when its profile delivers
+/// that way, a proxy token otherwise.
 async fn link(
     state: &AppState,
     tenant_id: &str,
     device_id: &str,
     hash: &str,
 ) -> Result<StreamLink> {
-    let location: Option<(String, String)> = sqlx::query_as(
-        "SELECT p.id, p.delivery_mode FROM blob_locations l
+    let location: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT p.id, p.delivery_mode, p.config FROM blob_locations l
          JOIN storage_profiles p ON p.id = l.storage_id
          WHERE l.tenant_id = $1 AND l.hash = $2 AND l.state = 'active'
-         ORDER BY p.delivery_mode = 'presigned' DESC LIMIT 1",
+         ORDER BY CASE p.delivery_mode WHEN 'cdn' THEN 0 WHEN 'presigned' THEN 1 ELSE 2 END
+         LIMIT 1",
     )
     .bind(tenant_id)
     .bind(hash)
     .fetch_optional(&state.db)
     .await
     .context("find blob")?;
-    let Some((storage_id, mode)) = location else {
+    let Some((storage_id, mode, config)) = location else {
         return Err(BerthError::NotFound);
     };
+    if mode == "cdn" {
+        let config: S3Config = serde_json::from_str(&config).context("s3 config")?;
+        let content = ContentHash::parse(hash).context("sha256 hex")?;
+        // The URL never expires; the client still refreshes it like a proxy link.
+        return Ok(StreamLink {
+            url: storage::cdn_link(&config.cdn_url, tenant_id, &content),
+            expires_at: now_ms() + ms(PROXY_TTL),
+        });
+    }
     if mode == "presigned" {
         let store = profiles::open(state, tenant_id, &storage_id).await?;
         let content = ContentHash::parse(hash).context("sha256 hex")?;

@@ -8,6 +8,7 @@
 {% set kind = f.kind or "local" %}
 <div x-data="{
     kind: '{{ kind }}',
+    delivery: '{{ f.delivery_mode or "presigned" }}',
     name: '',
     preset(endpoint, region, pathStyle) {
       const form = this.$root;
@@ -95,8 +96,8 @@
     {% if full %}
     <div class="sm:col-span-6">
       <label for="{{ uid }}-delivery" class="field-label">{{ t('storage.delivery_label') }}</label>
-      <select id="{{ uid }}-delivery" name="{{ prefix }}delivery_mode" class="input select">
-        {% for mode in ["presigned", "proxy"] %}
+      <select id="{{ uid }}-delivery" name="{{ prefix }}delivery_mode" x-model="delivery" class="input select">
+        {% for mode in ["presigned", "proxy", "cdn"] %}
         <option value="{{ mode }}" {% if (f.delivery_mode or 'presigned') == mode %}selected{% endif %}>{{ t('storage.delivery_' ~ mode) }}</option>
         {% endfor %}
       </select>
@@ -109,7 +110,15 @@
         <span class="block truncate text-[12.5px] text-text-3" title="{{ t('storage.path_style_hint') }}">{{ t('storage.path_style_hint') }}</span>
       </span>
     </label>
-    {% if full %}<p class="field-hint -mt-1 sm:col-span-12">{{ t('storage.delivery_hint') }}</p>{% endif %}
+    {% if full %}
+    <p class="field-hint -mt-1 sm:col-span-12">{{ t('storage.delivery_hint') }}</p>
+    <div x-show="delivery === 'cdn'" {% if f.delivery_mode != "cdn" %}style="display: none"{% endif %} class="sm:col-span-12">
+      <label for="{{ uid }}-cdn" class="field-label">{{ t('storage.cdn_url_label') }}</label>
+      <input id="{{ uid }}-cdn" name="{{ prefix }}cdn_url" type="url" inputmode="url" value="{{ f.cdn_url or '' }}" :required="delivery === 'cdn'"
+        autocomplete="off" spellcheck="false" placeholder="https://cdn.example.com" class="input mono">
+      <p class="field-hint">{{ t('storage.cdn_url_hint') }}</p>
+    </div>
+    {% endif %}
   </fieldset>
 </div>
 {%- endmacro %}

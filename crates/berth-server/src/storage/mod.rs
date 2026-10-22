@@ -131,6 +131,16 @@ pub struct S3Config {
     /// `endpoint/bucket/key` addressing instead of `bucket.endpoint/key`.
     #[serde(default)]
     pub path_style: bool,
+    /// Public address of the bucket root, usually a CDN in front of it; `cdn` delivery hands
+    /// out `cdn_url/<blob path>`. Empty when unused.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cdn_url: String,
+}
+
+/// The public URL of a blob behind `cdn_url` (no trailing slash).
+#[must_use]
+pub fn cdn_link(cdn_url: &str, tenant: &str, hash: &ContentHash) -> String {
+    format!("{cdn_url}/{}", blob_path(tenant, hash))
 }
 
 /// Access keys of an S3 profile: stored encrypted, never shown again.
@@ -346,6 +356,49 @@ impl ObjectBlobStore {
             Err("storage_mismatch")
         }
     }
+
+    /// Writes a probe under `prefix`, reads it back through `cdn_url` without signing, then
+    /// deletes it.
+    ///
+    /// # Errors
+    /// The codes of [`Self::verify`] for the write, `storage_cdn_unreachable` when the CDN does
+    /// not answer 2xx (403: not public; 404: the address is not the bucket root) and
+    /// `storage_cdn_mismatch` for other bytes.
+    pub async fn verify_cdn(
+        &self,
+        prefix: &str,
+        cdn_url: &str,
+        client: &reqwest::Client,
+    ) -> Result<(), VerifyError> {
+        let mut probe = [0; 16];
+        getrandom::fill(&mut probe).map_err(|_| "storage_failed")?;
+        let path = Path::from(format!("{prefix}/.berth-verify/{}", hex::encode(probe)));
+        let local = self.presigner.is_none();
+        self.store
+            .put(&path, PutPayload::from(probe.to_vec()))
+            .await
+            .map_err(|err| error_code(&err, local))?;
+        let fetched = async {
+            let response = client
+                .get(format!("{cdn_url}/{path}"))
+                .send()
+                .await?
+                .error_for_status()?;
+            response.bytes().await
+        }
+        .await;
+        if let Err(err) = self.store.delete(&path).await {
+            tracing::warn!(error = %err, "CDN check could not delete its probe");
+        }
+        match fetched {
+            Ok(bytes) if bytes.as_ref() == probe => Ok(()),
+            Ok(_) => Err("storage_cdn_mismatch"),
+            Err(err) => {
+                tracing::info!(error = %err, "CDN check failed");
+                Err("storage_cdn_unreachable")
+            }
+        }
+    }
 }
 
 fn error_code(err: &object_store::Error, local: bool) -> VerifyError {
@@ -502,6 +555,10 @@ mod tests {
             blob_path("t1", &hash).as_ref(),
             format!("t1/blobs/sha256/ab/cd/{HASH}")
         );
+        assert_eq!(
+            cdn_link("https://cdn.example.com/books", "t1", &hash),
+            format!("https://cdn.example.com/books/t1/blobs/sha256/ab/cd/{HASH}")
+        );
         assert!(ContentHash::parse(&HASH.to_uppercase()).is_none());
         assert!(ContentHash::parse(&HASH[1..]).is_none());
         assert!(ContentHash::parse(&HASH.replace('a', "g")).is_none());
@@ -514,6 +571,7 @@ mod tests {
             bucket: "books".into(),
             region: "us-east-1".into(),
             path_style: true,
+            cdn_url: String::new(),
         };
         assert_eq!(
             bucket_url(&config).unwrap().as_str(),
@@ -581,6 +639,60 @@ mod tests {
         assert!(
             !dir.path().join("blobs/t1/.berth-verify").exists(),
             "empty folders are removed"
+        );
+    }
+
+    /// A CDN in front of the folder: it serves its files, or refuses with 403.
+    async fn fake_cdn(root: std::path::PathBuf, public: bool) -> String {
+        use axum::{extract::Path as UrlPath, http::StatusCode, routing::get};
+        let app = axum::Router::new().route(
+            "/{*key}",
+            get(move |UrlPath(key): UrlPath<String>| {
+                let file = root.join(key);
+                async move {
+                    if !public {
+                        return Err(StatusCode::FORBIDDEN);
+                    }
+                    std::fs::read(file).map_err(|_| StatusCode::NOT_FOUND)
+                }
+            }),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        format!("http://{addr}")
+    }
+
+    #[tokio::test]
+    async fn cdn_check_reads_the_probe_through_the_cdn() {
+        let dir = tempfile::tempdir().unwrap();
+        let store = open(
+            &Backend::Local(LocalConfig {
+                path: "blobs".into(),
+            }),
+            dir.path(),
+        )
+        .unwrap();
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = reqwest::Client::new();
+        let root = dir.path().join("blobs");
+        let public = fake_cdn(root.clone(), true).await;
+        assert_eq!(store.verify_cdn("t1", &public, &client).await, Ok(()));
+        let private = fake_cdn(root, false).await;
+        assert_eq!(
+            store.verify_cdn("t1", &private, &client).await,
+            Err("storage_cdn_unreachable")
+        );
+        assert_eq!(
+            store
+                .verify_cdn("t1", &format!("{public}/elsewhere"), &client)
+                .await,
+            Err("storage_cdn_unreachable"),
+            "404: not the bucket root"
+        );
+        assert!(
+            !dir.path().join("blobs/t1/.berth-verify").exists(),
+            "probes are removed"
         );
     }
 }

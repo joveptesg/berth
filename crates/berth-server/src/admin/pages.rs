@@ -132,6 +132,7 @@ impl SetupForm {
             region: self.storage_region.clone(),
             path_style: self.storage_path_style.clone(),
             delivery_mode: String::new(),
+            cdn_url: String::new(),
             access_key_id: self.storage_access_key_id.clone(),
             secret_access_key: self.storage_secret_access_key.clone(),
         }

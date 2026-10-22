@@ -30,7 +30,8 @@ pub struct Profile {
     pub name: String,
     /// `local` or `s3`.
     pub kind: String,
-    /// `proxy` (through the server) or `presigned` (straight from S3).
+    /// `proxy` (through the server), `presigned` (straight from S3) or `cdn` (public URLs
+    /// under `cdn_url`).
     pub delivery_mode: String,
     /// Local folder as entered (relative to the data directory or absolute).
     pub path: String,
@@ -42,6 +43,8 @@ pub struct Profile {
     pub region: String,
     /// S3 path-style addressing.
     pub path_style: bool,
+    /// Public address of the bucket root for `cdn` delivery; empty when unused.
+    pub cdn_url: String,
     /// Whether new books go here.
     pub is_default: bool,
     /// When the last connection check passed, epoch milliseconds.
@@ -69,8 +72,10 @@ pub struct ProfileInput {
     pub region: String,
     /// S3 path-style addressing.
     pub path_style: bool,
-    /// S3 delivery: `presigned` (default) or `proxy`.
+    /// S3 delivery: `presigned` (default), `proxy` or `cdn`.
     pub delivery_mode: String,
+    /// Public address of the bucket root, required for `cdn`.
+    pub cdn_url: String,
     /// S3 access key id.
     pub access_key_id: String,
     /// S3 secret access key.
@@ -148,12 +153,17 @@ fn prepare(input: &ProfileInput) -> Result<Prepared> {
                 region => region,
             };
             let endpoint = input.endpoint.trim().trim_end_matches('/');
+            let cdn_url = input.cdn_url.trim().trim_end_matches('/');
+            if !cdn_url.is_empty() && !public_base(cdn_url) {
+                return Err(invalid("storage_cdn_url_invalid"));
+            }
             let config = S3Config {
                 endpoint: endpoint.into(),
                 bucket: bucket.into(),
                 region: region.into(),
                 // A bucket cannot be a subdomain of an IP address or localhost.
                 path_style: input.path_style || storage::needs_path_style(endpoint),
+                cdn_url: cdn_url.into(),
             };
             if storage::bucket_url(&config).is_err() {
                 return Err(invalid("storage_endpoint_invalid"));
@@ -161,6 +171,8 @@ fn prepare(input: &ProfileInput) -> Result<Prepared> {
             let delivery_mode = match input.delivery_mode.as_str() {
                 "" | "presigned" => "presigned",
                 "proxy" => "proxy",
+                "cdn" if cdn_url.is_empty() => return Err(invalid("storage_cdn_url_required")),
+                "cdn" => "cdn",
                 _ => return Err(invalid("storage_delivery_invalid")),
             };
             let (id, key) = (input.access_key_id.trim(), input.secret_access_key.trim());
@@ -182,6 +194,16 @@ fn prepare(input: &ProfileInput) -> Result<Prepared> {
         }
         _ => Err(invalid("storage_kind_invalid")),
     }
+}
+
+/// An http(s) address with a host and no query or fragment, to put blob paths under.
+fn public_base(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|u| {
+        matches!(u.scheme(), "http" | "https")
+            && u.host().is_some()
+            && u.query().is_none()
+            && u.fragment().is_none()
+    })
 }
 
 fn backend(secret: &SecretKey, row: &Row) -> anyhow::Result<Backend> {
@@ -218,6 +240,7 @@ fn profile(row: Row, default_id: Option<&str>) -> anyhow::Result<Profile> {
         bucket: String::new(),
         region: String::new(),
         path_style: false,
+        cdn_url: String::new(),
         verified_at: row.verified_at,
         verify_error: row.verify_error,
         created_at: row.created_at,
@@ -233,6 +256,7 @@ fn profile(row: Row, default_id: Option<&str>) -> anyhow::Result<Profile> {
             out.bucket = config.bucket;
             out.region = config.region;
             out.path_style = config.path_style;
+            out.cdn_url = config.cdn_url;
         }
         _ => {}
     }
@@ -344,7 +368,8 @@ async fn insert(
 /// # Errors
 /// `Validation` with `storage_name_required`, `storage_name_too_long`, `storage_name_taken`,
 /// `storage_kind_invalid`, `storage_path_required`, `storage_bucket_required`,
-/// `storage_endpoint_invalid`, `storage_delivery_invalid` or `storage_keys_required`.
+/// `storage_endpoint_invalid`, `storage_delivery_invalid`, `storage_cdn_url_required`,
+/// `storage_cdn_url_invalid` or `storage_keys_required`.
 pub async fn create(state: &AppState, tenant_id: &str, input: &ProfileInput) -> Result<String> {
     let prepared = prepare(input)?;
     let id = uuid::Uuid::now_v7().to_string();
@@ -373,7 +398,15 @@ pub async fn update(
     }
     let current_config: Value =
         serde_json::from_str(&current.config).context("stored storage config")?;
-    let moved = current_config != prepared.config;
+    // The CDN address is how clients read, not where the bytes are.
+    let location = |config: &Value| {
+        let mut config = config.clone();
+        if let Some(map) = config.as_object_mut() {
+            map.remove("cdn_url");
+        }
+        config
+    };
+    let moved = location(&current_config) != location(&prepared.config);
     if moved && has_blobs(&mut tx, tenant_id, id).await? {
         return Err(BerthError::Conflict("storage_in_use".into()));
     }
@@ -381,7 +414,10 @@ pub async fn update(
         Some(keys) => Some(encrypt_keys(&state.secret, id, keys)?),
         None => current.secrets_encrypted.clone(),
     };
-    let recheck = moved || prepared.keys.is_some();
+    let recheck = moved
+        || prepared.keys.is_some()
+        || current_config != prepared.config
+        || current.delivery_mode != prepared.delivery_mode;
     sqlx::query(
         "UPDATE storage_profiles SET name = $3, config = $4, secrets_encrypted = $5,
             delivery_mode = $6, updated_at = $7,
@@ -496,6 +532,7 @@ pub async fn verify(state: &AppState, tenant_id: &str, id: &str) -> Result<Profi
         &backend(&state.secret, &row)?,
         &state.config.load().data_dir,
         tenant_id,
+        row.delivery_mode == "cdn",
     )
     .await;
     let now = now_ms();
@@ -517,6 +554,7 @@ async fn check(
     backend: &Backend,
     data_dir: &std::path::Path,
     tenant_id: &str,
+    cdn: bool,
 ) -> std::result::Result<(), &'static str> {
     let store = storage::open(backend, data_dir).map_err(|err| {
         tracing::info!(error = %err, "storage cannot be opened");
@@ -525,7 +563,17 @@ async fn check(
             Backend::S3(..) => "storage_endpoint_invalid",
         }
     })?;
-    store.verify(tenant_id).await
+    store.verify(tenant_id).await?;
+    match backend {
+        Backend::S3(config, _) if cdn => {
+            let client = reqwest::Client::builder()
+                .timeout(std::time::Duration::from_secs(20))
+                .build()
+                .map_err(|_| "storage_failed")?;
+            store.verify_cdn(tenant_id, &config.cdn_url, &client).await
+        }
+        _ => Ok(()),
+    }
 }
 
 /// Setup: validates and checks the first profile before the tenant exists.
@@ -550,7 +598,8 @@ pub(crate) async fn prepare_first(
             Backend::Local(serde_json::from_value(prepared.config.clone()).context("local config")?)
         }
     };
-    check(&backend, &state.config.load().data_dir, tenant_id)
+    let cdn = prepared.delivery_mode == "cdn";
+    check(&backend, &state.config.load().data_dir, tenant_id, cdn)
         .await
         .map_err(|code| BerthError::Validation(code.into()))?;
     Ok(FirstProfile(prepared))
@@ -654,6 +703,21 @@ mod tests {
         assert_eq!(
             code(&ProfileInput {
                 delivery_mode: "cdn".into(),
+                ..s3()
+            }),
+            "storage_cdn_url_required"
+        );
+        assert_eq!(
+            code(&ProfileInput {
+                delivery_mode: "cdn".into(),
+                cdn_url: "https://cdn.example.com/?x=1".into(),
+                ..s3()
+            }),
+            "storage_cdn_url_invalid"
+        );
+        assert_eq!(
+            code(&ProfileInput {
+                delivery_mode: "ftp".into(),
                 ..s3()
             }),
             "storage_delivery_invalid"

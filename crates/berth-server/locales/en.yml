@@ -185,11 +185,13 @@ storage:
   path_style_label: Path-style addresses
   path_style_hint: endpoint/bucket instead of bucket.endpoint. Usually needed for MinIO.
   delivery_label: Delivery to apps
-  delivery_hint: Direct links take the load off the server. Through the server works when phones cannot reach the bucket.
+  delivery_hint: Direct links take the load off the server. Through the server works when phones cannot reach the bucket. Through a CDN is fastest when the bucket has a CDN or a public address.
   delivery: Delivery
   delivery_presigned: Direct links
   delivery_proxy: Through the server
-  delivery_cdn: CDN
+  delivery_cdn: Through a CDN
+  cdn_url_label: CDN address
+  cdn_url_hint: Public address of the bucket root or of a CDN in front of it (an R2 custom domain, Yandex Cloud CDN, CloudFront). Files open there without signing; their names are sha256 and cannot be guessed, but revoking a device does not close links it already has.
   status: Check
   verified: Passed
   unchecked: Not checked yet
@@ -301,6 +303,10 @@ errors:
   storage_bucket_required: Enter a bucket name.
   storage_endpoint_invalid: Enter a full address starting with http:// or https://, and a valid bucket name.
   storage_delivery_invalid: Choose how files are delivered.
+  storage_cdn_url_required: Enter the CDN address.
+  storage_cdn_url_invalid: The CDN address must start with https:// or http:// and have no parameters.
+  storage_cdn_unreachable: The test file did not open at the CDN address. Check that the bucket or CDN is public and the address leads to the bucket root.
+  storage_cdn_mismatch: The CDN address returned another file. It must lead to the bucket root.
   storage_keys_required: Enter both keys.
   storage_is_default: The default storage cannot be deleted. Make another one the default first.
   storage_in_use: "Books are stored here: it cannot be deleted or moved."

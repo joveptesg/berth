@@ -2493,6 +2493,13 @@
             ],
             "description": "`s3`: bucket."
           },
+          "cdn_url": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`s3`: public address of the bucket root; empty when unused."
+          },
           "created_at": {
             "type": "integer",
             "format": "int64",
@@ -2559,7 +2566,7 @@
               "string",
               "null"
             ],
-            "description": "Code of the last failed check: `storage_auth_failed`, `storage_access_denied`,\n`storage_bucket_not_found`, `storage_unreachable`, `storage_mismatch`,\n`storage_local_unwritable`, `storage_endpoint_invalid` or `storage_failed`."
+            "description": "Code of the last failed check: `storage_auth_failed`, `storage_access_denied`,\n`storage_bucket_not_found`, `storage_unreachable`, `storage_mismatch`,\n`storage_local_unwritable`, `storage_endpoint_invalid`, `storage_cdn_unreachable`,\n`storage_cdn_mismatch` or `storage_failed`."
           }
         }
       },
@@ -2582,11 +2589,15 @@
             "type": "string",
             "description": "`s3`: bucket."
           },
+          "cdn_url": {
+            "type": "string",
+            "description": "`s3`: public http(s) address of the bucket root, required for `cdn`; the blob at key\n`k` must be readable at `cdn_url/k` without signing."
+          },
           "delivery_mode": {
             "oneOf": [
               {
                 "$ref": "#/components/schemas/DeliveryMode",
-                "description": "`s3`: `presigned` (default) or `proxy`; local storage is always `proxy`."
+                "description": "`s3`: `presigned` (default), `proxy` or `cdn`; local storage is always `proxy`."
               },
               {
                 "type": "null"

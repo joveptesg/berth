@@ -34,7 +34,7 @@ pub(crate) enum DeliveryMode {
     Proxy,
     /// Presigned URLs straight to S3.
     Presigned,
-    /// Signed CDN URLs (not configurable yet).
+    /// Public URLs under `cdn_url` (a CDN or a public bucket); they need no signature.
     Cdn,
 }
 
@@ -60,8 +60,12 @@ pub(crate) struct StorageProfileRequest {
     /// `s3`: `endpoint/bucket/key` addressing (usually `MinIO`).
     #[serde(default)]
     path_style: bool,
-    /// `s3`: `presigned` (default) or `proxy`; local storage is always `proxy`.
+    /// `s3`: `presigned` (default), `proxy` or `cdn`; local storage is always `proxy`.
     delivery_mode: Option<DeliveryMode>,
+    /// `s3`: public http(s) address of the bucket root, required for `cdn`; the blob at key
+    /// `k` must be readable at `cdn_url/k` without signing.
+    #[serde(default)]
+    cdn_url: String,
     /// `s3`: access key id; required on create, absent on update keeps the saved keys.
     access_key_id: Option<String>,
     /// `s3`: secret access key; sent together with `access_key_id`. Never returned.
@@ -89,6 +93,7 @@ impl StorageProfileRequest {
             region: self.region,
             path_style: self.path_style,
             delivery_mode,
+            cdn_url: self.cdn_url,
             access_key_id: self.access_key_id.unwrap_or_default(),
             secret_access_key: self.secret_access_key.unwrap_or_default(),
         }
@@ -123,13 +128,17 @@ pub(crate) struct StorageProfile {
     /// `s3`: path-style addressing.
     #[serde(skip_serializing_if = "Option::is_none")]
     path_style: Option<bool>,
+    /// `s3`: public address of the bucket root; empty when unused.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cdn_url: Option<String>,
     /// New books go here.
     is_default: bool,
     /// When the last connection check passed, epoch milliseconds.
     verified_at: Option<i64>,
     /// Code of the last failed check: `storage_auth_failed`, `storage_access_denied`,
     /// `storage_bucket_not_found`, `storage_unreachable`, `storage_mismatch`,
-    /// `storage_local_unwritable`, `storage_endpoint_invalid` or `storage_failed`.
+    /// `storage_local_unwritable`, `storage_endpoint_invalid`, `storage_cdn_unreachable`,
+    /// `storage_cdn_mismatch` or `storage_failed`.
     verify_error: Option<String>,
     /// Creation time, epoch milliseconds.
     created_at: i64,
@@ -145,6 +154,7 @@ impl From<Profile> for StorageProfile {
             bucket: s3(p.bucket),
             region: s3(p.region),
             path_style: (!local).then_some(p.path_style),
+            cdn_url: s3(p.cdn_url),
             id: p.id,
             name: p.name,
             kind: p.kind,

@@ -88,7 +88,7 @@
           </p>
           <p class="mt-0.5 text-[14px] text-text-2">{{ t('storage.kind_' ~ p.kind) }} · <span class="mono text-[13px] break-all">{{ p.location }}</span></p>
           <dl class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-text-3">
-            <div class="flex gap-1.5"><dt>{{ t('storage.delivery') }}</dt><dd class="text-text-2">{{ t('storage.delivery_' ~ p.delivery_mode) }}</dd></div>
+            <div class="flex gap-1.5"><dt>{{ t('storage.delivery') }}</dt><dd class="min-w-0 text-text-2">{{ t('storage.delivery_' ~ p.delivery_mode) }}{% if p.delivery_mode == "cdn" %} · <span class="mono text-[12.5px] break-all">{{ p.cdn_url }}</span>{% endif %}</dd></div>
             <div class="flex flex-wrap items-center gap-1.5">
               <dt>{{ t('storage.status') }}</dt>
               <dd class="flex flex-wrap items-center gap-1.5">

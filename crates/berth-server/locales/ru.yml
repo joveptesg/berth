@@ -183,11 +183,13 @@ storage:
   path_style_label: Адреса в стиле path
   path_style_hint: endpoint/бакет вместо бакет.endpoint. Обычно нужно для MinIO.
   delivery_label: Доставка в приложения
-  delivery_hint: Прямые ссылки снимают нагрузку с сервера. Через сервер — если телефоны не достают до бакета.
+  delivery_hint: Прямые ссылки снимают нагрузку с сервера. Через сервер — если телефоны не достают до бакета. Через CDN — быстрее всего, если у бакета есть CDN или публичный адрес.
   delivery: Доставка
   delivery_presigned: Прямые ссылки
   delivery_proxy: Через сервер
-  delivery_cdn: CDN
+  delivery_cdn: Через CDN
+  cdn_url_label: Адрес CDN
+  cdn_url_hint: Публичный адрес корня бакета или CDN перед ним (свой домен R2, Yandex Cloud CDN, CloudFront). Файлы по нему открываются без подписи; имена — sha256, их не угадать, но отзыв устройства не закрывает уже выданные ссылки.
   status: Проверка
   verified: Пройдена
   unchecked: Ещё не проверялось
@@ -299,6 +301,10 @@ errors:
   storage_bucket_required: Укажите бакет.
   storage_endpoint_invalid: Введите полный адрес, начиная с http:// или https://, и правильное название бакета.
   storage_delivery_invalid: Выберите способ доставки.
+  storage_cdn_url_required: Укажите адрес CDN.
+  storage_cdn_url_invalid: Адрес CDN должен начинаться с https:// или http:// и быть без параметров.
+  storage_cdn_unreachable: Тестовый файл не открылся по адресу CDN. Проверьте, что бакет или CDN публичные и адрес ведёт в корень бакета.
+  storage_cdn_mismatch: По адресу CDN пришёл другой файл. Адрес должен вести в корень бакета.
   storage_keys_required: Укажите оба ключа.
   storage_is_default: Хранилище по умолчанию удалить нельзя. Сначала сделайте основным другое.
   storage_in_use: "Здесь хранятся книги: его нельзя удалить или перенести."

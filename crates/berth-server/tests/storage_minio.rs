@@ -35,6 +35,7 @@ fn store(endpoint: &str, bucket: &str, secret: &str) -> ObjectBlobStore {
         bucket: bucket.into(),
         region: "us-east-1".into(),
         path_style: true,
+        cdn_url: String::new(),
     };
     storage::open(&Backend::S3(config, keys(secret)), Path::new(".")).unwrap()
 }

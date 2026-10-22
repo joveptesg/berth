@@ -1018,6 +1018,10 @@ async fn setup_checks_s3_storage_first() {
 }
 
 #[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: create, update, CDN, check, default, delete"
+)]
 async fn storage_api_crud() {
     let dir = tempfile::tempdir().unwrap();
     let state = start(dir.path()).await;
@@ -1083,6 +1087,22 @@ async fn storage_api_crud() {
     assert_eq!(updated.status, StatusCode::OK, "{}", updated.body);
     assert_eq!(updated.json()["name"], "Books");
     assert_eq!(updated.json()["delivery_mode"], "proxy");
+    let cdn = |url: &str| {
+        serde_json::json!({
+            "name": "Books", "kind": "s3", "endpoint": DEAD_ENDPOINT, "bucket": "books",
+            "delivery_mode": "cdn", "cdn_url": url,
+        })
+    };
+    let no_url = send(&state, api("PUT", &item, &token, Some(&cdn("")))).await;
+    assert_eq!(no_url.json()["detail"], "storage_cdn_url_required");
+    let with_cdn = send(
+        &state,
+        api("PUT", &item, &token, Some(&cdn("https://cdn.example.com/"))),
+    )
+    .await;
+    assert_eq!(with_cdn.status, StatusCode::OK, "{}", with_cdn.body);
+    assert_eq!(with_cdn.json()["delivery_mode"], "cdn");
+    assert_eq!(with_cdn.json()["cdn_url"], "https://cdn.example.com");
     let kind = send(
         &state,
         api(
@@ -1435,6 +1455,51 @@ async fn upload_analyse_save_and_sync() {
         manifest["size"].as_i64().unwrap(),
         book["files"][0]["size"].as_i64().unwrap() + book["files"][1]["size"].as_i64().unwrap()
     );
+
+    // A CDN copy of the bytes wins: a public URL under its address, the blob path appended.
+    let cdn = uuid::Uuid::now_v7().to_string();
+    sqlx::query(
+        "INSERT INTO storage_profiles (id, tenant_id, name, kind, config, delivery_mode, created_at)
+         SELECT $1, tenant_id, 'CDN', 's3',
+            '{\"bucket\":\"books\",\"region\":\"auto\",\"cdn_url\":\"https://cdn.example.com/b\"}',
+            'cdn', 0
+         FROM storage_profiles WHERE name = 'Local'",
+    )
+    .bind(&cdn)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    sqlx::query(
+        "INSERT INTO blob_locations (tenant_id, hash, storage_id, state, updated_at)
+         SELECT tenant_id, hash, $1, 'active', 0 FROM blob_locations WHERE hash = $2",
+    )
+    .bind(&cdn)
+    .bind(digest_of(&second))
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let link = send(
+        &state,
+        bearer_get(&format!("/v1/books/{book_id}/files/1/stream"), &token),
+    )
+    .await
+    .json();
+    let hash = digest_of(&second);
+    let public = link["url"].as_str().unwrap();
+    assert!(
+        public.starts_with("https://cdn.example.com/b/")
+            && public.ends_with(&format!(
+                "/blobs/sha256/{}/{}/{hash}",
+                &hash[..2],
+                &hash[2..4]
+            )),
+        "{public}"
+    );
+    sqlx::query("DELETE FROM blob_locations WHERE storage_id = $1")
+        .bind(&cdn)
+        .execute(&state.db)
+        .await
+        .unwrap();
 
     // Progress: last write wins by the device time corrected for its clock; resends are no-ops.
     let event = |id: &str, at: i64, position: i64| serde_json::json!({ "event_id": id, "book_id": book_id, "position_ms": position, "type": "position", "client_ts": at });
