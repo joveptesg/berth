@@ -1738,6 +1738,12 @@ async fn admin_uploads_and_edits_books() {
     )
     .await;
     assert_eq!(image.headers[header::CONTENT_TYPE], "image/png");
+    let queue = send(&state, get("/upload", Some(&session))).await;
+    assert!(
+        queue.body.contains(&format!("{book_id}&#x2f;cover?v=")),
+        "the queue shows the book's current cover: {}",
+        queue.body
+    );
     let dashboard = send(&state, get("/", Some(&session))).await;
     assert!(dashboard.body.contains(">1</dd>"), "one book");
 

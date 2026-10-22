@@ -2753,6 +2753,13 @@
           "created_at"
         ],
         "properties": {
+          "book_cover": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "The saved book's current cover hash; it can differ from the draft's."
+          },
           "book_id": {
             "type": [
               "string",

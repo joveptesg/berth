@@ -858,6 +858,8 @@ pub struct Upload {
     pub error: Option<String>,
     /// The saved book.
     pub book_id: Option<String>,
+    /// The saved book's current cover hash; it can differ from the draft's.
+    pub book_cover: Option<String>,
     /// Files in the upload.
     pub files: i64,
     /// Files stored so far.
@@ -876,6 +878,7 @@ struct UploadRow {
     draft: Option<String>,
     error: Option<String>,
     book_id: Option<String>,
+    book_cover: Option<String>,
     files: i64,
     stored: i64,
     bytes: i64,
@@ -891,6 +894,7 @@ impl From<UploadRow> for Upload {
             status: r.status,
             error: r.error,
             book_id: r.book_id,
+            book_cover: r.book_cover,
             files: r.files,
             stored: r.stored,
             bytes: r.bytes,
@@ -908,7 +912,9 @@ pub async fn get(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<Upload> {
         "SELECT u.id, u.name, u.status, u.draft, u.error, u.book_id, u.created_at,
             (SELECT COUNT(*) FROM upload_files f WHERE f.upload_id = u.id) AS files,
             (SELECT COUNT(*) FROM upload_files f WHERE f.upload_id = u.id AND f.stored) AS stored,
-            (SELECT COALESCE(SUM(size), 0) FROM upload_files f WHERE f.upload_id = u.id) AS bytes
+            (SELECT COALESCE(SUM(size), 0) FROM upload_files f WHERE f.upload_id = u.id) AS bytes,
+            (SELECT b.cover_hash FROM books b
+             WHERE b.tenant_id = u.tenant_id AND b.id = u.book_id AND b.deleted_at IS NULL) AS book_cover
          FROM uploads u WHERE u.tenant_id = $1 AND u.id = $2",
     )
     .bind(tenant_id)
@@ -928,7 +934,9 @@ pub async fn recent(db: &SqlitePool, tenant_id: &str, limit: i64) -> anyhow::Res
         "SELECT u.id, u.name, u.status, u.draft, u.error, u.book_id, u.created_at,
             (SELECT COUNT(*) FROM upload_files f WHERE f.upload_id = u.id) AS files,
             (SELECT COUNT(*) FROM upload_files f WHERE f.upload_id = u.id AND f.stored) AS stored,
-            (SELECT COALESCE(SUM(size), 0) FROM upload_files f WHERE f.upload_id = u.id) AS bytes
+            (SELECT COALESCE(SUM(size), 0) FROM upload_files f WHERE f.upload_id = u.id) AS bytes,
+            (SELECT b.cover_hash FROM books b
+             WHERE b.tenant_id = u.tenant_id AND b.id = u.book_id AND b.deleted_at IS NULL) AS book_cover
          FROM uploads u WHERE u.tenant_id = $1 ORDER BY u.created_at DESC LIMIT $2",
     )
     .bind(tenant_id)

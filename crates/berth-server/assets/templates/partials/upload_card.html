@@ -6,7 +6,9 @@
   {% if upload.status == "analyzing" %}hx-get="/upload/{{ upload.id }}" hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
   <div class="flex items-start gap-4 p-5 sm:p-6">
     <span class="w-16 shrink-0 sm:w-20">
-      {{ ui.cover("/upload/" ~ upload.id ~ "/cover" if d and d.cover_hash, (d.title if d else upload.name), "rounded-[12px] text-[22px]") }}
+      {# A saved book shows its current cover, which can differ from the draft's. #}
+      {{ ui.cover(("/book/" ~ upload.book_id ~ "/cover?v=" ~ upload.book_cover[:12]) if upload.book_id and upload.book_cover
+        else ("/upload/" ~ upload.id ~ "/cover" if d and d.cover_hash), (d.title if d else upload.name), "rounded-[12px] text-[22px]") }}
     </span>
     <div class="min-w-0 flex-1">
       <p class="truncate text-[17px] font-semibold">{{ d.title if d and upload.status == "saved" else upload.name }}</p>
