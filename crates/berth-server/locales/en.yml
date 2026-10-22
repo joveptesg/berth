@@ -228,7 +228,7 @@ book:
   delete: Delete book
   delete_confirm: Delete %{title}? Phones remove it on the next sync.
   cover_replace: Replace cover
-  cover_hint: JPEG, PNG or WebP up to 10 MB. Portrait 2:3 looks best; a square one is shown whole too.
+  cover_hint: JPEG, PNG or WebP up to 10 MB. Square looks best; a portrait one is shown whole with margins at the sides.
 
 upload:
   title: Upload books
@@ -260,6 +260,9 @@ errors:
   web_login_invalid: No such code. Check it on the sign-in page.
   web_login_expired: The code expired. Get a new one on the sign-in page.
   web_login_used: This code was already used.
+  restore_not_berth: This is not a Berth backup.
+  restore_newer: The backup was made by a newer server version. Update the server first.
+  restore_failed: The database could not be restored. The current database is unchanged.
   name_required: Enter a server name.
   name_too_long: The name is too long (64 characters at most).
   lan_url_invalid: Enter a full address starting with http:// or https://.
@@ -316,3 +319,16 @@ backup:
   auto_hint: The server saves a copy before every database schema update. The last %{keep} are kept.
   auto_empty: No automatic backups yet — the first appears with the first server update.
   download_one: Download
+  restore_one: Restore
+  restore_title: Restore from a file
+  restore_hint: Upload a backup downloaded from this server before. The current database is saved to the automatic backups first, so a restore can be undone the same way. You may have to sign in again afterwards.
+  restore_submit: Restore
+  restore_confirm: Replace the whole database with the backup? The current state is saved to the automatic backups.
+  restored: The database was restored from the backup. The state before the restore is in the automatic backups.
+  restore_section: Restore
+  restore_pick: Choose a backup file (.sqlite)
+  restore_auto_title: Restore an automatic backup
+  restore_auto_hint: Copies the server made itself before updates and restores.
+  col_date: Date
+  col_size: Size
+  col_actions: Actions

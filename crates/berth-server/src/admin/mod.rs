@@ -71,8 +71,17 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             get(pages::settings_password_page).post(pages::settings_password),
         )
         .route("/settings/backup", get(pages::settings_backup_page))
+        .route("/settings/restore", get(pages::settings_restore_page))
         .route("/settings/backup/download", get(pages::backup_download))
+        .route(
+            "/settings/backup/restore",
+            post(pages::backup_restore_upload).layer(DefaultBodyLimit::disable()),
+        )
         .route("/settings/backup/{name}", get(pages::backup_file))
+        .route(
+            "/settings/backup/{name}/restore",
+            post(pages::backup_restore),
+        )
         .route("/users", get(access::users_page).post(access::users_create))
         .route("/users/{id}/connect", post(access::user_connect))
         .route("/users/{user}/pairing/{id}", get(access::pairing_status))

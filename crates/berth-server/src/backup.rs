@@ -68,6 +68,155 @@ pub async fn before_migrations(
     Ok(Some(target))
 }
 
+/// Why a file cannot be restored: a stable code the admin translates as `errors.<code>`.
+pub type RestoreError = &'static str;
+
+/// Restores the database from the backup at `source`, while the server runs.
+///
+/// The backup is copied into `<data_dir>/tmp`, checked to be a Berth database not newer than
+/// this server, and brought to the current schema there. The current database is backed up
+/// first (it shows among the automatic backups), then every table is replaced from the copy
+/// in one transaction: either all of the backup is in place or nothing changed. Sessions and
+/// devices come back as they were in the backup, so browsers may have to sign in again.
+///
+/// # Errors
+/// `restore_not_berth` (not a Berth database), `restore_newer` (made by a newer server) or
+/// `restore_failed`.
+pub async fn restore(db: &SqlitePool, data_dir: &Path, source: &Path) -> Result<(), RestoreError> {
+    let tmp = data_dir.join("tmp");
+    std::fs::create_dir_all(&tmp).map_err(|_| "restore_failed")?;
+    let copy = tmp.join(format!("restore-{}.sqlite", now_ms()));
+    let result = restore_from_copy(db, data_dir, source, &copy).await;
+    for suffix in ["", "-wal", "-shm"] {
+        let _ = std::fs::remove_file(format!("{}{suffix}", copy.display()));
+    }
+    result
+}
+
+async fn restore_from_copy(
+    db: &SqlitePool,
+    data_dir: &Path,
+    source: &Path,
+    copy: &Path,
+) -> Result<(), RestoreError> {
+    let header = std::fs::read(source)
+        .ok()
+        .and_then(|b| b.get(..16).map(<[u8]>::to_vec));
+    if header.as_deref() != Some(b"SQLite format 3\0".as_slice()) {
+        return Err("restore_not_berth");
+    }
+    std::fs::copy(source, copy).map_err(|_| "restore_failed")?;
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(copy)
+        .foreign_keys(false);
+    let backup = sqlx::SqlitePool::connect_with(options)
+        .await
+        .map_err(|_| "restore_not_berth")?;
+    let migrator = sqlx::migrate!();
+    let applied: Vec<i64> =
+        sqlx::query_scalar("SELECT version FROM _sqlx_migrations WHERE success = TRUE")
+            .fetch_all(&backup)
+            .await
+            .map_err(|_| "restore_not_berth")?;
+    let has_tenants: bool = sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM sqlite_master WHERE type = 'table' AND name = 'tenants')",
+    )
+    .fetch_one(&backup)
+    .await
+    .map_err(|_| "restore_not_berth")?;
+    if applied.is_empty() || !has_tenants {
+        return Err("restore_not_berth");
+    }
+    if applied
+        .iter()
+        .any(|v| !migrator.iter().any(|m| m.version == *v))
+    {
+        return Err("restore_newer");
+    }
+    migrator.run(&backup).await.map_err(|err| {
+        tracing::warn!(error = %err, "cannot bring the backup to the current schema");
+        "restore_failed"
+    })?;
+    backup.close().await;
+
+    // The current state is kept: a wrong restore can be undone the same way.
+    let dir = data_dir.join(DIR);
+    std::fs::create_dir_all(&dir).map_err(|_| "restore_failed")?;
+    snapshot(db, &dir.join(format!("{AUTO_PREFIX}{}{EXT}", now_ms())))
+        .await
+        .map_err(|_| "restore_failed")?;
+
+    replace_tables(db, copy).await.map_err(|err| {
+        tracing::warn!(error = %err, "restore failed");
+        "restore_failed"
+    })?;
+    tracing::info!(source = %source.display(), "restored the database from a backup");
+    Ok(())
+}
+
+/// Replaces every table of the live database with the same table of `copy` (same schema).
+async fn replace_tables(db: &SqlitePool, copy: &Path) -> anyhow::Result<()> {
+    use sqlx::{AssertSqlSafe, Row};
+
+    let mut conn = db.acquire().await?;
+    sqlx::query("PRAGMA foreign_keys = OFF")
+        .execute(&mut *conn)
+        .await?;
+    sqlx::query("ATTACH DATABASE $1 AS restored")
+        .bind(copy.to_string_lossy().into_owned())
+        .execute(&mut *conn)
+        .await?;
+    let result = async {
+        let tables: Vec<String> = sqlx::query_scalar(
+            "SELECT name FROM main.sqlite_master
+             WHERE type = 'table' AND name NOT LIKE 'sqlite_%' AND name <> '_sqlx_migrations'",
+        )
+        .fetch_all(&mut *conn)
+        .await?;
+        sqlx::query("BEGIN IMMEDIATE").execute(&mut *conn).await?;
+        for table in &tables {
+            // Names come from sqlite_master, not from the user; quoted all the same.
+            let quoted = format!("\"{}\"", table.replace('"', "\"\""));
+            let columns: Vec<String> = sqlx::query(AssertSqlSafe(format!(
+                "SELECT name FROM pragma_table_info('{}', 'main')",
+                table.replace('\'', "''")
+            )))
+            .fetch_all(&mut *conn)
+            .await?
+            .iter()
+            .map(|row| format!("\"{}\"", row.get::<String, _>(0).replace('"', "\"\"")))
+            .collect();
+            let columns = columns.join(", ");
+            sqlx::query(AssertSqlSafe(format!("DELETE FROM main.{quoted}")))
+                .execute(&mut *conn)
+                .await?;
+            sqlx::query(AssertSqlSafe(format!(
+                "INSERT INTO main.{quoted} ({columns}) SELECT {columns} FROM restored.{quoted}"
+            )))
+            .execute(&mut *conn)
+            .await?;
+        }
+        let broken: Vec<String> =
+            sqlx::query_scalar("SELECT \"table\" FROM pragma_foreign_key_check")
+                .fetch_all(&mut *conn)
+                .await?;
+        anyhow::ensure!(broken.is_empty(), "foreign keys broken in {broken:?}");
+        sqlx::query("COMMIT").execute(&mut *conn).await?;
+        anyhow::Ok(())
+    }
+    .await;
+    if result.is_err() {
+        let _ = sqlx::query("ROLLBACK").execute(&mut *conn).await;
+    }
+    let _ = sqlx::query("DETACH DATABASE restored")
+        .execute(&mut *conn)
+        .await;
+    let _ = sqlx::query("PRAGMA foreign_keys = ON")
+        .execute(&mut *conn)
+        .await;
+    result
+}
+
 /// Automatic backups, newest first.
 #[must_use]
 pub fn list(data_dir: &Path) -> Vec<Backup> {

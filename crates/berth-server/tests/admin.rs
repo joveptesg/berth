@@ -1896,3 +1896,104 @@ async fn admin_signs_in_with_the_phone() {
         "web_login_invalid"
     );
 }
+
+#[tokio::test]
+async fn database_restores_from_a_backup() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let data = dir.path().join("data");
+    let backup = berth_server::backup::before_migrations(&state.db, &data, true)
+        .await
+        .unwrap()
+        .unwrap();
+    let name = backup.file_name().unwrap().to_str().unwrap().to_owned();
+
+    // A change after the backup...
+    let renamed = send(
+        &state,
+        post(
+            "/settings",
+            Some(&session),
+            &[("name", "Renamed shelf"), ("lan_url", ""), ("wan_url", "")],
+        ),
+    )
+    .await;
+    assert_eq!(renamed.status, StatusCode::OK, "{}", renamed.body);
+    assert_eq!(state.config.load().name, "Renamed shelf");
+
+    // ...is undone by restoring it; the state before the restore is kept.
+    let restored = send(
+        &state,
+        post(
+            &format!("/settings/backup/{name}/restore"),
+            Some(&session),
+            &[],
+        ),
+    )
+    .await;
+    assert_eq!(
+        restored.location(),
+        Some("/settings/restore?restored=true"),
+        "{}",
+        restored.body
+    );
+    assert_eq!(state.config.load().name, "Family shelf");
+    assert_eq!(berth_server::backup::list(&data).len(), 2);
+    let page = send(
+        &state,
+        get("/settings/restore?restored=true", Some(&session)),
+    )
+    .await;
+    assert!(
+        page.body.contains("Family shelf"),
+        "the session survived the restore"
+    );
+
+    // An uploaded file must be a Berth database not newer than the server.
+    let upload = |bytes: &[u8]| {
+        let mut body = b"--b\r\nContent-Disposition: form-data; name=\"backup\"; filename=\"x.sqlite\"\r\n\r\n".to_vec();
+        body.extend_from_slice(bytes);
+        body.extend_from_slice(b"\r\n--b--\r\n");
+        browser(
+            "POST",
+            "/settings/backup/restore",
+            &session,
+            "multipart/form-data; boundary=b",
+            body,
+        )
+    };
+    let junk = send(&state, upload(b"not a database")).await;
+    assert!(junk.body.contains("alert-error"), "{}", junk.body);
+    let newer = data.join("newer.sqlite");
+    berth_server::backup::snapshot(&state.db, &newer)
+        .await
+        .unwrap();
+    let pool = sqlx::SqlitePool::connect(&format!("sqlite:{}", newer.display()))
+        .await
+        .unwrap();
+    sqlx::query(
+        "INSERT INTO _sqlx_migrations (version, description, installed_on, success, checksum, execution_time)
+         VALUES (99999, 'future', CURRENT_TIMESTAMP, TRUE, x'00', 0)",
+    )
+    .execute(&pool)
+    .await
+    .unwrap();
+    pool.close().await;
+    let refused = send(&state, upload(&std::fs::read(&newer).unwrap())).await;
+    assert!(
+        refused
+            .body
+            .contains(&berth_server::backup::list(&data)[0].name)
+            && refused.body.contains("alert-error"),
+        "{}",
+        refused.body
+    );
+    let good = send(&state, upload(&std::fs::read(&backup).unwrap())).await;
+    assert_eq!(
+        good.location(),
+        Some("/settings/restore?restored=true"),
+        "{}",
+        good.body
+    );
+}

@@ -1,0 +1,33 @@
+{% import "partials/ui.html" as ui %}
+<section id="settings-restore" class="flex flex-col gap-6">
+  {% if restored %}<p class="alert-ok" role="status">{{ t('backup.restored') }}</p>{% endif %}
+  {% if restore_error %}<p class="alert-error" role="alert">{{ t('errors.' ~ restore_error) }}</p>{% endif %}
+
+  <div class="card flex flex-col gap-4">
+    <div>
+      <h2 class="text-[20px] font-bold tracking-[-0.01em]">{{ t('backup.restore_title') }}</h2>
+      <p class="mt-1 text-[15px] text-text-2">{{ t('backup.restore_hint') }}</p>
+    </div>
+    <form method="post" action="/settings/backup/restore" enctype="multipart/form-data"
+      hx-post="/settings/backup/restore" hx-encoding="multipart/form-data" hx-target="#settings-restore" hx-swap="outerHTML"
+      hx-confirm="{{ t('backup.restore_confirm') }}" x-data="{ name: '' }"
+      class="flex flex-col gap-3 sm:flex-row sm:items-center">
+      <label class="flex h-[52px] min-w-0 flex-1 cursor-pointer items-center gap-3 rounded-[14px] border border-dashed border-line bg-surface-2 px-4 transition-colors hover:border-accent">
+        {{ ui.icon("upload", "size-[18px] shrink-0 text-text-3") }}
+        <span class="truncate text-[15px]" :class="name ? 'text-text' : 'text-text-3'"
+          x-text="name || '{{ t('backup.restore_pick') }}'">{{ t('backup.restore_pick') }}</span>
+        <input type="file" name="backup" accept=".sqlite,.db,application/vnd.sqlite3" required class="sr-only"
+          @change="name = $event.target.files[0]?.name || ''">
+      </label>
+      <button type="submit" class="btn btn-danger shrink-0" :disabled="!name">{{ t('backup.restore_submit') }}</button>
+    </form>
+  </div>
+
+  <div class="card flex flex-col gap-4">
+    <div>
+      <h2 class="text-[20px] font-bold tracking-[-0.01em]">{{ t('backup.restore_auto_title') }}</h2>
+      <p class="mt-1 text-[15px] text-text-2">{{ t('backup.restore_auto_hint') }}</p>
+    </div>
+    {% with restore_actions = true %}{% include "partials/backup_table.html" %}{% endwith %}
+  </div>
+</section>

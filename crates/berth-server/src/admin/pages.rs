@@ -376,10 +376,6 @@ fn settings_tab(state: &AppState, tab: &str) -> Page {
     )
 }
 
-pub(crate) async fn settings_backup_page(State(state): State<AppState>) -> Page {
-    settings_tab(&state, "backup")
-}
-
 /// A fresh copy of the database as a download.
 pub(crate) async fn backup_download(State(state): State<AppState>) -> Page {
     let tmp = state.config.load().data_dir.join("tmp");
@@ -405,6 +401,123 @@ pub(crate) async fn backup_file(
     Ok(attachment(&name, bytes))
 }
 
+#[derive(Deserialize)]
+pub(crate) struct RestoredQuery {
+    #[serde(default)]
+    restored: bool,
+}
+
+pub(crate) async fn settings_backup_page(State(state): State<AppState>) -> Page {
+    settings_tab(&state, "backup")
+}
+
+/// The restore tab, with the result of a restore.
+pub(crate) async fn settings_restore_page(
+    State(state): State<AppState>,
+    Query(query): Query<RestoredQuery>,
+) -> Page {
+    if !query.restored {
+        return settings_tab(&state, "restore");
+    }
+    let backups = backup::list(&state.config.load().data_dir);
+    render(
+        &state,
+        "settings.html",
+        context! {
+            ..shell(&state, "settings"),
+            ..context! {
+                tab => "restore", settings => current_settings(&state), locked => locked(&state),
+                backups => Value::from(minijinja::value::Serde(backups)), keep => backup::KEEP,
+                restored => true,
+            },
+        },
+    )
+}
+
+/// Restores the database from an automatic backup.
+pub(crate) async fn backup_restore(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Page {
+    let data_dir = state.config.load().data_dir.clone();
+    let path = backup::path_of(&data_dir, &name).ok_or(BerthError::NotFound)?;
+    restored(
+        &state,
+        &headers,
+        backup::restore(&state.db, &data_dir, &path).await,
+    )
+    .await
+}
+
+/// Restores the database from an uploaded backup file.
+pub(crate) async fn backup_restore_upload(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    mut multipart: axum::extract::Multipart,
+) -> Page {
+    let data_dir = state.config.load().data_dir.clone();
+    let tmp = data_dir.join("tmp");
+    tokio::fs::create_dir_all(&tmp)
+        .await
+        .map_err(anyhow::Error::from)?;
+    let upload = tmp.join(format!("upload-{}.sqlite", now_ms()));
+    let mut received = false;
+    while let Ok(Some(mut field)) = multipart.next_field().await {
+        if field.name() != Some("backup") {
+            continue;
+        }
+        let mut file = tokio::fs::File::create(&upload)
+            .await
+            .map_err(anyhow::Error::from)?;
+        while let Ok(Some(chunk)) = field.chunk().await {
+            tokio::io::AsyncWriteExt::write_all(&mut file, &chunk)
+                .await
+                .map_err(anyhow::Error::from)?;
+            received = true;
+        }
+    }
+    let result = if received {
+        backup::restore(&state.db, &data_dir, &upload).await
+    } else {
+        Err("restore_not_berth")
+    };
+    let _ = tokio::fs::remove_file(&upload).await;
+    restored(&state, &headers, result).await
+}
+
+/// After a restore: settings come from the restored database; the page shows the outcome
+/// (the browser may have to sign in again: sessions are the backup's).
+async fn restored(
+    state: &AppState,
+    headers: &HeaderMap,
+    result: Result<(), backup::RestoreError>,
+) -> Page {
+    match result {
+        Ok(()) => {
+            settings::reload(state).await?;
+            Ok(redirect(headers, "/settings/restore?restored=true"))
+        }
+        Err(code) => {
+            let backups = backup::list(&state.config.load().data_dir);
+            render_form(
+                state,
+                headers,
+                "settings.html",
+                "partials/settings_restore.html",
+                context! {
+                    ..shell(state, "settings"),
+                    ..context! {
+                        tab => "restore", settings => current_settings(state),
+                        locked => locked(state),
+                        backups => Value::from(minijinja::value::Serde(backups)),
+                        keep => backup::KEEP, restore_error => code,
+                    },
+                },
+            )
+        }
+    }
+}
 fn attachment(name: &str, bytes: Vec<u8>) -> Response {
     (
         [

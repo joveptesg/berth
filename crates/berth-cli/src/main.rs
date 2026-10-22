@@ -56,6 +56,14 @@ enum AdminCommand {
         #[command(flatten)]
         config: ConfigArg,
     },
+    /// Replace the database with a backup (a downloaded one or one of `<data_dir>/backups`).
+    /// The current database is saved to the automatic backups first. Stop the server before.
+    Restore {
+        #[command(flatten)]
+        config: ConfigArg,
+        /// Backup file (`.sqlite`).
+        file: PathBuf,
+    },
 }
 
 #[tokio::main]
@@ -127,6 +135,18 @@ async fn admin(command: AdminCommand) -> anyhow::Result<()> {
                 .await
                 .map_err(|e| anyhow::anyhow!("{e}"))?;
             println!("Password changed; all admin browsers were signed out.");
+        }
+        AdminCommand::Restore { config, file } => {
+            let state = berth_server::bootstrap(config.config.as_deref()).await?;
+            let data_dir = state.config.load().data_dir.clone();
+            berth_server::backup::restore(&state.db, &data_dir, &file)
+                .await
+                .map_err(|code| anyhow::anyhow!("cannot restore {}: {code}", file.display()))?;
+            println!(
+                "Restored from {}. The previous database is in {}.",
+                file.display(),
+                data_dir.join(berth_server::backup::DIR).display()
+            );
         }
     }
     Ok(())

@@ -1,6 +1,6 @@
 //! S3 storage against a real `MinIO` in Docker (testcontainers): blob I/O, the connection
 //! check and presigned URLs, including a presigned PUT that must reject foreign bytes
-//! (design doc §22.A5). Skipped with a message when Docker is not running.
+//! (design doc §22.A5). Skipped with a message when `MinIO` cannot start (no Docker or no image).
 
 use std::{
     path::Path,
@@ -75,7 +75,9 @@ async fn s3_store_on_minio() {
     let container = match MinIO::default().start().await {
         Ok(container) => container,
         Err(err) => {
-            eprintln!("skipped: Docker is not running ({err})");
+            eprintln!(
+                "skipped: MinIO did not start (no Docker, or the image cannot be pulled): {err}"
+            );
             return;
         }
     };
