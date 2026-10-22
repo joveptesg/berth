@@ -8,7 +8,10 @@ use serde_json::Value;
 use sqlx::SqlitePool;
 use subtle::ConstantTimeEq;
 
-use super::{auth, random_token, settings};
+use super::{
+    auth, random_token, settings,
+    storage::{self, ProfileInput},
+};
 use crate::{AppState, db, db::now_ms};
 
 /// One-time token that guards `/setup` until the server is set up (design doc §22.A2).
@@ -64,20 +67,24 @@ pub async fn is_configured(db: &SqlitePool) -> anyhow::Result<bool> {
 }
 
 /// Creates the tenant, its owner with the password, the default access policy, the server
-/// name setting and the default local storage profile (`<data_dir>/blobs`) in one transaction.
+/// name setting and the default storage profile in one transaction. The storage is checked
+/// (a probe is written, read and deleted) before anything is created.
 ///
 /// # Errors
-/// `Validation` for a bad name or password, `Conflict("already_set_up")` when a tenant exists.
+/// `Validation` for a bad name, password or storage (including a failed check),
+/// `Conflict("already_set_up")` when a tenant exists.
 pub async fn create_owner(
     state: &AppState,
     name: &str,
     password: &str,
     confirm: &str,
+    storage: &ProfileInput,
 ) -> Result<Owner> {
     let name = settings::validate_name(name)?;
     auth::validate_new_password(password, confirm)?;
-    let hash = auth::hash_password(password.to_owned()).await?;
     let tenant_id = uuid::Uuid::now_v7().to_string();
+    let first_storage = storage::prepare_first(state, &tenant_id, storage).await?;
+    let hash = auth::hash_password(password.to_owned()).await?;
     let user_id = uuid::Uuid::now_v7().to_string();
     let now = now_ms();
 
@@ -118,16 +125,7 @@ pub async fn create_owner(
         .execute(&mut *tx)
         .await
         .context("insert policy")?;
-    sqlx::query(
-        "INSERT INTO storage_profiles (id, tenant_id, name, kind, config, delivery_mode, created_at)
-         VALUES ($1, $2, 'local', 'local', '{\"path\":\"blobs\"}', 'proxy', $3)",
-    )
-    .bind(uuid::Uuid::now_v7().to_string())
-    .bind(&tenant_id)
-    .bind(now)
-    .execute(&mut *tx)
-    .await
-    .context("insert storage profile")?;
+    storage::insert_first(&mut tx, &state.secret, &tenant_id, &first_storage).await?;
     if !settings::locked(state).name {
         db::put_server_setting(&mut tx, "name", Some(&Value::String(name)))
             .await

@@ -12,6 +12,7 @@ nav:
   dashboard: Dashboard
   users: Users
   devices: Devices
+  storage: Storage
   settings: Settings
   logout: Sign out
   menu: Menu
@@ -24,17 +25,18 @@ nav:
 
 setup:
   title: Set up the server
-  subtitle: Three steps and Berth is ready for your family's audiobooks.
+  subtitle: Four steps and Berth is ready for your family's audiobooks.
   step_token: Setup link
   step_token_done: Opened with the token from the server log
   step_name: Server name
+  step_storage: Storage
+  storage_hint: Where audiobook files are kept. You can add other storage and switch to it later.
   step_password: Admin password
   name_label: Server name
   name_hint: Shown in the app when someone connects.
   password_label: Password
   confirm_label: Repeat password
   password_hint: At least %{min} characters. Reset it later with berth admin reset-password on the server.
-  storage_note: Books are stored on this server in the data folder. Other storage arrives with storage profiles.
   submit: Finish setup
   locked: Set in berth.toml or environment
 
@@ -115,6 +117,52 @@ devices:
   revoke: Revoke
   revoke_confirm: Revoke %{name}? The app on it signs out and deletes its downloads and library.
 
+storage:
+  title: Storage
+  subtitle: Where audiobook files are kept. New books go to the default storage.
+  add_title: Add storage
+  edit_title: Edit storage
+  add_hint: "A folder on this server or any S3-compatible bucket: AWS, Cloudflare R2, Backblaze B2, MinIO, Yandex Object Storage."
+  add_submit: Add storage
+  kind_label: Type
+  kind_local: Folder on the server
+  kind_local_hint: Files are kept next to Berth and streamed through it.
+  kind_s3: S3 bucket
+  kind_s3_hint: AWS, R2, B2, MinIO, Yandex and other S3-compatible storage.
+  name_label: Name
+  name_placeholder: e.g. Home disk
+  path_label: Folder
+  path_hint: "Absolute path, or relative to the data folder:"
+  endpoint_label: Endpoint
+  endpoint_hint: Leave empty for AWS S3.
+  bucket_label: Bucket
+  region_label: Region
+  region_hint: auto for Cloudflare R2; empty means us-east-1.
+  access_key_label: Access key ID
+  secret_key_label: Secret access key
+  keys_hint: Stored encrypted with the server key (secret.key) and never shown again.
+  keys_keep_hint: Leave both empty to keep the saved keys.
+  keys_saved: saved
+  path_style_label: Path-style addresses
+  path_style_hint: endpoint/bucket instead of bucket.endpoint. Usually needed for MinIO.
+  delivery_label: Delivery to apps
+  delivery_hint: Direct links take the load off the server. Through the server works when phones cannot reach the bucket.
+  delivery: Delivery
+  delivery_presigned: Direct links
+  delivery_proxy: Through the server
+  delivery_cdn: CDN
+  status: Check
+  verified: Passed
+  unchecked: Not checked yet
+  default: Default
+  verify: Check connection
+  verifying: Checking…
+  make_default: Make default
+  edit: Edit
+  delete: Delete
+  delete_confirm: Delete %{name}? Only the profile is removed; the files stay where they are.
+  footnote: The check writes, reads back and deletes a small test file.
+
 errors:
   name_required: Enter a server name.
   name_too_long: The name is too long (64 characters at most).
@@ -125,3 +173,21 @@ errors:
   password_wrong: Wrong password.
   user_name_required: Enter a name.
   user_name_too_long: The name is too long (64 characters at most).
+  storage_name_required: Enter a name.
+  storage_name_too_long: The name is too long (64 characters at most).
+  storage_name_taken: Storage with this name already exists.
+  storage_kind_invalid: Choose a folder or an S3 bucket.
+  storage_path_required: Enter a folder.
+  storage_bucket_required: Enter a bucket name.
+  storage_endpoint_invalid: Enter a full address starting with http:// or https://, and a valid bucket name.
+  storage_delivery_invalid: Choose how files are delivered.
+  storage_keys_required: Enter both keys.
+  storage_is_default: The default storage cannot be deleted. Make another one the default first.
+  storage_in_use: "Books are stored here: it cannot be deleted or moved."
+  storage_auth_failed: The keys were not accepted. Check the access key ID and the secret key.
+  storage_access_denied: "Access denied: these keys cannot write to the bucket."
+  storage_bucket_not_found: Bucket not found. Check its name, the region and the address.
+  storage_unreachable: The storage does not respond. Check the address and the network.
+  storage_mismatch: "The test file came back different: the storage corrupts data."
+  storage_local_unwritable: Berth cannot write to this folder. Check the path and permissions.
+  storage_failed: The check failed. Details are in the server log.

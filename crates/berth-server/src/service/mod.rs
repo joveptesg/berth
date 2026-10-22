@@ -8,6 +8,7 @@ pub mod devices;
 pub mod pairing;
 pub mod settings;
 pub mod setup;
+pub mod storage;
 pub mod tokens;
 pub mod users;
 

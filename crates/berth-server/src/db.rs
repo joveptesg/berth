@@ -100,6 +100,48 @@ pub(crate) async fn put_server_setting(
     Ok(())
 }
 
+fn tenant_scope(tenant_id: &str) -> String {
+    format!("tenant:{tenant_id}")
+}
+
+/// A tenant-scope plain setting (JSON).
+pub(crate) async fn tenant_setting(
+    conn: impl sqlx::SqliteExecutor<'_>,
+    tenant_id: &str,
+    key: &str,
+) -> anyhow::Result<Option<Value>> {
+    let value: Option<String> = sqlx::query_scalar(
+        "SELECT value FROM settings WHERE scope = $1 AND key = $2 AND value IS NOT NULL",
+    )
+    .bind(tenant_scope(tenant_id))
+    .bind(key)
+    .fetch_optional(conn)
+    .await?;
+    value
+        .map(|v| serde_json::from_str(&v).with_context(|| format!("corrupt setting {key}")))
+        .transpose()
+}
+
+/// Writes a tenant-scope plain setting.
+pub(crate) async fn put_tenant_setting(
+    conn: &mut SqliteConnection,
+    tenant_id: &str,
+    key: &str,
+    value: &Value,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "INSERT INTO settings (scope, key, value, updated_at) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (scope, key) DO UPDATE SET value = excluded.value, updated_at = excluded.updated_at",
+    )
+    .bind(tenant_scope(tenant_id))
+    .bind(key)
+    .bind(value.to_string())
+    .bind(now_ms())
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 pub(crate) fn now_ms() -> i64 {
     let since_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

@@ -4,10 +4,12 @@ mod admin;
 pub mod api;
 pub mod cleanup;
 pub mod config;
+mod crypto;
 mod db;
 pub mod error;
 mod secret;
 pub mod service;
+pub mod storage;
 
 use std::{path::Path, sync::Arc};
 
@@ -63,6 +65,8 @@ impl AppState {
 /// # Errors
 /// Fails on invalid configuration, I/O or database errors.
 pub async fn bootstrap(config_file: Option<&Path>) -> anyhow::Result<AppState> {
+    // TLS for S3 uses ring; set once per process (a second call keeps the first provider).
+    let _ = rustls::crypto::ring::default_provider().install_default();
     if let Some(path) = config_file {
         anyhow::ensure!(path.is_file(), "config file {} not found", path.display());
     }

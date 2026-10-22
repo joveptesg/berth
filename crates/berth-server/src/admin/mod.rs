@@ -8,6 +8,7 @@ mod i18n;
 mod pages;
 mod session;
 mod static_files;
+mod storage;
 pub(crate) mod templates;
 
 use std::sync::Arc;
@@ -63,6 +64,11 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         .route("/users/{user}/pairing/{id}", get(access::pairing_status))
         .route("/devices", get(access::devices_page))
         .route("/devices/{id}/revoke", post(access::devices_revoke))
+        .route("/storage", get(storage::page).post(storage::create))
+        .route("/storage/{id}", post(storage::update))
+        .route("/storage/{id}/verify", post(storage::verify))
+        .route("/storage/{id}/default", post(storage::make_default))
+        .route("/storage/{id}/delete", post(storage::delete))
         .layer(middleware::from_fn_with_state(state, session::require));
 
     public

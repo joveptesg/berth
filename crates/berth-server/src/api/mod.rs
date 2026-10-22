@@ -4,6 +4,7 @@ mod admin;
 mod auth;
 mod me;
 mod server_info;
+mod storage;
 
 use std::sync::Arc;
 
@@ -81,6 +82,17 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(auth::revoke))
         .routes(routes!(me::me))
         .routes(routes!(admin::create_pairing_token))
+        .routes(routes!(
+            storage::list_storage_profiles,
+            storage::create_storage_profile
+        ))
+        .routes(routes!(
+            storage::get_storage_profile,
+            storage::update_storage_profile,
+            storage::delete_storage_profile
+        ))
+        .routes(routes!(storage::verify_storage_profile))
+        .routes(routes!(storage::default_storage_profile))
 }
 
 /// CORS for browser clients of the API (a web build of the app): origins from
@@ -101,7 +113,7 @@ fn cors(config: Arc<ArcSwap<Config>>) -> CorsLayer {
                     .iter()
                     .any(|allowed| allowed.trim_end_matches('/') == origin)
         }))
-        .allow_methods([Method::GET, Method::POST])
+        .allow_methods([Method::GET, Method::POST, Method::PUT, Method::DELETE])
         .allow_headers([header::AUTHORIZATION, header::CONTENT_TYPE])
 }
 

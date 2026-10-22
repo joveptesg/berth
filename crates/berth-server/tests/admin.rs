@@ -1,5 +1,6 @@
 //! Integration tests of the web admin (setup wizard, login, sessions, CSRF, settings, users,
-//! connect, devices) and of the device API it drives (pairing, refresh, revoke).
+//! connect, devices, storage) and of the device API it drives (pairing, refresh, revoke,
+//! storage profiles).
 
 use std::{net::SocketAddr, path::Path};
 
@@ -733,4 +734,396 @@ fn now() -> i64 {
             .as_millis(),
     )
     .unwrap()
+}
+
+// ── Storage ──────────────────────────────────────────────
+
+/// Nothing listens on port 1: an S3 endpoint that fails the check fast.
+const DEAD_ENDPOINT: &str = "http://127.0.0.1:1";
+
+fn api(method: &str, uri: &str, token: &str, body: Option<&serde_json::Value>) -> Request<Body> {
+    let req = Request::builder()
+        .method(method)
+        .uri(uri)
+        .header(header::AUTHORIZATION, format!("Bearer {token}"))
+        .header(header::CONTENT_TYPE, "application/json");
+    req.body(body.map_or_else(Body::empty, |b| Body::from(b.to_string())))
+        .unwrap()
+}
+
+async fn storage_id(state: &AppState, name: &str) -> String {
+    sqlx::query_scalar("SELECT id FROM storage_profiles WHERE name = $1 AND deleted_at IS NULL")
+        .bind(name)
+        .fetch_one(&state.db)
+        .await
+        .unwrap()
+}
+
+async fn default_storage(state: &AppState) -> String {
+    let value: String =
+        sqlx::query_scalar("SELECT value FROM settings WHERE key = 'default_storage_id'")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+    serde_json::from_str(&value).unwrap()
+}
+
+/// A phone of the owner with the `admin` scope granted, and its access token.
+async fn admin_token(state: &AppState) -> String {
+    let tenant_id = tenant(state).await;
+    let owner: String = sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let code = pairing::create(&state.db, &tenant_id, &owner, now())
+        .await
+        .unwrap();
+    let paired = send(
+        state,
+        json(
+            "/v1/auth/pair",
+            None,
+            &serde_json::json!({ "pairing_token": code.code, "device_name": "Tablet", "platform": "android" }),
+        ),
+    )
+    .await;
+    let tokens = paired.json();
+    let token = tokens["access_token"].as_str().unwrap().to_owned();
+    // Listen-only until the scope is granted.
+    let forbidden = send(state, bearer_get("/v1/admin/storage-profiles", &token)).await;
+    assert_eq!(forbidden.problem(), "forbidden");
+    let device: String = sqlx::query_scalar("SELECT id FROM devices WHERE name = 'Tablet'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    sqlx::query("INSERT INTO device_scopes (tenant_id, device_id, scope) VALUES ($1, $2, 'admin')")
+        .bind(&tenant_id)
+        .bind(&device)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    token
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one admin journey: add, edit, check, default, delete"
+)]
+async fn storage_page_manages_profiles() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let data_dir = dir.path().join("data");
+
+    // Setup made a checked local default in <data_dir>/blobs.
+    let local = storage_id(&state, "Local").await;
+    assert_eq!(default_storage(&state).await, local);
+    assert!(data_dir.join("blobs").is_dir());
+    let page = send(&state, get("/storage", Some(&session))).await;
+    assert_eq!(page.status, StatusCode::OK);
+    assert!(page.body.contains("Passed"), "{}", page.body);
+    assert!(page.body.contains(&format!("/storage/{local}/verify")));
+    assert!(
+        !page.body.contains(&format!("/storage/{local}/delete")),
+        "the default cannot be deleted"
+    );
+
+    // A rejected form reopens the add dialog with the error.
+    let empty = send(
+        &state,
+        post(
+            "/storage",
+            Some(&session),
+            &[("kind", "local"), ("name", " "), ("path", "x")],
+        ),
+    )
+    .await;
+    assert!(empty.body.contains("role=\"alert\""), "{}", empty.body);
+    assert!(empty.body.contains("x-init=\"$el.showModal()\""));
+    assert!(!empty.body.contains("<html"));
+
+    // A new folder is created and checked right away.
+    let added = send(
+        &state,
+        post(
+            "/storage",
+            Some(&session),
+            &[("kind", "local"), ("name", "Archive"), ("path", "archive")],
+        ),
+    )
+    .await;
+    assert!(
+        !added.body.contains("x-init=\"$el.showModal()\""),
+        "{}",
+        added.body
+    );
+    assert!(data_dir.join("archive").is_dir());
+    let archive = storage_id(&state, "Archive").await;
+    let duplicate = send(
+        &state,
+        post(
+            "/storage",
+            Some(&session),
+            &[("kind", "local"), ("name", "Archive"), ("path", "other")],
+        ),
+    )
+    .await;
+    assert!(
+        duplicate.body.contains("already exists"),
+        "{}",
+        duplicate.body
+    );
+
+    // S3 keys are stored encrypted, never shown, and kept when the edit leaves them empty.
+    let s3 = send(
+        &state,
+        post(
+            "/storage",
+            Some(&session),
+            &[
+                ("kind", "s3"),
+                ("name", "Bucket"),
+                ("endpoint", DEAD_ENDPOINT),
+                ("bucket", "books"),
+                ("access_key_id", "AKIDEXAMPLE"),
+                ("secret_access_key", "very-secret-key"),
+            ],
+        ),
+    )
+    .await;
+    assert!(s3.body.contains("does not respond"), "{}", s3.body);
+    assert!(!s3.body.contains("very-secret-key") && !s3.body.contains("AKIDEXAMPLE"));
+    let bucket = storage_id(&state, "Bucket").await;
+    let stored = || async {
+        sqlx::query_as::<_, (String, String, Option<i64>, Option<String>)>(
+            "SELECT config, secrets_encrypted, verified_at, verify_error FROM storage_profiles WHERE id = $1",
+        )
+        .bind(&bucket)
+        .fetch_one(&state.db)
+        .await
+        .unwrap()
+    };
+    let (config, secrets, _, error) = stored().await;
+    assert!(!secrets.contains("very-secret") && !config.contains("very-secret"));
+    assert_eq!(error.as_deref(), Some("storage_unreachable"));
+    let renamed = send(
+        &state,
+        post(
+            &format!("/storage/{bucket}"),
+            Some(&session),
+            &[
+                ("kind", "s3"),
+                ("name", "Bucket 2"),
+                ("endpoint", DEAD_ENDPOINT),
+                ("bucket", "books"),
+            ],
+        ),
+    )
+    .await;
+    assert!(renamed.body.contains("Bucket 2"), "{}", renamed.body);
+    let (_, kept, _, error) = stored().await;
+    assert_eq!(kept, secrets, "empty keys keep the saved ones");
+    assert_eq!(
+        error.as_deref(),
+        Some("storage_unreachable"),
+        "same place, same result"
+    );
+    // A new location clears the old check.
+    send(
+        &state,
+        post(
+            &format!("/storage/{bucket}"),
+            Some(&session),
+            &[
+                ("kind", "s3"),
+                ("name", "Bucket 2"),
+                ("endpoint", DEAD_ENDPOINT),
+                ("bucket", "audio"),
+            ],
+        ),
+    )
+    .await;
+    assert_eq!(stored().await.3, None);
+
+    // The default moves; the old default can then be deleted, the new one cannot.
+    let verified = send(
+        &state,
+        post(&format!("/storage/{archive}/verify"), Some(&session), &[]),
+    )
+    .await;
+    assert!(verified.body.contains("Passed"));
+    send(
+        &state,
+        post(&format!("/storage/{archive}/default"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(default_storage(&state).await, archive);
+    let deleted = send(
+        &state,
+        post(&format!("/storage/{local}/delete"), Some(&session), &[]),
+    )
+    .await;
+    assert!(!deleted.body.contains(&format!("storage-{local}")));
+    let refused = send(
+        &state,
+        post(&format!("/storage/{archive}/delete"), Some(&session), &[]),
+    )
+    .await;
+    assert!(
+        refused.body.contains("cannot be deleted"),
+        "{}",
+        refused.body
+    );
+    assert_eq!(storage_id(&state, "Archive").await, archive);
+}
+
+#[tokio::test]
+async fn setup_checks_s3_storage_first() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let token = state.setup.get().unwrap();
+    let reply = send(
+        &state,
+        post(
+            "/setup",
+            None,
+            &[
+                ("token", &token),
+                ("name", "Family shelf"),
+                ("password", PASSWORD),
+                ("confirm", PASSWORD),
+                ("storage_kind", "s3"),
+                ("storage_endpoint", DEAD_ENDPOINT),
+                ("storage_bucket", "books"),
+                ("storage_access_key_id", "AKIDEXAMPLE"),
+                ("storage_secret_access_key", "very-secret-key"),
+            ],
+        ),
+    )
+    .await;
+    assert_eq!(reply.status, StatusCode::OK);
+    assert!(reply.body.contains("does not respond"), "{}", reply.body);
+    assert!(!reply.body.contains("very-secret-key"));
+    assert!(
+        reply.body.contains("value=\"books\""),
+        "the form keeps the bucket"
+    );
+    let tenants: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tenants")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(tenants, 0, "nothing is created");
+    assert!(state.setup.get().is_some(), "the token still works");
+}
+
+#[tokio::test]
+async fn storage_api_crud() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    set_up(&state).await;
+    let token = admin_token(&state).await;
+
+    let list = send(&state, bearer_get("/v1/admin/storage-profiles", &token)).await;
+    assert_eq!(list.status, StatusCode::OK, "{}", list.body);
+    let profiles = list.json();
+    assert_eq!(profiles[0]["kind"], "local");
+    assert_eq!(profiles[0]["path"], "blobs");
+    assert_eq!(profiles[0]["is_default"], true);
+    assert!(profiles[0].get("bucket").is_none());
+
+    let created = send(
+        &state,
+        api(
+            "POST",
+            "/v1/admin/storage-profiles",
+            &token,
+            Some(&serde_json::json!({
+                "name": "Bucket", "kind": "s3", "endpoint": DEAD_ENDPOINT, "bucket": "books",
+                "access_key_id": "AKIDEXAMPLE", "secret_access_key": "very-secret-key",
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(created.status, StatusCode::CREATED, "{}", created.body);
+    assert!(!created.body.contains("very-secret-key") && !created.body.contains("AKIDEXAMPLE"));
+    let profile = created.json();
+    let id = profile["id"].as_str().unwrap().to_owned();
+    assert_eq!(profile["delivery_mode"], "presigned");
+    assert_eq!(profile["path_style"], true);
+    assert_eq!(profile["verified_at"], serde_json::Value::Null);
+
+    let no_keys = send(
+        &state,
+        api(
+            "POST",
+            "/v1/admin/storage-profiles",
+            &token,
+            Some(&serde_json::json!({ "name": "Other", "kind": "s3", "bucket": "b" })),
+        ),
+    )
+    .await;
+    assert_eq!(no_keys.problem(), "validation");
+    assert_eq!(no_keys.json()["detail"], "storage_keys_required");
+
+    let item = format!("/v1/admin/storage-profiles/{id}");
+    let updated = send(
+        &state,
+        api(
+            "PUT",
+            &item,
+            &token,
+            Some(&serde_json::json!({
+                "name": "Books", "kind": "s3", "endpoint": DEAD_ENDPOINT, "bucket": "books",
+                "delivery_mode": "proxy",
+            })),
+        ),
+    )
+    .await;
+    assert_eq!(updated.status, StatusCode::OK, "{}", updated.body);
+    assert_eq!(updated.json()["name"], "Books");
+    assert_eq!(updated.json()["delivery_mode"], "proxy");
+    let kind = send(
+        &state,
+        api(
+            "PUT",
+            &item,
+            &token,
+            Some(&serde_json::json!({ "name": "Books", "kind": "local", "path": "x" })),
+        ),
+    )
+    .await;
+    assert_eq!(kind.json()["detail"], "storage_kind_invalid");
+
+    let checked = send(&state, api("POST", &format!("{item}/verify"), &token, None)).await;
+    assert_eq!(checked.status, StatusCode::OK);
+    assert_eq!(checked.json()["verify_error"], "storage_unreachable");
+
+    let default = send(
+        &state,
+        api("POST", &format!("{item}/default"), &token, None),
+    )
+    .await;
+    assert_eq!(default.json()["is_default"], true);
+    let refused = send(&state, api("DELETE", &item, &token, None)).await;
+    assert_eq!(refused.status, StatusCode::CONFLICT);
+    assert_eq!(refused.json()["detail"], "storage_is_default");
+
+    let local = storage_id(&state, "Local").await;
+    send(
+        &state,
+        api(
+            "POST",
+            &format!("/v1/admin/storage-profiles/{local}/default"),
+            &token,
+            None,
+        ),
+    )
+    .await;
+    let deleted = send(&state, api("DELETE", &item, &token, None)).await;
+    assert_eq!(deleted.status, StatusCode::NO_CONTENT);
+    assert_eq!(
+        send(&state, bearer_get(&item, &token)).await.problem(),
+        "not_found"
+    );
 }

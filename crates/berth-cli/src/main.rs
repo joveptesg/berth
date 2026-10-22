@@ -7,7 +7,7 @@ use std::{
 };
 
 use anyhow::Context;
-use berth_server::service::{auth, setup};
+use berth_server::service::{auth, setup, storage::ProfileInput};
 use clap::{Parser, Subcommand};
 use tracing_subscriber::EnvFilter;
 
@@ -108,9 +108,15 @@ async fn admin(command: AdminCommand) -> anyhow::Result<()> {
                 "the server is already set up; use `berth admin reset-password` to change the password"
             );
             let (password, confirm) = read_new_password()?;
-            setup::create_owner(&state, &name, &password, &confirm)
-                .await
-                .map_err(|e| anyhow::anyhow!("{e}"))?;
+            setup::create_owner(
+                &state,
+                &name,
+                &password,
+                &confirm,
+                &ProfileInput::local_default(),
+            )
+            .await
+            .map_err(|e| anyhow::anyhow!("{e}"))?;
             println!("Server \"{name}\" is set up. Sign in at /login with the new password.");
         }
         AdminCommand::ResetPassword { config } => {

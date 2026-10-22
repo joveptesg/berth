@@ -13,7 +13,7 @@ use berth_core::BerthError;
 use minijinja::{Value, context};
 use serde::Deserialize;
 
-use super::{is_htmx, redirect, session};
+use super::{is_htmx, redirect, session, storage::StorageForm};
 use crate::{
     AppState,
     error::ApiError,
@@ -70,6 +70,10 @@ fn locked(state: &AppState) -> Value {
     Value::from(minijinja::value::Serde(settings::locked(state)))
 }
 
+fn data_dir(state: &AppState) -> String {
+    state.config.load().data_dir.display().to_string()
+}
+
 pub(super) fn shell(state: &AppState, page: &str) -> Value {
     context! { server_name => state.config.load().name.clone(), page }
 }
@@ -88,6 +92,49 @@ pub(crate) struct SetupForm {
     name: String,
     password: String,
     confirm: String,
+    /// The storage step; without it (no JavaScript, old forms) a local folder `blobs`.
+    #[serde(default)]
+    storage_kind: String,
+    #[serde(default)]
+    storage_path: String,
+    #[serde(default)]
+    storage_endpoint: String,
+    #[serde(default)]
+    storage_bucket: String,
+    #[serde(default)]
+    storage_region: String,
+    #[serde(default)]
+    storage_path_style: Option<String>,
+    #[serde(default)]
+    storage_access_key_id: String,
+    #[serde(default)]
+    storage_secret_access_key: String,
+}
+
+impl SetupForm {
+    /// The first profile is named after where it is; it can be renamed in `/storage`.
+    fn storage(&self) -> StorageForm {
+        let s3 = self.storage_kind == "s3";
+        StorageForm {
+            name: if s3 {
+                self.storage_bucket.trim().to_owned()
+            } else {
+                "Local".into()
+            },
+            kind: if s3 { "s3" } else { "local" }.into(),
+            path: match self.storage_path.trim() {
+                "" => "blobs".into(),
+                path => path.into(),
+            },
+            endpoint: self.storage_endpoint.clone(),
+            bucket: self.storage_bucket.clone(),
+            region: self.storage_region.clone(),
+            path_style: self.storage_path_style.clone(),
+            delivery_mode: String::new(),
+            access_key_id: self.storage_access_key_id.clone(),
+            secret_access_key: self.storage_secret_access_key.clone(),
+        }
+    }
 }
 
 pub(crate) async fn setup_page(State(state): State<AppState>, Query(q): Query<TokenQuery>) -> Page {
@@ -102,7 +149,7 @@ pub(crate) async fn setup_page(State(state): State<AppState>, Query(q): Query<To
     render(
         &state,
         "setup.html",
-        context! { token => q.token, name, locked => locked(&state) },
+        context! { token => q.token, name, locked => locked(&state), data_dir => data_dir(&state) },
     )
 }
 
@@ -117,7 +164,16 @@ pub(crate) async fn setup_submit(
     if !state.setup.matches(&form.token) {
         return Err(BerthError::NotFound.into());
     }
-    match setup::create_owner(&state, &form.name, &form.password, &form.confirm).await {
+    let storage = form.storage();
+    match setup::create_owner(
+        &state,
+        &form.name,
+        &form.password,
+        &form.confirm,
+        &storage.input(),
+    )
+    .await
+    {
         Ok(owner) => {
             let mut conn = state.db.acquire().await.map_err(anyhow::Error::from)?;
             let token = auth::create_session(
@@ -139,7 +195,8 @@ pub(crate) async fn setup_submit(
                 "partials/setup_form.html",
                 context! {
                     token => form.token, name => form.name, error,
-                    locked => locked(&state),
+                    locked => locked(&state), data_dir => data_dir(&state),
+                    storage => storage.view(""),
                 },
             )
         }

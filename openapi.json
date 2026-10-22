@@ -71,6 +71,448 @@
         }
       }
     },
+    "/v1/admin/storage-profiles": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "List storage profiles, oldest first.",
+        "operationId": "list_storage_profiles",
+        "responses": {
+          "200": {
+            "description": "Profiles",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {
+                    "$ref": "#/components/schemas/StorageProfile"
+                  }
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device has no `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Add a storage profile. It is not checked: call `verify` next.",
+        "operationId": "create_storage_profile",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "201": {
+            "description": "Created profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation`; `detail`: `storage_name_required`, `storage_name_too_long`, `storage_name_taken`, `storage_path_required`, `storage_bucket_required`, `storage_endpoint_invalid`, `storage_delivery_invalid`, `storage_keys_required` or `invalid_body`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device has no `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/storage-profiles/{id}": {
+      "get": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "One storage profile.",
+        "operationId": "get_storage_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Profile id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device has no `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Replace a storage profile; absent keys keep the saved ones. A new location or new keys\nclear the last check.",
+        "operationId": "update_storage_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Profile id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/StorageProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Updated profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageProfile"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`validation`; `detail` as for create, or `storage_kind_invalid` when the type changes",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device has no `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`conflict`; `detail`: `storage_in_use` (blobs are stored at the old location)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Delete a storage profile that holds nothing and is not the default.",
+        "operationId": "delete_storage_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Profile id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "204": {
+            "description": "Deleted"
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device has no `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "409": {
+            "description": "`conflict`; `detail`: `storage_is_default` or `storage_in_use`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/storage-profiles/{id}/default": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Make the profile the default: new books go there.",
+        "operationId": "default_storage_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Profile id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "The new default profile",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device has no `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/admin/storage-profiles/{id}/verify": {
+      "post": {
+        "tags": [
+          "admin"
+        ],
+        "summary": "Check the connection: write, read back and delete a probe object. The result is in\n`verified_at` / `verify_error`; a failed check is not an HTTP error.",
+        "operationId": "verify_storage_profile",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "description": "Profile id",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Profile with the check result",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StorageProfile"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "403": {
+            "description": "`forbidden`: the device has no `admin` scope",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/auth/pair": {
       "post": {
         "tags": [
@@ -276,6 +718,15 @@
         "description": "Client login method.",
         "enum": [
           "pairing"
+        ]
+      },
+      "DeliveryMode": {
+        "type": "string",
+        "description": "How clients get the bytes.",
+        "enum": [
+          "proxy",
+          "presigned",
+          "cdn"
         ]
       },
       "Me": {
@@ -503,6 +954,166 @@
           "version": {
             "type": "string",
             "description": "Server version."
+          }
+        }
+      },
+      "StorageKind": {
+        "type": "string",
+        "description": "Where the bytes are.",
+        "enum": [
+          "local",
+          "s3"
+        ]
+      },
+      "StorageProfile": {
+        "type": "object",
+        "description": "A storage profile; keys are never returned.",
+        "required": [
+          "id",
+          "name",
+          "kind",
+          "delivery_mode",
+          "is_default",
+          "created_at"
+        ],
+        "properties": {
+          "bucket": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`s3`: bucket."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Creation time, epoch milliseconds."
+          },
+          "delivery_mode": {
+            "$ref": "#/components/schemas/DeliveryMode",
+            "description": "How clients get the bytes."
+          },
+          "endpoint": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`s3`: service address; empty means AWS."
+          },
+          "id": {
+            "type": "string",
+            "description": "Profile id."
+          },
+          "is_default": {
+            "type": "boolean",
+            "description": "New books go here."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StorageKind",
+            "description": "Type."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name."
+          },
+          "path": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`local`: folder as entered."
+          },
+          "path_style": {
+            "type": [
+              "boolean",
+              "null"
+            ],
+            "description": "`s3`: path-style addressing."
+          },
+          "region": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`s3`: region."
+          },
+          "verified_at": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "When the last connection check passed, epoch milliseconds."
+          },
+          "verify_error": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Code of the last failed check: `storage_auth_failed`, `storage_access_denied`,\n`storage_bucket_not_found`, `storage_unreachable`, `storage_mismatch`,\n`storage_local_unwritable`, `storage_endpoint_invalid` or `storage_failed`."
+          }
+        }
+      },
+      "StorageProfileRequest": {
+        "type": "object",
+        "description": "Create or replace a storage profile.",
+        "required": [
+          "name",
+          "kind"
+        ],
+        "properties": {
+          "access_key_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`s3`: access key id; required on create, absent on update keeps the saved keys."
+          },
+          "bucket": {
+            "type": "string",
+            "description": "`s3`: bucket."
+          },
+          "delivery_mode": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/DeliveryMode",
+                "description": "`s3`: `presigned` (default) or `proxy`; local storage is always `proxy`."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "endpoint": {
+            "type": "string",
+            "description": "`s3`: service address; empty or absent means AWS."
+          },
+          "kind": {
+            "$ref": "#/components/schemas/StorageKind",
+            "description": "Type; cannot change on update."
+          },
+          "name": {
+            "type": "string",
+            "description": "Display name, unique within the server (64 characters at most)."
+          },
+          "path": {
+            "type": "string",
+            "description": "`local`: folder, absolute or relative to the data directory."
+          },
+          "path_style": {
+            "type": "boolean",
+            "description": "`s3`: `endpoint/bucket/key` addressing (usually `MinIO`)."
+          },
+          "region": {
+            "type": "string",
+            "description": "`s3`: region; empty means `us-east-1` (`auto` for R2)."
+          },
+          "secret_access_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`s3`: secret access key; sent together with `access_key_id`. Never returned."
           }
         }
       },

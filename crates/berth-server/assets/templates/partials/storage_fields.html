@@ -1,0 +1,90 @@
+{% import "partials/ui.html" as ui %}
+{# Storage profile fields, shared by the /storage dialogs and the setup wizard.
+   f: name, kind, path, endpoint, bucket, region, path_style, delivery_mode (+ id on edit).
+   prefix: field name prefix ("storage_" in setup). uid: unique id prefix.
+   edit: the kind is fixed and empty keys keep the saved ones. full: name and delivery fields. #}
+{% macro fields(f, data_dir, prefix="", uid="new", edit=false, full=true) -%}
+{% set kind = f.kind or "local" %}
+<div x-data="{ kind: '{{ kind }}' }" class="flex flex-col gap-4">
+  {% if edit %}
+  <input type="hidden" name="{{ prefix }}kind" value="{{ kind }}">
+  {% else %}
+  <fieldset class="grid gap-2 sm:grid-cols-2">
+    <legend class="field-label">{{ t('storage.kind_label') }}</legend>
+    {% for value, ic in [("local", "storage"), ("s3", "cloud")] %}
+    <label class="flex cursor-pointer items-start gap-3 rounded-[14px] border border-line bg-surface-2 p-3.5 transition-colors has-checked:border-accent has-checked:bg-accent-soft">
+      <input type="radio" name="{{ prefix }}kind" value="{{ value }}" x-model="kind" {% if kind == value %}checked{% endif %} class="sr-only">
+      <span class="grid size-9 shrink-0 place-items-center rounded-[10px] bg-surface text-text-2" aria-hidden="true">{{ ui.icon(ic, "size-[18px]") }}</span>
+      <span class="min-w-0">
+        <span class="block text-[15px] font-semibold">{{ t('storage.kind_' ~ value) }}</span>
+        <span class="block text-[13px] leading-snug text-text-3">{{ t('storage.kind_' ~ value ~ '_hint') }}</span>
+      </span>
+    </label>
+    {% endfor %}
+  </fieldset>
+  {% endif %}
+
+  {% if full %}
+  <div>
+    <label for="{{ uid }}-name" class="field-label">{{ t('storage.name_label') }}</label>
+    <input id="{{ uid }}-name" name="{{ prefix }}name" value="{{ f.name or '' }}" required maxlength="64" autocomplete="off" placeholder="{{ t('storage.name_placeholder') }}" class="input">
+  </div>
+  {% endif %}
+
+  <fieldset x-show="kind === 'local'" :disabled="kind !== 'local'" {% if kind != "local" %}style="display: none" disabled{% endif %} class="flex flex-col gap-4">
+    <div>
+      <label for="{{ uid }}-path" class="field-label">{{ t('storage.path_label') }}</label>
+      <input id="{{ uid }}-path" name="{{ prefix }}path" value="{{ f.path or 'blobs' }}" required autocomplete="off" spellcheck="false" class="input mono">
+      <p class="field-hint">{{ t('storage.path_hint') }} <span class="mono text-[13px] break-all">{{ data_dir }}</span></p>
+    </div>
+  </fieldset>
+
+  <fieldset x-show="kind === 's3'" :disabled="kind !== 's3'" {% if kind != "s3" %}style="display: none" disabled{% endif %} class="flex flex-col gap-4">
+    <div>
+      <label for="{{ uid }}-endpoint" class="field-label">{{ t('storage.endpoint_label') }}</label>
+      <input id="{{ uid }}-endpoint" name="{{ prefix }}endpoint" type="url" inputmode="url" value="{{ f.endpoint or '' }}" autocomplete="off" spellcheck="false" placeholder="https://storage.yandexcloud.net" class="input mono">
+      <p class="field-hint">{{ t('storage.endpoint_hint') }}</p>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="{{ uid }}-bucket" class="field-label">{{ t('storage.bucket_label') }}</label>
+        <input id="{{ uid }}-bucket" name="{{ prefix }}bucket" value="{{ f.bucket or '' }}" required autocomplete="off" spellcheck="false" class="input mono">
+      </div>
+      <div>
+        <label for="{{ uid }}-region" class="field-label">{{ t('storage.region_label') }}</label>
+        <input id="{{ uid }}-region" name="{{ prefix }}region" value="{{ f.region or '' }}" autocomplete="off" spellcheck="false" placeholder="us-east-1" class="input mono">
+        <p class="field-hint">{{ t('storage.region_hint') }}</p>
+      </div>
+    </div>
+    <div class="grid gap-4 sm:grid-cols-2">
+      <div>
+        <label for="{{ uid }}-key-id" class="field-label">{{ t('storage.access_key_label') }}</label>
+        <input id="{{ uid }}-key-id" name="{{ prefix }}access_key_id" {% if not edit %}required{% endif %} autocomplete="off" spellcheck="false" {% if edit %}placeholder="{{ t('storage.keys_saved') }}"{% endif %} class="input mono">
+      </div>
+      <div>
+        <label for="{{ uid }}-secret" class="field-label">{{ t('storage.secret_key_label') }}</label>
+        <input id="{{ uid }}-secret" name="{{ prefix }}secret_access_key" type="password" {% if not edit %}required{% endif %} autocomplete="new-password" {% if edit %}placeholder="{{ t('storage.keys_saved') }}"{% endif %} class="input mono">
+      </div>
+    </div>
+    <p class="-mt-2 text-[13px] text-text-3">{{ t('storage.keys_keep_hint') if edit else t('storage.keys_hint') }}</p>
+    <label class="flex cursor-pointer items-start gap-3">
+      <input type="checkbox" name="{{ prefix }}path_style" value="on" {% if f.path_style %}checked{% endif %} class="mt-1 size-[18px] shrink-0 accent-accent">
+      <span>
+        <span class="block text-[15px] font-semibold">{{ t('storage.path_style_label') }}</span>
+        <span class="block text-[13px] text-text-3">{{ t('storage.path_style_hint') }}</span>
+      </span>
+    </label>
+    {% if full %}
+    <div>
+      <label for="{{ uid }}-delivery" class="field-label">{{ t('storage.delivery_label') }}</label>
+      <select id="{{ uid }}-delivery" name="{{ prefix }}delivery_mode" class="input select">
+        {% for mode in ["presigned", "proxy"] %}
+        <option value="{{ mode }}" {% if (f.delivery_mode or 'presigned') == mode %}selected{% endif %}>{{ t('storage.delivery_' ~ mode) }}</option>
+        {% endfor %}
+      </select>
+      <p class="field-hint">{{ t('storage.delivery_hint') }}</p>
+    </div>
+    {% endif %}
+  </fieldset>
+</div>
+{%- endmacro %}

@@ -145,4 +145,50 @@ mod tests {
         );
         assert!(error.contains("Неверный пароль"), "{error}");
     }
+
+    #[test]
+    fn storage_page_renders_in_both_locales() {
+        let base = context! {
+            server_name => "Home", page => "storage", token => "tok",
+            locked => context! { name => false },
+        };
+        for locale in ["en", "ru"] {
+            let profiles = vec![
+                context! {
+                    id => "s1", name => "Local", kind => "local", delivery_mode => "proxy",
+                    path => "blobs", location => "/data/blobs", is_default => true, verified_at => 5,
+                },
+                context! {
+                    id => "s2", name => "Bucket", kind => "s3", delivery_mode => "presigned",
+                    endpoint => "https://s3.example.com", bucket => "books", region => "auto",
+                    location => "books @ s3.example.com", is_default => false,
+                    verify_error => "storage_auth_failed",
+                },
+            ];
+            let storage = context! { profiles, data_dir => "/data", ..base.clone() };
+            let page = render(locale, "storage.html", storage.clone());
+            assert!(page.contains("/storage/s2/default") && !page.contains("/storage/s1/default"));
+            assert!(page.contains("/storage/s2/delete") && !page.contains("/storage/s1/delete"));
+            assert!(page.contains("id=\"edit-s2\"") && page.contains("value=\"books\""));
+            assert!(
+                !page.contains("x-init=\"$el.showModal()\""),
+                "no dialog is open"
+            );
+            let failed = render(
+                locale,
+                "partials/storage_section.html",
+                context! {
+                    form => context! { id => "s2", kind => "s3", name => "Bucket", bucket => "" },
+                    error => "storage_bucket_required", ..storage
+                },
+            );
+            assert!(failed.contains("x-init=\"$el.showModal()\""), "{failed}");
+            assert!(!failed.contains("<html"));
+            let setup = render(locale, "setup.html", base.clone());
+            assert!(
+                setup.contains("name=\"storage_kind\"")
+                    && setup.contains("name=\"storage_bucket\"")
+            );
+        }
+    }
 }

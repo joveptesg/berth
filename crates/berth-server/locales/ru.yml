@@ -10,6 +10,7 @@ nav:
   dashboard: Обзор
   users: Пользователи
   devices: Устройства
+  storage: Хранилища
   settings: Настройки
   logout: Выйти
   menu: Меню
@@ -22,17 +23,18 @@ nav:
 
 setup:
   title: Настройка сервера
-  subtitle: Три шага — и Berth готов к аудиокнигам вашей семьи.
+  subtitle: Четыре шага — и Berth готов к аудиокнигам вашей семьи.
   step_token: Ссылка настройки
   step_token_done: Открыта с токеном из лога сервера
   step_name: Название сервера
+  step_storage: Хранилище
+  storage_hint: Где лежат файлы аудиокниг. Позже можно добавить другие хранилища и переключиться на них.
   step_password: Пароль администратора
   name_label: Название сервера
   name_hint: Его увидят в приложении при подключении.
   password_label: Пароль
   confirm_label: Повторите пароль
   password_hint: Не короче %{min} символов. Сбросить можно командой berth admin reset-password на сервере.
-  storage_note: Книги хранятся на этом сервере в папке данных. Другие хранилища появятся вместе с профилями хранения.
   submit: Завершить настройку
   locked: Задано в berth.toml или переменной окружения
 
@@ -113,6 +115,52 @@ devices:
   revoke: Отозвать
   revoke_confirm: Отозвать «%{name}»? Приложение выйдет и удалит загрузки и библиотеку.
 
+storage:
+  title: Хранилища
+  subtitle: Где лежат файлы аудиокниг. Новые книги попадают в хранилище по умолчанию.
+  add_title: Добавить хранилище
+  edit_title: Изменить хранилище
+  add_hint: "Папка на этом сервере или любой S3-совместимый бакет: AWS, Cloudflare R2, Backblaze B2, MinIO, Yandex Object Storage."
+  add_submit: Добавить хранилище
+  kind_label: Тип
+  kind_local: Папка на сервере
+  kind_local_hint: Файлы лежат рядом с Berth, и он сам их отдаёт.
+  kind_s3: S3-бакет
+  kind_s3_hint: AWS, R2, B2, MinIO, Yandex и другие S3-совместимые.
+  name_label: Название
+  name_placeholder: например, Домашний диск
+  path_label: Папка
+  path_hint: "Абсолютный путь или путь относительно папки данных:"
+  endpoint_label: Адрес сервиса (endpoint)
+  endpoint_hint: Для AWS S3 оставьте пустым.
+  bucket_label: Бакет
+  region_label: Регион
+  region_hint: auto для Cloudflare R2; пусто — us-east-1.
+  access_key_label: Идентификатор ключа
+  secret_key_label: Секретный ключ
+  keys_hint: Хранятся зашифрованными ключом сервера (secret.key) и больше не показываются.
+  keys_keep_hint: Оставьте оба поля пустыми, чтобы не менять сохранённые ключи.
+  keys_saved: сохранён
+  path_style_label: Адреса в стиле path
+  path_style_hint: endpoint/бакет вместо бакет.endpoint. Обычно нужно для MinIO.
+  delivery_label: Доставка в приложения
+  delivery_hint: Прямые ссылки снимают нагрузку с сервера. Через сервер — если телефоны не достают до бакета.
+  delivery: Доставка
+  delivery_presigned: Прямые ссылки
+  delivery_proxy: Через сервер
+  delivery_cdn: CDN
+  status: Проверка
+  verified: Пройдена
+  unchecked: Ещё не проверялось
+  default: По умолчанию
+  verify: Проверить
+  verifying: Проверяем…
+  make_default: Сделать по умолчанию
+  edit: Изменить
+  delete: Удалить
+  delete_confirm: Удалить «%{name}»? Удаляется только профиль, файлы остаются на месте.
+  footnote: Проверка записывает, читает и удаляет маленький тестовый файл.
+
 errors:
   name_required: Введите название сервера.
   name_too_long: Слишком длинное название (не больше 64 символов).
@@ -123,3 +171,21 @@ errors:
   password_wrong: Неверный пароль.
   user_name_required: Введите имя.
   user_name_too_long: Слишком длинное имя (не больше 64 символов).
+  storage_name_required: Введите название.
+  storage_name_too_long: Слишком длинное название (не больше 64 символов).
+  storage_name_taken: Хранилище с таким названием уже есть.
+  storage_kind_invalid: Выберите папку или S3-бакет.
+  storage_path_required: Укажите папку.
+  storage_bucket_required: Укажите бакет.
+  storage_endpoint_invalid: Введите полный адрес, начиная с http:// или https://, и правильное название бакета.
+  storage_delivery_invalid: Выберите способ доставки.
+  storage_keys_required: Укажите оба ключа.
+  storage_is_default: Хранилище по умолчанию удалить нельзя. Сначала сделайте основным другое.
+  storage_in_use: "Здесь хранятся книги: его нельзя удалить или перенести."
+  storage_auth_failed: Ключи не приняты. Проверьте идентификатор и секретный ключ.
+  storage_access_denied: "Доступ запрещён: с этими ключами нельзя писать в бакет."
+  storage_bucket_not_found: Бакет не найден. Проверьте название, регион и адрес.
+  storage_unreachable: Хранилище не отвечает. Проверьте адрес и сеть.
+  storage_mismatch: "Тестовый файл вернулся другим: хранилище портит данные."
+  storage_local_unwritable: Berth не может писать в эту папку. Проверьте путь и права.
+  storage_failed: Проверка не прошла. Подробности — в логе сервера.

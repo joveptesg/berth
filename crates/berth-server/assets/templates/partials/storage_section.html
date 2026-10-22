@@ -1,0 +1,78 @@
+{% import "partials/ui.html" as ui %}
+{% import "partials/storage_fields.html" as sf %}
+{# Storage profiles with their actions. `form` + `error`: the add or edit dialog (form.id)
+   reopens with the rejected input; `notice`: an action that was refused (delete). #}
+{% macro dialog(dialog_id, action, f, edit, open, error, data_dir) -%}
+<dialog id="{{ dialog_id }}" {% if open %}x-init="$el.showModal()"{% endif %}
+  class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,560px)] rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
+  <form method="post" action="{{ action }}" hx-post="{{ action }}" hx-target="#storage-section" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
+    class="flex flex-col gap-5 p-6">
+    <div class="pr-10">
+      <h2 class="text-[22px] font-bold">{{ t('storage.edit_title') if edit else t('storage.add_title') }}</h2>
+      <p class="mt-1 text-[14px] text-text-3">{{ t('storage.add_hint') }}</p>
+    </div>
+    <button type="button" onclick="this.closest('dialog').close()" aria-label="{{ t('connect.close') }}"
+      class="absolute top-4 right-4 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close") }}</button>
+    {% if open and error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
+    {{ sf.fields(f, data_dir, uid=dialog_id, edit=edit) }}
+    <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+      <button type="button" onclick="this.closest('dialog').close()" class="btn btn-ghost">{{ t('users.cancel') }}</button>
+      <button type="submit" class="btn btn-primary">{{ t('common.save') if edit else t('storage.add_submit') }}</button>
+    </div>
+  </form>
+</dialog>
+{%- endmacro %}
+
+<div id="storage-section" class="mt-8 flex flex-col gap-4">
+  {% set adding = form and not form.id %}
+  {{ dialog("add-storage", "/storage", form if adding else {}, false, adding and error, error, data_dir) }}
+  {% if notice %}<p class="alert-error" role="alert">{{ t('errors.' ~ notice) }}</p>{% endif %}
+
+  <ul class="card divide-y divide-line p-0 sm:p-0" aria-label="{{ t('storage.title') }}">
+    {% for p in profiles %}
+    {% set editing = form and form.id == p.id %}
+    <li id="storage-{{ p.id }}" class="flex flex-col gap-4 px-5 py-5 sm:px-6">
+      <div class="flex items-start gap-4">
+        <span class="grid size-11 shrink-0 place-items-center rounded-[14px] {{ 'bg-accent text-accent-ink' if p.is_default else 'bg-surface-2 text-text-2' }}" aria-hidden="true">
+          {{ ui.icon("storage" if p.kind == "local" else "cloud") }}
+        </span>
+        <div class="min-w-0 flex-1">
+          <p class="flex flex-wrap items-center gap-x-2 gap-y-1">
+            <span class="truncate text-[17px] font-semibold">{{ p.name }}</span>
+            {% if p.is_default %}<span class="chip bg-accent-soft text-accent-fg">{{ t('storage.default') }}</span>{% endif %}
+          </p>
+          <p class="mt-0.5 text-[14px] text-text-2">{{ t('storage.kind_' ~ p.kind) }} · <span class="mono text-[13px] break-all">{{ p.location }}</span></p>
+          <dl class="mt-2 flex flex-wrap gap-x-5 gap-y-1 text-[13px] text-text-3">
+            <div class="flex gap-1.5"><dt>{{ t('storage.delivery') }}</dt><dd class="text-text-2">{{ t('storage.delivery_' ~ p.delivery_mode) }}</dd></div>
+            <div class="flex flex-wrap items-center gap-1.5">
+              <dt>{{ t('storage.status') }}</dt>
+              <dd class="flex flex-wrap items-center gap-1.5">
+                {% if p.verify_error %}<span class="font-semibold text-danger">{{ t('errors.' ~ p.verify_error) }}</span>
+                {% elif p.verified_at %}<span class="inline-flex items-center gap-1 font-semibold text-ok">{{ ui.icon("check", "size-4") }}{{ t('storage.verified') }}</span>{{ ui.time(p.verified_at) }}
+                {% else %}<span class="text-text-2">{{ t('storage.unchecked') }}</span>{% endif %}
+              </dd>
+            </div>
+          </dl>
+        </div>
+      </div>
+      <div class="flex flex-wrap gap-2 sm:pl-15">
+        <button type="button" hx-post="/storage/{{ p.id }}/verify" hx-target="#storage-section" hx-swap="outerHTML" hx-disabled-elt="this"
+          class="btn btn-ghost min-h-10 px-4 text-[15px]">{{ ui.icon("check", "size-[18px]") }}<span class="[.htmx-request_&]:hidden">{{ t('storage.verify') }}</span><span class="hidden [.htmx-request_&]:inline">{{ t('storage.verifying') }}</span></button>
+        {% if not p.is_default %}
+        <button type="button" hx-post="/storage/{{ p.id }}/default" hx-target="#storage-section" hx-swap="outerHTML"
+          class="btn btn-ghost min-h-10 px-4 text-[15px]">{{ t('storage.make_default') }}</button>
+        {% endif %}
+        <button type="button" onclick="document.getElementById('edit-{{ p.id }}').showModal()"
+          class="btn btn-ghost min-h-10 px-4 text-[15px]">{{ t('storage.edit') }}</button>
+        {% if not p.is_default %}
+        <button type="button" hx-post="/storage/{{ p.id }}/delete" hx-target="#storage-section" hx-swap="outerHTML"
+          hx-confirm="{{ t('storage.delete_confirm', name=p.name) }}"
+          class="btn btn-danger min-h-10 px-4 text-[15px]">{{ t('storage.delete') }}</button>
+        {% endif %}
+      </div>
+      {{ dialog("edit-" ~ p.id, "/storage/" ~ p.id, form if editing else p, true, editing and error, error, data_dir) }}
+    </li>
+    {% endfor %}
+  </ul>
+  <p class="px-1 text-[13px] text-text-3">{{ t('storage.footnote') }}</p>
+</div>

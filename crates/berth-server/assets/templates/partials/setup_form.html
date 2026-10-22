@@ -1,4 +1,5 @@
 {% import "partials/ui.html" as ui %}
+{% import "partials/storage_fields.html" as sf %}
 {% macro step(n, title, done=false) -%}
 <div class="flex items-center gap-3">
   <span class="mono grid size-7 shrink-0 place-items-center rounded-full text-[13px] {{ 'bg-ok/15 text-ok' if done else 'bg-accent-soft text-accent-fg' }}">
@@ -7,7 +8,7 @@
   <h2 class="text-[17px] font-semibold">{{ title }}</h2>
 </div>
 {%- endmacro %}
-<form method="post" action="/setup" hx-post="/setup" hx-target="this" hx-swap="outerHTML" class="flex flex-col gap-6">
+<form method="post" action="/setup" hx-post="/setup" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" class="flex flex-col gap-6">
   <input type="hidden" name="token" value="{{ token }}">
   {% if error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
 
@@ -40,6 +41,13 @@
     </div>
   </div>
 
-  <p class="rounded-[14px] bg-surface-2 px-4 py-3 text-[13px] text-text-2">{{ t('setup.storage_note') }}</p>
+  <div class="flex flex-col gap-3">
+    {{ step(4, t('setup.step_storage')) }}
+    <div class="flex flex-col gap-3 pl-10">
+      <p class="text-[14px] text-text-3">{{ t('setup.storage_hint') }}</p>
+      {{ sf.fields(storage or {}, data_dir, prefix="storage_", uid="setup-storage", full=false) }}
+    </div>
+  </div>
+
   <button type="submit" class="btn btn-primary w-full">{{ t('setup.submit') }}</button>
 </form>
