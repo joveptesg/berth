@@ -1,0 +1,23 @@
+[package]
+name = "berth-cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "berth"
+path = "src/main.rs"
+
+[lints]
+workspace = true
+
+[dependencies]
+anyhow = "1.0.104"
+axum = "0.8.9"
+berth-server = { version = "0.1.0", path = "../berth-server" }
+clap = { version = "4.6.7", features = ["derive", "env"] }
+tokio = { version = "1.54.1", features = ["macros", "rt-multi-thread", "net", "signal"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
