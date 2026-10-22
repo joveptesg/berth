@@ -362,17 +362,57 @@ fn current_settings(state: &AppState) -> Value {
 /// Settings are split into tabs, each a page of its own: `/settings` (server),
 /// `/settings/password` and `/settings/backup`.
 fn settings_tab(state: &AppState, tab: &str) -> Page {
-    let backups = backup::list(&state.config.load().data_dir);
-    render(
-        state,
-        "settings.html",
-        context! {
-            ..shell(state, "settings"),
-            ..context! {
-                tab, settings => current_settings(state), locked => locked(state),
-                backups => Value::from(minijinja::value::Serde(backups)), keep => backup::KEEP,
-            },
+    render(state, "settings.html", backup_ctx(state, tab))
+}
+
+/// Settings page context with the backups and where the server key is kept.
+fn backup_ctx(state: &AppState, tab: &str) -> Value {
+    let data_dir = state.config.load().data_dir.clone();
+    let key_path = if std::env::var_os("BERTH_SECRET_KEY").is_some() {
+        "BERTH_SECRET_KEY".to_owned()
+    } else {
+        data_dir.join("secret.key").display().to_string()
+    };
+    context! {
+        ..shell(state, "settings"),
+        ..context! {
+            tab, settings => current_settings(state), locked => locked(state),
+            backups => Value::from(minijinja::value::Serde(backup::list(&data_dir))),
+            keep => backup::KEEP, key_path,
         },
+    }
+}
+
+/// The server key as a file, for keeping apart from the backups.
+pub(crate) async fn secret_key_download(State(state): State<AppState>) -> Page {
+    let mut response = attachment(
+        "secret.key",
+        hex::encode(state.secret.as_bytes()).into_bytes(),
+    );
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        header::HeaderValue::from_static("text/plain"),
+    );
+    Ok(response)
+}
+
+/// Deletes an automatic backup.
+pub(crate) async fn backup_delete(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    axum::extract::Path(name): axum::extract::Path<String>,
+) -> Page {
+    let path = backup::path_of(&state.config.load().data_dir, &name).ok_or(BerthError::NotFound)?;
+    tokio::fs::remove_file(&path)
+        .await
+        .map_err(anyhow::Error::from)?;
+    if !is_htmx(&headers) {
+        return Ok(redirect(&headers, "/settings/backup"));
+    }
+    render(
+        &state,
+        "partials/settings_backup.html",
+        backup_ctx(&state, "backup"),
     )
 }
 

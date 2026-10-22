@@ -17,7 +17,10 @@ use super::{
 use crate::{
     AppState,
     error::ApiError,
-    service::storage::{self, Profile, ProfileInput},
+    service::{
+        r2, settings,
+        storage::{self, Profile, ProfileInput},
+    },
     storage::{LocalConfig, local_root},
 };
 
@@ -117,8 +120,62 @@ async fn section(
     Ok(context! {
         profiles => serde(rows), form, error, notice,
         data_dir => data_dir.display().to_string(),
+        r2_token_page => r2::TOKEN_PAGE,
         ..shell(state, "storage")
     })
+}
+
+/// Fields of the Cloudflare R2 dialog.
+#[derive(Debug, Default, Deserialize)]
+pub(crate) struct R2Form {
+    #[serde(default)]
+    name: String,
+    #[serde(default)]
+    account_id: String,
+    #[serde(default)]
+    token: String,
+    #[serde(default)]
+    bucket: String,
+}
+
+/// The R2 wizard: bucket, keys and CORS from one token, then the connection check.
+pub(crate) async fn connect_r2(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    headers: HeaderMap,
+    Form(form): Form<R2Form>,
+) -> Page {
+    let tenant_id = &session.0.tenant_id;
+    let input = r2::R2Input {
+        name: form.name.clone(),
+        account_id: form.account_id.clone(),
+        token: form.token.clone(),
+        bucket: form.bucket.clone(),
+    };
+    // Uploads from the admin go straight to the bucket: its addresses may use CORS.
+    let origins = settings::server_urls(&state.config.load());
+    let ctx = match r2::connect(&state, tenant_id, &input, r2::API, origins).await {
+        Ok(id) => {
+            storage::verify(&state, tenant_id, &id).await?;
+            if !super::is_htmx(&headers) {
+                return Ok(redirect(&headers, "/storage"));
+            }
+            section(&state, tenant_id, None, None, None).await?
+        }
+        Err(err) => {
+            let error = shown(err)?;
+            let ctx = section(&state, tenant_id, None, None, None).await?;
+            // The token is not sent back to the page.
+            context! {
+                r2_error => error,
+                r2_form => context! {
+                    account_id => form.account_id, bucket => form.bucket, name => form.name,
+                },
+                ..ctx
+            }
+        }
+    };
+    reply(&state, &headers, ctx)
 }
 
 fn reply(state: &AppState, headers: &HeaderMap, ctx: Value) -> Page {

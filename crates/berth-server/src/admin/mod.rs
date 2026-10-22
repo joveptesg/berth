@@ -74,10 +74,15 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         .route("/settings/restore", get(pages::settings_restore_page))
         .route("/settings/backup/download", get(pages::backup_download))
         .route(
+            "/settings/backup/secret-key",
+            get(pages::secret_key_download),
+        )
+        .route(
             "/settings/backup/restore",
             post(pages::backup_restore_upload).layer(DefaultBodyLimit::disable()),
         )
         .route("/settings/backup/{name}", get(pages::backup_file))
+        .route("/settings/backup/{name}/delete", post(pages::backup_delete))
         .route(
             "/settings/backup/{name}/restore",
             post(pages::backup_restore),
@@ -88,6 +93,7 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         .route("/devices", get(access::devices_page))
         .route("/devices/{id}/revoke", post(access::devices_revoke))
         .route("/storage", get(storage::page).post(storage::create))
+        .route("/storage/r2", post(storage::connect_r2))
         .route("/storage/{id}", post(storage::update))
         .route("/storage/{id}/verify", post(storage::verify))
         .route("/storage/{id}/default", post(storage::make_default))

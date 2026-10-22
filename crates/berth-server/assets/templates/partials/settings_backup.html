@@ -8,7 +8,20 @@
     <div>
       <a href="/settings/backup/download" download class="btn btn-primary">{{ ui.icon("download", "size-[18px]") }}{{ t('backup.download') }}</a>
     </div>
-    <p class="alert-warn">{{ t('backup.secret_note') }}</p>
+  </div>
+
+  <div class="card flex flex-col gap-4">
+    <div class="flex items-start gap-4">
+      <span class="grid size-11 shrink-0 place-items-center rounded-[14px] bg-warn/10 text-warn" aria-hidden="true">{{ ui.icon("key") }}</span>
+      <div class="min-w-0">
+        <h2 class="text-[20px] font-bold tracking-[-0.01em]">{{ t('backup.key_title') }}</h2>
+        <p class="mt-1 text-[15px] text-text-2">{{ t('backup.key_hint') }}</p>
+        <p class="mt-2 text-[14px] text-text-3">{{ t('backup.key_where') }} <span class="mono text-[13px] break-all text-text-2">{{ key_path }}</span></p>
+      </div>
+    </div>
+    <div>
+      <a href="/settings/backup/secret-key" download class="btn btn-ghost">{{ ui.icon("download", "size-[18px]") }}{{ t('backup.key_download') }}</a>
+    </div>
   </div>
 
   <div class="card flex flex-col gap-4">

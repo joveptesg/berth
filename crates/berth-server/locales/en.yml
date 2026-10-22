@@ -142,6 +142,19 @@ devices:
   revoke: Revoke
   revoke_confirm: Revoke %{name}? The app on it signs out and deletes its downloads and library.
 
+r2:
+  open: Cloudflare R2
+  title: Connect Cloudflare R2
+  hint: From one API token Berth creates the bucket, the S3 keys and CORS. Up to 10 GB is free to store, and downloads have no traffic fees.
+  step_token: "Create an API token with the “Workers R2 Storage: Edit” permission:"
+  token_link: open Cloudflare
+  step_account: Copy the Account ID from the R2 page of the Cloudflare dashboard.
+  account_label: Account ID
+  token_label: API token
+  bucket_label: Bucket
+  name_label: Name
+  submit: Connect
+  connecting: Connecting…
 storage:
   title: Storage
   subtitle: Where audiobook files are kept. New books go to the default storage.
@@ -263,6 +276,13 @@ errors:
   restore_not_berth: This is not a Berth backup.
   restore_newer: The backup was made by a newer server version. Update the server first.
   restore_failed: The database could not be restored. The current database is unchanged.
+  r2_account_invalid: The Account ID is 32 characters 0–9 and a–f from the R2 page in Cloudflare.
+  r2_token_required: Paste the API token.
+  r2_bucket_invalid: "Bucket names: 3–63 characters, lowercase letters, digits and hyphens (not at the ends)."
+  r2_token_invalid: Cloudflare did not accept the token. Check it is copied whole and active.
+  r2_permission_denied: "The token has no R2 permission on this account. It needs “Workers R2 Storage: Edit”."
+  r2_unreachable: Could not reach Cloudflare. Check the server's internet access.
+  r2_failed: Cloudflare returned an error. Details are in the server log.
   name_required: Enter a server name.
   name_too_long: The name is too long (64 characters at most).
   lan_url_invalid: Enter a full address starting with http:// or https://.
@@ -314,7 +334,12 @@ backup:
   now_title: Database backup
   now_hint: A copy of the library, users, devices, progress and settings as of now. Audio files are not in it — they stay in the storages.
   download: Download database backup
-  secret_note: secret.key is not in the backup. Keep it separately — without it the storage keys in the backup cannot be decrypted.
+  key_title: Server key (secret.key)
+  key_hint: It encrypts the storage keys in the database and signs device tokens. It is not in the database backup — download it once and keep it apart from the backups (in a password manager, say). Without it, a backup restored on a new server cannot read its S3/R2 keys.
+  key_where: "On the server:"
+  key_download: Download secret.key
+  delete_one: Delete
+  delete_confirm: Delete this automatic backup?
   auto_title: Automatic backups
   auto_hint: The server saves a copy before every database schema update. The last %{keep} are kept.
   auto_empty: No automatic backups yet — the first appears with the first server update.

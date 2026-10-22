@@ -1770,7 +1770,14 @@ async fn database_backups() {
     assert_eq!(page.status, StatusCode::OK);
     assert!(page.body.contains("/settings/backup/download"));
     assert!(page.body.contains("secret.key"));
-
+    // The server key can be taken away from the backups.
+    let key = send(&state, get("/settings/backup/secret-key", Some(&session))).await;
+    assert_eq!(
+        key.body,
+        std::fs::read_to_string(data.join("secret.key"))
+            .unwrap()
+            .trim()
+    );
     let download = send(&state, get("/settings/backup/download", Some(&session))).await;
     assert_eq!(download.status, StatusCode::OK);
     assert!(download.body.starts_with("SQLite format 3"));
@@ -1818,6 +1825,23 @@ async fn database_backups() {
     )
     .await;
     assert_eq!(sneaky.status, StatusCode::NOT_FOUND);
+
+    // An automatic backup can be deleted.
+    let deleted = send(
+        &state,
+        post(
+            &format!("/settings/backup/{}/delete", newest.name),
+            Some(&session),
+            &[],
+        ),
+    )
+    .await;
+    assert_eq!(deleted.status, StatusCode::OK, "{}", deleted.body);
+    assert!(!deleted.body.contains(&newest.name));
+    assert_eq!(
+        berth_server::backup::list(&data).len(),
+        berth_server::backup::KEEP - 1
+    );
 }
 
 #[tokio::test]
@@ -1996,4 +2020,145 @@ async fn database_restores_from_a_backup() {
         "{}",
         good.body
     );
+}
+
+/// A fake Cloudflare API: accepts the token "good", records bucket and CORS calls; a second
+/// bucket with the same name answers "already exists" (10004) like Cloudflare.
+async fn fake_cloudflare() -> (
+    String,
+    std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>,
+) {
+    use axum::{
+        Json, Router,
+        extract::State as S,
+        http::{HeaderMap as H, Uri},
+        routing::{get, post, put},
+    };
+    type Log = std::sync::Arc<std::sync::Mutex<Vec<(String, String)>>>;
+    async fn verify(headers: H) -> (StatusCode, Json<serde_json::Value>) {
+        if headers[header::AUTHORIZATION] == "Bearer good" {
+            (
+                StatusCode::OK,
+                Json(
+                    serde_json::json!({ "success": true, "result": { "id": "tok-id", "status": "active" } }),
+                ),
+            )
+        } else {
+            (
+                StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({ "success": false, "errors": [{ "code": 1000 }] })),
+            )
+        }
+    }
+    async fn record(S(log): S<Log>, uri: Uri, body: String) -> Json<serde_json::Value> {
+        let mut log = log.lock().unwrap();
+        let seen = log.iter().any(|(u, b)| *u == uri.path() && *b == body);
+        log.push((uri.path().to_owned(), body));
+        if seen && uri.path().ends_with("/buckets") {
+            return Json(serde_json::json!({ "success": false, "errors": [{ "code": 10004 }] }));
+        }
+        Json(serde_json::json!({ "success": true, "result": {} }))
+    }
+    let log: Log = std::sync::Arc::default();
+    let app = Router::new()
+        .route("/client/v4/accounts/{account}/tokens/verify", get(verify))
+        .route("/client/v4/user/tokens/verify", get(verify))
+        .route("/client/v4/accounts/{account}/r2/buckets", post(record))
+        .route(
+            "/client/v4/accounts/{account}/r2/buckets/{bucket}/cors",
+            put(record),
+        )
+        .with_state(log.clone());
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (format!("http://{addr}/client/v4"), log)
+}
+
+#[tokio::test]
+async fn r2_wizard_creates_bucket_cors_and_profile() {
+    const ACCOUNT: &str = "0123456789abcdef0123456789abcdef";
+    use berth_server::service::{r2, storage};
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let tenant_id = tenant(&state).await;
+    let (api, log) = fake_cloudflare().await;
+    let input = |token: &str, name: &str| r2::R2Input {
+        name: name.into(),
+        account_id: ACCOUNT.into(),
+        token: token.into(),
+        bucket: "berth-books".into(),
+    };
+
+    let refused = r2::connect(&state, &tenant_id, &input("bad", ""), &api, vec![]).await;
+    assert!(
+        matches!(refused, Err(berth_core::BerthError::Validation(c)) if c == "r2_token_invalid")
+    );
+    assert!(
+        log.lock().unwrap().is_empty(),
+        "nothing is created with a bad token"
+    );
+
+    let id = r2::connect(&state, &tenant_id, &input("good", ""), &api, vec![])
+        .await
+        .unwrap();
+    let profile = storage::get(&state.db, &tenant_id, &id).await.unwrap();
+    assert_eq!(profile.name, "Cloudflare R2");
+    assert_eq!(profile.kind, "s3");
+    assert_eq!(
+        profile.endpoint,
+        format!("https://{ACCOUNT}.r2.cloudflarestorage.com")
+    );
+    assert_eq!(
+        (profile.bucket.as_str(), profile.region.as_str()),
+        ("berth-books", "auto")
+    );
+    assert_eq!(profile.delivery_mode, "presigned");
+    {
+        let log = log.lock().unwrap();
+        assert_eq!(
+            log[0].0,
+            format!("/client/v4/accounts/{ACCOUNT}/r2/buckets")
+        );
+        assert_eq!(log[0].1, r#"{"name":"berth-books"}"#);
+        let cors: serde_json::Value = serde_json::from_str(&log[1].1).unwrap();
+        assert_eq!(
+            cors["rules"][0]["allowed"]["origins"],
+            serde_json::json!(["*"])
+        );
+        assert!(
+            cors["rules"][0]["allowed"]["methods"]
+                .as_array()
+                .unwrap()
+                .contains(&"PUT".into())
+        );
+    }
+
+    // The same bucket again ("already exists") is fine.
+    r2::connect(&state, &tenant_id, &input("good", "R2 again"), &api, vec![])
+        .await
+        .unwrap();
+
+    // The admin dialog reopens with the error and without the token.
+    let page = send(
+        &state,
+        post(
+            "/storage/r2",
+            Some(&session),
+            &[
+                ("account_id", "123"),
+                ("token", "secret-token"),
+                ("bucket", "berth"),
+                ("name", ""),
+            ],
+        ),
+    )
+    .await;
+    assert!(
+        page.body.contains("r2-storage") && page.body.contains("alert-error"),
+        "{}",
+        page.body
+    );
+    assert!(!page.body.contains("secret-token"));
 }

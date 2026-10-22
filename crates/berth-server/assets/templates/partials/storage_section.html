@@ -26,6 +26,47 @@
 <div id="storage-section" class="mt-8 flex flex-col gap-4">
   {% set adding = form and not form.id %}
   {{ dialog("add-storage", "/storage", form if adding else {}, false, adding and error, error, data_dir) }}
+  {# Cloudflare R2 in one step: the server makes the bucket, the keys and CORS from a token. #}
+  {% set rf = r2_form or {} %}
+  <dialog id="r2-storage" {% if r2_error %}x-init="$el.showModal()"{% endif %}
+    class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,560px)] rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
+    <form method="post" action="/storage/r2" hx-post="/storage/r2" hx-target="#storage-section" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
+      class="flex flex-col gap-5 p-6">
+      <div class="pr-10">
+        <h2 class="text-[22px] font-bold">{{ t('r2.title') }}</h2>
+        <p class="mt-1 text-[14px] text-text-3">{{ t('r2.hint') }}</p>
+      </div>
+      <button type="button" onclick="this.closest('dialog').close()" aria-label="{{ t('connect.close') }}"
+        class="absolute top-4 right-4 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close") }}</button>
+      {% if r2_error %}<p class="alert-error" role="alert">{{ t('errors.' ~ r2_error) }}</p>{% endif %}
+      <ol class="flex list-decimal flex-col gap-1.5 pl-5 text-[14px] text-text-2">
+        <li>{{ t('r2.step_token') }} <a href="{{ r2_token_page }}" target="_blank" rel="noopener" class="font-semibold text-accent-fg underline underline-offset-2">{{ t('r2.token_link') }}</a></li>
+        <li>{{ t('r2.step_account') }}</li>
+      </ol>
+      <div>
+        <label for="r2-account" class="field-label">{{ t('r2.account_label') }}</label>
+        <input id="r2-account" name="account_id" required autocomplete="off" spellcheck="false" value="{{ rf.account_id or '' }}" class="input mono" placeholder="0123456789abcdef0123456789abcdef">
+      </div>
+      <div>
+        <label for="r2-token" class="field-label">{{ t('r2.token_label') }}</label>
+        <input id="r2-token" name="token" type="password" required autocomplete="off" class="input mono">
+      </div>
+      <div class="grid gap-5 sm:grid-cols-2">
+        <div>
+          <label for="r2-bucket" class="field-label">{{ t('r2.bucket_label') }}</label>
+          <input id="r2-bucket" name="bucket" required value="{{ rf.bucket or 'berth' }}" class="input mono">
+        </div>
+        <div>
+          <label for="r2-name" class="field-label">{{ t('r2.name_label') }}</label>
+          <input id="r2-name" name="name" value="{{ rf.name or 'Cloudflare R2' }}" class="input">
+        </div>
+      </div>
+      <div class="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+        <button type="button" onclick="this.closest('dialog').close()" class="btn btn-ghost">{{ t('users.cancel') }}</button>
+        <button type="submit" class="btn btn-primary"><span class="[.htmx-request_&]:hidden">{{ t('r2.submit') }}</span><span class="hidden [.htmx-request_&]:inline">{{ t('r2.connecting') }}</span></button>
+      </div>
+    </form>
+  </dialog>
   {% if notice %}<p class="alert-error" role="alert">{{ t('errors.' ~ notice) }}</p>{% endif %}
 
   <ul class="card divide-y divide-line p-0 sm:p-0" aria-label="{{ t('storage.title') }}">

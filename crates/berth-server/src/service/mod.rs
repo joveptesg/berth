@@ -11,6 +11,7 @@ pub mod devices;
 pub mod ingest;
 pub mod pairing;
 pub mod progress;
+pub mod r2;
 pub mod settings;
 pub mod setup;
 pub mod storage;
