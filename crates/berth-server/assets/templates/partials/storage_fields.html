@@ -3,7 +3,7 @@
    f: name, kind, path, endpoint, bucket, region, path_style, delivery_mode (+ id on edit).
    prefix: field name prefix ("storage_" in setup). uid: unique id prefix.
    edit: the kind is fixed and empty keys keep the saved ones. full: name and delivery fields.
-   Two columns from `sm`; S3 presets fill the endpoint, region and addressing of a provider. #}
+   Two columns when the container is `@xl` (dialog) wide, one in the narrow setup card; S3 presets fill the endpoint, region and addressing of a provider. #}
 {% macro fields(f, data_dir, prefix="", uid="new", edit=false, full=true) -%}
 {% set kind = f.kind or "local" %}
 <div x-data="{
@@ -19,15 +19,15 @@
       field.focus();
       if (endpoint.includes('ACCOUNT_ID')) field.setSelectionRange(8, 18);
     },
-  }" x-init="name = $el.querySelector('[data-f=name]')?.value ?? ''" class="flex flex-col gap-4">
+  }" x-init="name = $el.querySelector('[data-f=name]')?.value ?? ''" class="@container flex flex-col gap-4">
   {% if edit %}
   <input type="hidden" name="{{ prefix }}kind" value="{{ kind }}">
   {% else %}
-  <fieldset class="flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-4">
+  <fieldset class="flex flex-col gap-2 @xl:flex-row @xl:items-center @xl:gap-4">
     <legend class="sr-only">{{ t('storage.kind_label') }}</legend>
-    <div class="inline-flex w-full shrink-0 gap-1 rounded-[14px] bg-surface-2 p-1 sm:w-auto">
+    <div class="inline-flex w-full shrink-0 gap-1 rounded-[14px] bg-surface-2 p-1 @xl:w-auto">
       {% for value, ic in [("local", "storage"), ("s3", "cloud")] %}
-      <label class="flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-[11px] px-3 text-[14px] font-semibold whitespace-nowrap sm:px-4 sm:text-[15px] text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)] sm:flex-none">
+      <label class="flex h-10 flex-1 cursor-pointer items-center justify-center gap-2 rounded-[11px] px-3 text-[14px] font-semibold whitespace-nowrap @xl:px-4 @xl:text-[15px] text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)] @xl:flex-none">
         <input type="radio" name="{{ prefix }}kind" value="{{ value }}" x-model="kind" {% if kind == value %}checked{% endif %} class="sr-only">
         {{ ui.icon(ic, "size-[18px]") }}{{ t('storage.kind_' ~ value) }}
       </label>
@@ -39,22 +39,22 @@
   </fieldset>
   {% endif %}
 
-  <fieldset x-show="kind === 'local'" :disabled="kind !== 'local'" {% if kind != "local" %}style="display: none" disabled{% endif %} class="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+  <fieldset x-show="kind === 'local'" :disabled="kind !== 'local'" {% if kind != "local" %}style="display: none" disabled{% endif %} class="grid grid-cols-1 gap-x-4 gap-y-3 @xl:grid-cols-2">
     {% if full %}
     <div>
       <label for="{{ uid }}-name-l" class="field-label">{{ t('storage.name_label') }}</label>
       <input id="{{ uid }}-name-l" data-f="name" x-model="name" name="{{ prefix }}name" value="{{ f.name or '' }}" required maxlength="64" autocomplete="off" placeholder="{{ t('storage.name_placeholder') }}" class="input">
     </div>
     {% endif %}
-    <div class="{{ '' if full else 'sm:col-span-2' }}">
+    <div class="{{ '' if full else '@xl:col-span-2' }}">
       <label for="{{ uid }}-path" class="field-label">{{ t('storage.path_label') }}</label>
       <input id="{{ uid }}-path" name="{{ prefix }}path" value="{{ f.path or 'blobs' }}" required autocomplete="off" spellcheck="false" class="input mono">
     </div>
-    <p class="field-hint sm:col-span-2">{{ t('storage.path_hint') }} <span class="mono text-[12px] break-all">{{ data_dir }}</span></p>
+    <p class="field-hint @xl:col-span-2">{{ t('storage.path_hint') }} <span class="mono text-[12px] break-all">{{ data_dir }}</span></p>
   </fieldset>
 
-  <fieldset x-show="kind === 's3'" :disabled="kind !== 's3'" {% if kind != "s3" %}style="display: none" disabled{% endif %} class="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-12">
-    <div class="flex flex-wrap items-center gap-1.5 sm:col-span-12">
+  <fieldset x-show="kind === 's3'" :disabled="kind !== 's3'" {% if kind != "s3" %}style="display: none" disabled{% endif %} class="grid grid-cols-1 gap-x-4 gap-y-3 @xl:grid-cols-12">
+    <div class="flex flex-wrap items-center gap-1.5 @xl:col-span-12">
       <span class="mr-1 text-[13px] text-text-3">{{ t('storage.presets') }}</span>
       {% for label, endpoint, region, path_style in [
         ("AWS S3", "", "us-east-1", "false"),
@@ -67,34 +67,34 @@
       {% endfor %}
     </div>
     {% if full %}
-    <div class="sm:col-span-6">
+    <div class="@xl:col-span-6">
       <label for="{{ uid }}-name" class="field-label">{{ t('storage.name_label') }}</label>
       <input id="{{ uid }}-name" x-model="name" name="{{ prefix }}name" value="{{ f.name or '' }}" required maxlength="64" autocomplete="off" placeholder="{{ t('storage.name_placeholder') }}" class="input">
     </div>
     {% endif %}
-    <div class="{{ 'sm:col-span-6' if full else 'sm:col-span-12' }}">
+    <div class="{{ '@xl:col-span-6' if full else '@xl:col-span-12' }}">
       <label for="{{ uid }}-bucket" class="field-label">{{ t('storage.bucket_label') }}</label>
       <input id="{{ uid }}-bucket" data-f="bucket" name="{{ prefix }}bucket" value="{{ f.bucket or '' }}" required autocomplete="off" spellcheck="false" class="input mono">
     </div>
-    <div class="sm:col-span-8">
+    <div class="@xl:col-span-8">
       <label for="{{ uid }}-endpoint" class="field-label">{{ t('storage.endpoint_label') }} <span class="font-normal text-text-3">· {{ t('storage.endpoint_aws') }}</span></label>
       <input id="{{ uid }}-endpoint" data-f="endpoint" name="{{ prefix }}endpoint" type="url" inputmode="url" value="{{ f.endpoint or '' }}" autocomplete="off" spellcheck="false" placeholder="{{ t('storage.endpoint_placeholder') }}" class="input mono">
     </div>
-    <div class="sm:col-span-4">
+    <div class="@xl:col-span-4">
       <label for="{{ uid }}-region" class="field-label">{{ t('storage.region_label') }}</label>
       <input id="{{ uid }}-region" data-f="region" name="{{ prefix }}region" value="{{ f.region or '' }}" autocomplete="off" spellcheck="false" placeholder="us-east-1" class="input mono">
     </div>
-    <div class="sm:col-span-6">
+    <div class="@xl:col-span-6">
       <label for="{{ uid }}-key-id" class="field-label">{{ t('storage.access_key_label') }}</label>
       <input id="{{ uid }}-key-id" name="{{ prefix }}access_key_id" {% if not edit %}required{% endif %} autocomplete="off" spellcheck="false" {% if edit %}placeholder="{{ t('storage.keys_saved') }}"{% endif %} class="input mono">
     </div>
-    <div class="sm:col-span-6">
+    <div class="@xl:col-span-6">
       <label for="{{ uid }}-secret" class="field-label">{{ t('storage.secret_key_label') }}</label>
       <input id="{{ uid }}-secret" name="{{ prefix }}secret_access_key" type="password" {% if not edit %}required{% endif %} autocomplete="new-password" {% if edit %}placeholder="{{ t('storage.keys_saved') }}"{% endif %} class="input mono">
     </div>
-    <p class="field-hint -mt-1 sm:col-span-12">{{ t('storage.keys_keep_hint') if edit else t('storage.keys_hint') }}</p>
+    <p class="field-hint -mt-1 @xl:col-span-12">{{ t('storage.keys_keep_hint') if edit else t('storage.keys_hint') }}</p>
     {% if full %}
-    <div class="sm:col-span-6">
+    <div class="@xl:col-span-6">
       <label for="{{ uid }}-delivery" class="field-label">{{ t('storage.delivery_label') }}</label>
       <select id="{{ uid }}-delivery" name="{{ prefix }}delivery_mode" x-model="delivery" class="input select">
         {% for mode in ["presigned", "proxy", "cdn"] %}
@@ -103,7 +103,7 @@
       </select>
     </div>
     {% endif %}
-    <label class="flex cursor-pointer items-center gap-3 rounded-[12px] border border-line px-3.5 py-2.5 {{ 'sm:col-span-6 sm:self-end' if full else 'sm:col-span-12' }}">
+    <label class="flex cursor-pointer items-center gap-3 rounded-[12px] border border-line px-3.5 py-2.5 {{ '@xl:col-span-6 @xl:self-end' if full else '@xl:col-span-12' }}">
       <input type="checkbox" data-f="path_style" name="{{ prefix }}path_style" value="on" {% if f.path_style %}checked{% endif %} class="size-[18px] shrink-0 accent-accent">
       <span class="min-w-0">
         <span class="block text-[14px] font-semibold">{{ t('storage.path_style_label') }}</span>
@@ -111,8 +111,8 @@
       </span>
     </label>
     {% if full %}
-    <p class="field-hint -mt-1 sm:col-span-12">{{ t('storage.delivery_hint') }}</p>
-    <div x-show="delivery === 'cdn'" {% if f.delivery_mode != "cdn" %}style="display: none"{% endif %} class="sm:col-span-12">
+    <p class="field-hint -mt-1 @xl:col-span-12">{{ t('storage.delivery_hint') }}</p>
+    <div x-show="delivery === 'cdn'" {% if f.delivery_mode != "cdn" %}style="display: none"{% endif %} class="@xl:col-span-12">
       <label for="{{ uid }}-cdn" class="field-label">{{ t('storage.cdn_url_label') }}</label>
       <input id="{{ uid }}-cdn" name="{{ prefix }}cdn_url" type="url" inputmode="url" value="{{ f.cdn_url or '' }}" :required="delivery === 'cdn'"
         autocomplete="off" spellcheck="false" placeholder="https://cdn.example.com" class="input mono">
