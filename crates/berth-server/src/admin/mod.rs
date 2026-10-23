@@ -89,6 +89,10 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         )
         .route("/users", get(access::users_page).post(access::users_create))
         .route("/users/{id}/connect", post(access::user_connect))
+        .route(
+            "/users/{id}/settings",
+            get(access::user_settings).post(access::user_settings_save),
+        )
         .route("/users/{user}/pairing/{id}", get(access::pairing_status))
         .route("/devices", get(access::devices_page))
         .route("/devices/{id}/revoke", post(access::devices_revoke))

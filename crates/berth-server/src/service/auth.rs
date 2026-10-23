@@ -54,7 +54,7 @@ pub(crate) async fn hash_password(password: String) -> anyhow::Result<String> {
     .await?
 }
 
-async fn verify_password(hash: String, password: String) -> anyhow::Result<bool> {
+pub(crate) async fn verify_password(hash: String, password: String) -> anyhow::Result<bool> {
     tokio::task::spawn_blocking(move || {
         let hash = PasswordHash::new(&hash).map_err(|e| anyhow::anyhow!("corrupt hash: {e}"))?;
         Ok(Argon2::default()

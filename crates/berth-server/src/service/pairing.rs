@@ -1,5 +1,6 @@
 //! Phone pairing: the admin issues a one-time code (QR or typed), the app exchanges it for
-//! device tokens (mvp-spec §5).
+//! device tokens (mvp-spec §5). A listener with a login signs in with it and a password
+//! instead.
 //!
 //! The code is 8 characters without look-alikes (no 0/O, 1/I/L): about 40 bits. That is enough
 //! for a token that lives two minutes behind a rate limit; only its hash is stored.
@@ -10,7 +11,7 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 
 use super::{
-    token_hash,
+    auth, token_hash,
     tokens::{self, TokenPair},
 };
 use crate::SecretKey;
@@ -225,26 +226,96 @@ pub async fn pair(
         .into());
     };
 
+    let paired = create_device(
+        &mut tx,
+        secret,
+        (&tenant_id, &user_id),
+        (&device_name, &platform),
+        now_ms,
+    )
+    .await?;
+    sqlx::query("UPDATE pairing_tokens SET device_id = $2 WHERE token_hash = $1")
+        .bind(&hash)
+        .bind(&paired.device_id)
+        .execute(&mut *tx)
+        .await
+        .context("link device")?;
+    tx.commit().await.context("commit pairing")?;
+    Ok(paired)
+}
+
+/// Signs a device in with a listener's login and password: a new device with the `listen`
+/// scope and its first tokens, as pairing gives. For phones that cannot scan a code, such
+/// as a store reviewer's.
+///
+/// # Errors
+/// `Auth(LoginFailed)` for an unknown login, a wrong password or a login that was turned
+/// off, alike; `Validation("platform_invalid")`.
+pub async fn login(
+    db: &SqlitePool,
+    secret: &SecretKey,
+    (login, password): (&str, &str),
+    (device_name, platform): (&str, &str),
+    now_ms: i64,
+) -> Result<Paired> {
+    let (device_name, platform) = validate_device(device_name, platform)?;
+    let user: Option<(String, String, String)> = sqlx::query_as(
+        "SELECT tenant_id, id, password_hash FROM users
+         WHERE lower(login) = lower($1) AND role = 'member'
+           AND password_hash IS NOT NULL AND deleted_at IS NULL",
+    )
+    .bind(login.trim())
+    .fetch_optional(db)
+    .await
+    .context("load login")?;
+    let Some((tenant_id, user_id, hash)) = user else {
+        return Err(AuthError::LoginFailed.into());
+    };
+    if !auth::verify_password(hash, password.to_owned()).await? {
+        return Err(AuthError::LoginFailed.into());
+    }
+    let mut tx = db.begin().await.context("begin")?;
+    let paired = create_device(
+        &mut tx,
+        secret,
+        (&tenant_id, &user_id),
+        (&device_name, &platform),
+        now_ms,
+    )
+    .await?;
+    tx.commit().await.context("commit login")?;
+    Ok(paired)
+}
+
+/// A new device of the user with the `listen` scope (and `admin` for an administrator) and
+/// its first tokens.
+async fn create_device(
+    tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
+    secret: &SecretKey,
+    (tenant_id, user_id): (&str, &str),
+    (device_name, platform): (&str, &str),
+    now_ms: i64,
+) -> Result<Paired> {
     let device_id = uuid::Uuid::now_v7().to_string();
     sqlx::query(
         "INSERT INTO devices (id, tenant_id, user_id, name, platform, paired_at, last_seen_at)
          VALUES ($1, $2, $3, $4, $5, $6, $6)",
     )
     .bind(&device_id)
-    .bind(&tenant_id)
-    .bind(&user_id)
-    .bind(&device_name)
-    .bind(&platform)
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(device_name)
+    .bind(platform)
     .bind(now_ms)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .context("insert device")?;
     sqlx::query(
         "INSERT INTO device_scopes (tenant_id, device_id, scope) VALUES ($1, $2, 'listen')",
     )
-    .bind(&tenant_id)
+    .bind(tenant_id)
     .bind(&device_id)
-    .execute(&mut *tx)
+    .execute(&mut **tx)
     .await
     .context("insert scope")?;
     // An administrator's phone may also approve web sign-ins.
@@ -252,20 +323,13 @@ pub async fn pair(
         "INSERT INTO device_scopes (tenant_id, device_id, scope)
          SELECT $1, $2, 'admin' FROM users WHERE id = $3 AND role IN ('owner', 'admin')",
     )
-    .bind(&tenant_id)
+    .bind(tenant_id)
     .bind(&device_id)
-    .bind(&user_id)
-    .execute(&mut *tx)
+    .bind(user_id)
+    .execute(&mut **tx)
     .await
     .context("insert admin scope")?;
-    sqlx::query("UPDATE pairing_tokens SET device_id = $2 WHERE token_hash = $1")
-        .bind(&hash)
-        .bind(&device_id)
-        .execute(&mut *tx)
-        .await
-        .context("link device")?;
-    let tokens = tokens::issue(&mut tx, secret, &tenant_id, &user_id, &device_id, now_ms).await?;
-    tx.commit().await.context("commit pairing")?;
+    let tokens = tokens::issue(tx, secret, tenant_id, user_id, &device_id, now_ms).await?;
     Ok(Paired { device_id, tokens })
 }
 

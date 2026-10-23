@@ -101,6 +101,35 @@ mod tests {
     }
 
     #[test]
+    fn user_settings_dialog_renders() {
+        for locale in ["en", "ru"] {
+            let dialog = render(
+                locale,
+                "partials/user_settings.html",
+                context! {
+                    user_settings => context! {
+                        user => context! { id => "u2", name => "Anna" },
+                        books => vec![
+                            context! { id => "b1", title => "Book's \"one\"", authors => vec!["A"], cover_hash => () },
+                        ],
+                        picked => vec!["b1"],
+                        access => "selected",
+                        login_on => true,
+                        login => "anna",
+                        has_password => true,
+                        min_password => 4,
+                        error => "login_taken",
+                    },
+                },
+            );
+            assert!(dialog.contains("/users/u2/settings") && dialog.contains("role=\"alert\""));
+            // Alpine expressions sit in single-quoted attributes: a title's quote is escaped.
+            assert!(dialog.contains("book\\u0027s"), "{dialog}");
+            assert!(dialog.contains("picked: [\"b1\"]"), "{dialog}");
+        }
+    }
+
+    #[test]
     fn pages_render_in_both_locales() {
         let base = context! {
             server_name => "Home", page => "dashboard",
@@ -129,13 +158,14 @@ mod tests {
 
             let users = context! {
                 users => vec![
-                    context! { id => "u1", name => "Admin", role => "owner", devices => 0 },
-                    context! { id => "u2", name => "Anna", role => "member", devices => 2 },
+                    context! { id => "u1", name => "Admin", role => "owner", devices => 0, login => (), book_access => "all", books => 0 },
+                    context! { id => "u2", name => "Anna", role => "member", devices => 2, login => "anna", book_access => "selected", books => 1 },
                 ],
                 ..base.clone()
             };
             let list = render(locale, "users.html", users.clone());
             assert!(list.contains("/users/u2/connect") && list.contains("/users?connect=u2"));
+            assert!(list.contains("/users/u2/settings") && !list.contains("/users/u1/settings"));
             assert!(!list.contains("/pairing/"), "no panel is open");
             let pairing = context! {
                 pairing => context! {

@@ -102,7 +102,7 @@ settings:
 
 users:
   title: Users
-  subtitle: You and the people who listen on this server. Listeners have no password; their phones pair with a code.
+  subtitle: You and the people who listen on this server. Listeners' phones pair with a code, or with a login and password if you gave them one.
   add_title: Add a listener
   add_hint: Then show a QR code to connect their phone.
   name_label: Name
@@ -115,6 +115,23 @@ users:
   devices: "Devices: %{count}"
   connect_phone: Connect a phone
   cancel: Cancel
+  settings: Access
+  settings_title: "Access: %{name}"
+  settings_hint: App sign-in with a login and password, and the books the listener sees.
+  login_title: Sign-in with a login and password
+  login_hint: For phones that cannot scan a QR code, such as App Store and Google Play review. In the app — "Sign in with a login and password".
+  login_label: Login
+  password_label: Password
+  password_keep: unchanged
+  password_hint: At least %{min} characters. demo will do for a demo account; pick a longer one for real people.
+  login_chip: "Sign-in: %{login}"
+  access_title: Books the listener sees
+  access_all: Whole library
+  access_selected: Only picked books
+  access_picked: "Picked:"
+  access_of: of %{count}
+  access_chip: "Books: %{count}"
+  access_no_books: The library has no books yet.
 
 connect:
   qr_label: QR code for the Berth app
@@ -295,6 +312,12 @@ errors:
   password_wrong: Wrong password.
   user_name_required: Enter a name.
   user_name_too_long: The name is too long (64 characters at most).
+  login_invalid: "A login is 3 to 64 characters: letters, digits, dot, hyphen, underscore, @."
+  login_taken: This login is taken.
+  login_password_short: The password is too short.
+  login_password_required: Set a password.
+  login_admin: Only a listener can have a login.
+  login_failed: Wrong login or password.
   storage_name_required: Enter a name.
   storage_name_too_long: The name is too long (64 characters at most).
   storage_name_taken: Storage with this name already exists.

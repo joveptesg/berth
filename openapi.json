@@ -513,6 +513,70 @@
         }
       }
     },
+    "/v1/auth/login": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Sign a device in with a listener's login and password, for phones that cannot scan a\npairing code (a store reviewer's). Same tokens as pairing; the server offers it when\n`server-info` lists `password`. Rate limited per client address.",
+        "operationId": "login",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Device signed in",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/PairResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_body`, `validation` (`platform_invalid`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`login_failed`: wrong login or password, or the login is off",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/v1/auth/pair": {
       "post": {
         "tags": [
@@ -1597,7 +1661,8 @@
         "type": "string",
         "description": "Client login method.",
         "enum": [
-          "pairing"
+          "pairing",
+          "password"
         ]
       },
       "Book": {
@@ -2050,6 +2115,34 @@
           }
         ],
         "description": "How to send one file."
+      },
+      "LoginRequest": {
+        "type": "object",
+        "description": "`POST /v1/auth/login` request.",
+        "required": [
+          "login",
+          "password",
+          "device_name",
+          "platform"
+        ],
+        "properties": {
+          "device_name": {
+            "type": "string",
+            "description": "Human-readable device name, e.g. \"Pixel 9\"."
+          },
+          "login": {
+            "type": "string",
+            "description": "Login the admin gave the listener (case is ignored)."
+          },
+          "password": {
+            "type": "string",
+            "description": "Password."
+          },
+          "platform": {
+            "type": "string",
+            "description": "Lower-case platform: `android`, `ios`, …"
+          }
+        }
       },
       "ManifestFile": {
         "allOf": [

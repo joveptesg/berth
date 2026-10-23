@@ -20,11 +20,13 @@ use crate::{
     db::now_ms,
     error::ApiError,
     service::{
+        books::{self, BookQuery, PolicyFilter},
         devices,
         pairing::{self, PairingStatus},
         settings, users,
     },
 };
+use berth_core::BerthError;
 
 fn serde(value: impl serde::Serialize) -> Value {
     Value::from(minijinja::value::Serde(value))
@@ -157,6 +159,133 @@ pub(crate) async fn users_create(
         };
     let name = error.as_ref().map(|_| form.name);
     let ctx = context! { error, name, ..ctx };
+    render_form(
+        &state,
+        &headers,
+        "users.html",
+        "partials/users_section.html",
+        ctx,
+    )
+}
+
+/// A listener's login for apps and the books they see.
+#[derive(Deserialize)]
+pub(crate) struct UserSettingsForm {
+    /// Checkbox: `on` when apps may sign in with the login.
+    #[serde(default)]
+    login_on: Option<String>,
+    #[serde(default)]
+    login: String,
+    /// Empty keeps the saved password.
+    #[serde(default)]
+    password: String,
+    /// `all` or `selected`.
+    #[serde(default)]
+    access: String,
+    /// Ids of the picked books, comma-separated.
+    #[serde(default)]
+    books: String,
+}
+
+impl UserSettingsForm {
+    fn picked(&self) -> Vec<String> {
+        self.books
+            .split(',')
+            .map(str::trim)
+            .filter(|id| !id.is_empty())
+            .map(str::to_owned)
+            .collect()
+    }
+}
+
+/// The settings dialog of a listener: as saved, or as `form` sent with its `error`.
+async fn settings_ctx(
+    state: &AppState,
+    tenant_id: &str,
+    user_id: &str,
+    form: Option<&UserSettingsForm>,
+    error: Option<String>,
+) -> Result<Value, ApiError> {
+    let user = users::list(&state.db, tenant_id)
+        .await?
+        .into_iter()
+        .find(|u| u.id == user_id && u.role == "member")
+        .ok_or(BerthError::NotFound)?;
+    let library = books::default_library_id(&state.db, tenant_id).await?;
+    let list = books::list(
+        &state.db,
+        tenant_id,
+        &PolicyFilter::admin(),
+        &library,
+        &BookQuery::default(),
+    )
+    .await?;
+    let picked: Vec<String> = match form {
+        Some(form) => form.picked(),
+        None => users::access(&state.db, tenant_id, user_id)
+            .await?
+            .map(|ids| ids.into_iter().collect())
+            .unwrap_or_default(),
+    };
+    Ok(context! {
+        user_settings => context! {
+            access => form.map_or(user.book_access.clone(), |f| f.access.clone()),
+            login_on => form.map_or(user.login.is_some(), |f| f.login_on.is_some()),
+            login => form.map_or(user.login.clone().unwrap_or_default(), |f| f.login.clone()),
+            has_password => user.login.is_some(),
+            user => serde(user),
+            books => serde(list),
+            picked,
+            min_password => users::MIN_APP_PASSWORD_LEN,
+            error,
+        }
+    })
+}
+
+/// The settings dialog, loaded into the users page.
+pub(crate) async fn user_settings(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    Path(user_id): Path<String>,
+) -> Page {
+    let ctx = settings_ctx(&state, &session.0.tenant_id, &user_id, None, None).await?;
+    render(&state, "partials/user_settings.html", ctx)
+}
+
+/// Saves a listener's login and book access; the dialog comes back open with the error.
+pub(crate) async fn user_settings_save(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+    Form(form): Form<UserSettingsForm>,
+) -> Page {
+    let tenant_id = &session.0.tenant_id;
+    let saved = async {
+        if form.login_on.is_some() {
+            users::set_login(&state.db, tenant_id, &user_id, &form.login, &form.password).await?;
+        } else {
+            users::clear_login(&state.db, tenant_id, &user_id).await?;
+        }
+        let picked = form.picked();
+        let books = (form.access == "selected").then_some(picked.as_slice());
+        users::set_access(&state.db, tenant_id, &user_id, books).await
+    }
+    .await;
+    let ctx = users_ctx(&state, &headers, &session, None).await?;
+    let ctx = match saved {
+        Ok(()) => {
+            if !super::is_htmx(&headers) {
+                return Ok(redirect(&headers, "/users"));
+            }
+            ctx
+        }
+        Err(err) => {
+            let error = Some(form_error(err)?);
+            let settings = settings_ctx(&state, tenant_id, &user_id, Some(&form), error).await?;
+            context! { ..settings, ..ctx }
+        }
+    };
     render_form(
         &state,
         &headers,

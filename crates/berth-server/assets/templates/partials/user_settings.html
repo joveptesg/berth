@@ -1,0 +1,84 @@
+{% import "partials/ui.html" as ui %}
+{# A listener's login for apps and the books they see. `user_settings`: user, books, picked (ids),
+   access (all | selected), login_on, login, has_password, min_password, error. #}
+{% set s = user_settings %}
+<dialog id="user-settings" x-init="$el.showModal()" @close="$el.remove()"
+  class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,640px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
+  <form method="post" action="/users/{{ s.user.id }}/settings" hx-post="/users/{{ s.user.id }}/settings"
+    hx-target="#users-section" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
+    x-data='{ loginOn: {{ "true" if s.login_on else "false" }}, access: {{ s.access | tojson }}, picked: {{ s.picked | tojson }}, q: "" }'
+    class="form-dense flex max-h-[calc(100dvh-34px)] flex-col">
+    <div class="relative border-b border-line px-6 pt-5 pb-4 pr-16">
+      <h2 class="text-[20px] font-bold">{{ t('users.settings_title', name=s.user.name) }}</h2>
+      <p class="mt-0.5 text-[13.5px] text-text-3">{{ t('users.settings_hint') }}</p>
+      <button type="button" onclick="this.closest('dialog').close()" aria-label="{{ t('connect.close') }}"
+        class="absolute top-4 right-4 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close") }}</button>
+    </div>
+
+    <div class="flex flex-col gap-5 overflow-y-auto px-6 py-5">
+      {% if s.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ s.error) }}</p>{% endif %}
+
+      <section class="flex flex-col gap-3">
+        <label class="flex cursor-pointer items-start gap-3">
+          <input type="checkbox" name="login_on" value="on" x-model="loginOn" {% if s.login_on %}checked{% endif %} class="mt-0.5 size-[18px] shrink-0 accent-accent">
+          <span>
+            <span class="block text-[15px] font-semibold">{{ t('users.login_title') }}</span>
+            <span class="block text-[13px] leading-snug text-text-3">{{ t('users.login_hint') }}</span>
+          </span>
+        </label>
+        <div x-show="loginOn" {% if not s.login_on %}style="display: none"{% endif %} class="grid grid-cols-1 gap-x-4 gap-y-3 sm:grid-cols-2">
+          <div>
+            <label for="user-login" class="field-label">{{ t('users.login_label') }}</label>
+            <input id="user-login" name="login" value="{{ s.login }}" :required="loginOn" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="demo" class="input mono">
+          </div>
+          <div>
+            <label for="user-password" class="field-label">{{ t('users.password_label') }}</label>
+            <input id="user-password" name="password" type="text" autocomplete="off" spellcheck="false"
+              {% if not s.has_password %}:required="loginOn"{% endif %} minlength="{{ s.min_password }}"
+              placeholder="{{ t('users.password_keep') if s.has_password else '' }}" class="input mono">
+          </div>
+          <p class="field-hint -mt-1 sm:col-span-2">{{ t('users.password_hint', min=s.min_password) }}</p>
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-3 border-t border-line pt-5">
+        <h3 class="text-[15px] font-semibold">{{ t('users.access_title') }}</h3>
+        <div class="inline-flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 sm:w-auto sm:self-start">
+          {% for value in ["all", "selected"] %}
+          <label class="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-[11px] px-4 text-[14px] font-semibold whitespace-nowrap text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)]">
+            <input type="radio" name="access" value="{{ value }}" x-model="access" {% if s.access == value %}checked{% endif %} class="sr-only">{{ t('users.access_' ~ value) }}
+          </label>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="books" :value="picked.join(',')" value="{{ s.picked | join(',') }}">
+        <div x-show="access === 'selected'" {% if s.access != "selected" %}style="display: none"{% endif %} class="flex flex-col gap-2">
+          <p class="text-[13px] text-text-3">{{ t('users.access_picked') }} <span x-text="picked.length" class="font-semibold text-text">{{ s.picked | length }}</span> {{ t('users.access_of', count=s.books | length) }}</p>
+          {% if s.books %}
+          <input type="search" x-model="q" placeholder="{{ t('library.search') }}" class="input">
+          <ul class="max-h-72 divide-y divide-line overflow-y-auto rounded-[14px] border border-line">
+            {% for b in s.books %}
+            <li x-show='!q || {{ (b.title ~ " " ~ (b.authors | join(" "))) | lower | tojson }}.includes(q.toLowerCase())'>
+              <label class="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-surface-2">
+                <input type="checkbox" value="{{ b.id }}" x-model="picked" class="size-[18px] shrink-0 accent-accent">
+                <span class="w-9 shrink-0">{{ ui.cover("/book/" ~ b.id ~ "/cover?v=" ~ b.cover_hash[:12] if b.cover_hash, b.title, "rounded-[8px] text-[13px]") }}</span>
+                <span class="min-w-0">
+                  <span class="block truncate text-[14.5px] font-semibold">{{ b.title }}</span>
+                  {% if b.authors %}<span class="block truncate text-[13px] text-text-3">{{ b.authors | join(', ') }}</span>{% endif %}
+                </span>
+              </label>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="text-[14px] text-text-3">{{ t('users.access_no_books') }}</p>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div class="flex gap-2 border-t border-line bg-surface-2/40 px-6 py-3.5 sm:justify-end">
+      <button type="button" onclick="this.closest('dialog').close()" class="btn btn-ghost min-h-11 px-4 sm:px-5">{{ t('users.cancel') }}</button>
+      <button type="submit" class="btn btn-primary min-h-11 flex-1 px-4 sm:flex-none sm:px-5">{{ t('common.save') }}</button>
+    </div>
+  </form>
+</dialog>

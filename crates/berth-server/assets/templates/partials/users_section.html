@@ -23,6 +23,9 @@
     </form>
   </dialog>
 
+  {# A listener's login and book access: loaded on demand, back open after an error. #}
+  <div id="user-dialog">{% if user_settings is defined and user_settings %}{% include "partials/user_settings.html" %}{% endif %}</div>
+
   <ul class="card divide-y divide-line p-0 sm:p-0" aria-label="{{ t('users.title') }}">
     {% for user in users %}
     <li>
@@ -35,9 +38,21 @@
             <span aria-hidden="true">·</span>
             <span id="devices-{{ user.id }}">{{ t('users.devices', count=user.devices) }}</span>
           </p>
+          {% if user.login or user.book_access == "selected" %}
+          <p class="mt-1.5 flex flex-wrap gap-1.5">
+            {% if user.login %}<span class="chip bg-surface-2 text-text-2">{{ ui.icon("key", "size-3.5 mr-1") }}{{ t('users.login_chip', login=user.login) }}</span>{% endif %}
+            {% if user.book_access == "selected" %}<span class="chip bg-warn/10 text-warn">{{ t('users.access_chip', count=user.books) }}</span>{% endif %}
+          </p>
+          {% endif %}
         </div>
-        <a href="/users?connect={{ user.id }}" hx-post="/users/{{ user.id }}/connect" hx-target="#pairing-{{ user.id }}" hx-swap="innerHTML"
-          class="btn btn-ghost min-h-11 w-full px-4 text-[15px] sm:w-auto">{{ ui.icon("qr", "size-[18px]") }}{{ t('users.connect_phone') }}</a>
+        <div class="flex w-full gap-2 sm:w-auto">
+          {% if user.role == "member" %}
+          <button type="button" hx-get="/users/{{ user.id }}/settings" hx-target="#user-dialog" hx-swap="innerHTML"
+            class="btn btn-ghost min-h-11 flex-1 px-4 text-[15px] sm:flex-none">{{ ui.icon("key", "size-[18px]") }}{{ t('users.settings') }}</button>
+          {% endif %}
+          <a href="/users?connect={{ user.id }}" hx-post="/users/{{ user.id }}/connect" hx-target="#pairing-{{ user.id }}" hx-swap="innerHTML"
+            class="btn btn-ghost min-h-11 flex-1 px-4 text-[15px] sm:flex-none">{{ ui.icon("qr", "size-[18px]") }}{{ t('users.connect_phone') }}</a>
+        </div>
       </div>
       {% set open = pairing and pairing.user_id == user.id %}
       <div id="pairing-{{ user.id }}" aria-live="polite" {% if open %}x-init="$el.scrollIntoView({ block: 'nearest' })"{% endif %}>

@@ -270,8 +270,9 @@ pub(crate) async fn progress_batch(
     JsonBody(batch): JsonBody<ProgressBatch>,
 ) -> Result<Json<Positions>, ApiError> {
     progress::record(&state.db, &device, &batch).await?;
+    let policy = PolicyFilter::for_user(&state.db, &device.tenant_id, &device.user_id).await?;
     Ok(Json(
-        progress::list(&state.db, &device.tenant_id, &device.user_id).await?,
+        progress::list(&state.db, &device.tenant_id, &device.user_id, &policy).await?,
     ))
 }
 
@@ -290,8 +291,9 @@ pub(crate) async fn progress(
     State(state): State<AppState>,
     Authenticated(device): Authenticated,
 ) -> Result<Json<Positions>, ApiError> {
+    let policy = PolicyFilter::for_user(&state.db, &device.tenant_id, &device.user_id).await?;
     Ok(Json(
-        progress::list(&state.db, &device.tenant_id, &device.user_id).await?,
+        progress::list(&state.db, &device.tenant_id, &device.user_id, &policy).await?,
     ))
 }
 

@@ -2,7 +2,7 @@ use axum::{Json, extract::State};
 use serde::Serialize;
 use utoipa::ToSchema;
 
-use crate::AppState;
+use crate::{AppState, error::ApiError, service::users};
 
 const MIN_MOBILE_VERSION: &str = "0.1.0";
 
@@ -28,6 +28,9 @@ pub(crate) struct ServerInfo {
 pub(crate) enum AuthMode {
     /// QR code or pairing code issued by the admin.
     Pairing,
+    /// A listener's login and password (`POST /v1/auth/login`); listed while some listener
+    /// has a login.
+    Password,
 }
 
 /// Oldest supported versions per client type.
@@ -45,14 +48,20 @@ pub(crate) struct MinClientVersion {
     security(()),
     responses((status = OK, description = "Server info", body = ServerInfo))
 )]
-pub(crate) async fn server_info(State(state): State<AppState>) -> Json<ServerInfo> {
-    Json(ServerInfo {
+pub(crate) async fn server_info(
+    State(state): State<AppState>,
+) -> Result<Json<ServerInfo>, ApiError> {
+    let mut auth_modes = vec![AuthMode::Pairing];
+    if users::any_login(&state.db).await? {
+        auth_modes.push(AuthMode::Password);
+    }
+    Ok(Json(ServerInfo {
         name: state.config.load().name.clone(),
         server_id: state.server_id.to_string(),
         version: env!("CARGO_PKG_VERSION").to_owned(),
-        auth_modes: vec![AuthMode::Pairing],
+        auth_modes,
         min_client_version: MinClientVersion {
             mobile: MIN_MOBILE_VERSION.to_owned(),
         },
-    })
+    }))
 }

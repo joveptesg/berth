@@ -142,6 +142,55 @@ pub(crate) async fn pair(
     }))
 }
 
+/// `POST /v1/auth/login` request.
+#[derive(Deserialize, ToSchema)]
+pub(crate) struct LoginRequest {
+    /// Login the admin gave the listener (case is ignored).
+    login: String,
+    /// Password.
+    password: String,
+    /// Human-readable device name, e.g. "Pixel 9".
+    device_name: String,
+    /// Lower-case platform: `android`, `ios`, …
+    platform: String,
+}
+
+/// Sign a device in with a listener's login and password, for phones that cannot scan a
+/// pairing code (a store reviewer's). Same tokens as pairing; the server offers it when
+/// `server-info` lists `password`. Rate limited per client address.
+#[utoipa::path(
+    post,
+    path = "/v1/auth/login",
+    tag = "auth",
+    security(()),
+    request_body = LoginRequest,
+    responses(
+        (status = OK, description = "Device signed in", body = PairResponse),
+        (status = BAD_REQUEST, description = "`invalid_body`, `validation` (`platform_invalid`)", body = Problem, content_type = "application/problem+json"),
+        (status = UNAUTHORIZED, description = "`login_failed`: wrong login or password, or the login is off", body = Problem, content_type = "application/problem+json"),
+        (status = TOO_MANY_REQUESTS, description = "`rate_limited`", body = Problem, content_type = "application/problem+json"),
+    )
+)]
+pub(crate) async fn login(
+    State(state): State<AppState>,
+    Body(req): Body<LoginRequest>,
+) -> Result<Json<PairResponse>, ApiError> {
+    let paired = pairing::login(
+        &state.db,
+        &state.secret,
+        (&req.login, &req.password),
+        (&req.device_name, &req.platform),
+        now_ms(),
+    )
+    .await?;
+    Ok(Json(PairResponse {
+        device_id: paired.device_id,
+        access_token: paired.tokens.access_token,
+        refresh_token: paired.tokens.refresh_token,
+        access_expires_in: paired.tokens.access_expires_in,
+    }))
+}
+
 /// Rotate the refresh token. A token presented again within 45 s gets the same new pair;
 /// later reuse ends the device's session (`session_expired`).
 #[utoipa::path(

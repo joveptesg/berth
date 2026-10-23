@@ -3,7 +3,7 @@
 //! Every read of books takes a [`PolicyFilter`]; writes bump the tenant revision
 //! (`UPDATE revisions … RETURNING v` in the same transaction), which drives `/v1/sync`.
 
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 use anyhow::Context;
 use berth_core::{BerthError, Result};
@@ -20,19 +20,24 @@ const MAX_COVER_BYTES: usize = 10 << 20;
 /// Books per sync page.
 pub const SYNC_PAGE: i64 = 200;
 
-/// What a reader may see. In the MVP every book is visible; access rules plug in here and
-/// every book query below takes the filter, so none can forget it.
+/// What a reader may see: the whole library, or only the books picked for them. Every book
+/// query below takes the filter, so none can forget it.
 #[derive(Debug, Clone)]
 pub struct PolicyFilter {
     /// `access_policies.policy_version` of the reader: part of the sync cursor.
     pub version: i64,
+    /// The only books the reader may see; `None` for the whole library.
+    pub books: Option<HashSet<String>>,
 }
 
 impl PolicyFilter {
     /// The admin sees everything.
     #[must_use]
     pub fn admin() -> Self {
-        Self { version: 0 }
+        Self {
+            version: 0,
+            books: None,
+        }
     }
 
     /// The filter of a user.
@@ -40,16 +45,34 @@ impl PolicyFilter {
     /// # Errors
     /// Database failures.
     pub async fn for_user(db: &SqlitePool, tenant_id: &str, user_id: &str) -> anyhow::Result<Self> {
-        let version: Option<i64> = sqlx::query_scalar(
-            "SELECT policy_version FROM access_policies WHERE tenant_id = $1 AND user_id = $2",
+        let policy: Option<(i64, String)> = sqlx::query_as(
+            "SELECT policy_version, book_access FROM access_policies
+             WHERE tenant_id = $1 AND user_id = $2",
         )
         .bind(tenant_id)
         .bind(user_id)
         .fetch_optional(db)
         .await?;
-        Ok(Self {
-            version: version.unwrap_or(1),
-        })
+        let (version, access) = policy.unwrap_or((1, "all".into()));
+        let books = if access == "selected" {
+            let ids: Vec<String> = sqlx::query_scalar(
+                "SELECT book_id FROM user_books WHERE tenant_id = $1 AND user_id = $2",
+            )
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_all(db)
+            .await?;
+            Some(ids.into_iter().collect())
+        } else {
+            None
+        };
+        Ok(Self { version, books })
+    }
+
+    /// Whether the reader may see book `id`.
+    #[must_use]
+    pub fn allows(&self, id: &str) -> bool {
+        self.books.as_ref().is_none_or(|books| books.contains(id))
     }
 }
 
@@ -243,7 +266,7 @@ pub struct BookQuery {
 pub async fn list(
     db: &SqlitePool,
     tenant_id: &str,
-    _policy: &PolicyFilter,
+    policy: &PolicyFilter,
     library_id: &str,
     query: &BookQuery,
 ) -> anyhow::Result<Vec<Book>> {
@@ -269,7 +292,11 @@ pub async fn list(
     .fetch_all(db)
     .await?;
     let mut people = people(db, tenant_id, 0, i64::MAX).await?;
-    Ok(rows.into_iter().map(|r| r.into_book(&mut people)).collect())
+    Ok(rows
+        .into_iter()
+        .filter(|r| policy.allows(&r.id))
+        .map(|r| r.into_book(&mut people))
+        .collect())
 }
 
 /// Authors and series of a library, for the filters.
@@ -337,9 +364,12 @@ async fn row(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<BookRow> {
 pub async fn get(
     db: &SqlitePool,
     tenant_id: &str,
-    _policy: &PolicyFilter,
+    policy: &PolicyFilter,
     id: &str,
 ) -> Result<BookDetail> {
+    if !policy.allows(id) {
+        return Err(BerthError::NotFound);
+    }
     let book = row(db, tenant_id, id).await?;
     let mut people = people(db, tenant_id, book.revision - 1, book.revision)
         .await
@@ -596,9 +626,12 @@ pub async fn delete(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
 pub async fn cover_hash(
     db: &SqlitePool,
     tenant_id: &str,
-    _policy: &PolicyFilter,
+    policy: &PolicyFilter,
     id: &str,
 ) -> Result<String> {
+    if !policy.allows(id) {
+        return Err(BerthError::NotFound);
+    }
     row(db, tenant_id, id)
         .await?
         .cover_hash
@@ -728,7 +761,8 @@ pub async fn sync(
     let mut books = Vec::new();
     let mut removed = Vec::new();
     for row in rows {
-        if row.deleted_at.is_some() {
+        // A hidden book goes as removed: a full slice drops it anyway, a delta takes it away.
+        if row.deleted_at.is_some() || !policy.allows(&row.id) {
             removed.push(row.id);
             continue;
         }

@@ -9,7 +9,10 @@ use berth_core::{BerthError, Result};
 use serde::{Deserialize, Serialize};
 use sqlx::SqlitePool;
 
-use crate::{db::now_ms, service::tokens::DeviceAuth};
+use crate::{
+    db::now_ms,
+    service::{books::PolicyFilter, tokens::DeviceAuth},
+};
 
 /// Most events in one batch; a longer queue goes in several.
 pub const MAX_BATCH: usize = 500;
@@ -149,12 +152,17 @@ pub async fn record(db: &SqlitePool, device: &DeviceAuth, batch: &ProgressBatch)
     Ok(())
 }
 
-/// Current positions of the user in books that still exist.
+/// Current positions of the user in books that still exist and that the user may see.
 ///
 /// # Errors
 /// Database failures.
-pub async fn list(db: &SqlitePool, tenant_id: &str, user_id: &str) -> anyhow::Result<Positions> {
-    let positions = sqlx::query_as(
+pub async fn list(
+    db: &SqlitePool,
+    tenant_id: &str,
+    user_id: &str,
+    policy: &PolicyFilter,
+) -> anyhow::Result<Positions> {
+    let positions: Vec<Position> = sqlx::query_as(
         "SELECT p.book_id, p.position_ms, p.finished, p.updated_at FROM progress_current p
          JOIN books b ON b.id = p.book_id
          WHERE p.tenant_id = $1 AND p.user_id = $2 AND b.deleted_at IS NULL
@@ -166,6 +174,9 @@ pub async fn list(db: &SqlitePool, tenant_id: &str, user_id: &str) -> anyhow::Re
     .await?;
     Ok(Positions {
         server_now: now_ms(),
-        positions,
+        positions: positions
+            .into_iter()
+            .filter(|p| policy.allows(&p.book_id))
+            .collect(),
     })
 }

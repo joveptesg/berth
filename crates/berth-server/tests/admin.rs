@@ -433,7 +433,14 @@ async fn pairing_flow_from_connect_to_revoke() {
     // Adding a listener opens the QR panel under their row right away.
     let page = send(&state, post("/users", Some(&session), &[("name", "Anna")])).await;
     assert_eq!(page.status, StatusCode::OK);
-    let status_url = format!("/users/{}", between(&page.body, "hx-get=\"/users/", "\""));
+    let status_url = page
+        .body
+        .split("hx-get=\"/users/")
+        .skip(1)
+        .map(|rest| &rest[..rest.find('"').unwrap()])
+        .find(|url| url.contains("/pairing/"))
+        .map(|url| format!("/users/{url}"))
+        .expect("the panel polls the pairing status");
     let user_id = between(&status_url, "/users/", "/pairing/").to_owned();
     assert!(page.body.contains(&format!("id=\"pairing-{user_id}\"")));
     let code = format!(
@@ -2244,4 +2251,225 @@ async fn r2_wizard_creates_bucket_cors_and_profile() {
         page.body
     );
     assert!(!page.body.contains("secret-token"));
+}
+
+// ── Login for apps and per-user access ──────────────────
+
+/// A book of one short chapter, saved through the ingest API.
+async fn add_book(state: &AppState, token: &str, title: &str) -> String {
+    let mp3 = chapter_mp3(title, 1, 1);
+    let created = send(
+        state,
+        api(
+            "POST",
+            "/v1/ingest/uploads",
+            token,
+            Some(&serde_json::json!({ "name": title, "files": [{ "name": "a.mp3", "size": mp3.len() }] })),
+        ),
+    )
+    .await
+    .json();
+    let id = created["id"].as_str().unwrap().to_owned();
+    let uploads = format!("/v1/ingest/uploads/{id}");
+    send(state, put_bytes(&format!("{uploads}/files/0"), token, mp3)).await;
+    send(
+        state,
+        api("POST", &format!("{uploads}/complete"), token, None),
+    )
+    .await;
+    berth_server::jobs::run_due(state).await.unwrap();
+    let saved = send(
+        state,
+        api(
+            "POST",
+            &format!("{uploads}/save"),
+            token,
+            Some(&serde_json::json!({ "title": title, "authors": [], "narrators": [], "series": "" })),
+        ),
+    )
+    .await;
+    assert_eq!(saved.status, StatusCode::CREATED, "{}", saved.body);
+    saved.json()["book_id"].as_str().unwrap().to_owned()
+}
+
+fn app_login(login: &str, password: &str) -> Request<Body> {
+    json(
+        "/v1/auth/login",
+        None,
+        &serde_json::json!({ "login": login, "password": password, "device_name": "Review", "platform": "ios" }),
+    )
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: login, picked books, access change, login off"
+)]
+async fn apps_sign_in_with_a_login_and_see_only_picked_books() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let admin = admin_token(&state).await;
+    let open = add_book(&state, &admin, "Открытая").await;
+    let hidden = add_book(&state, &admin, "Закрытая").await;
+    let modes =
+        || async { send(&state, get("/v1/server-info", None)).await.json()["auth_modes"].clone() };
+    assert_eq!(modes().await, serde_json::json!(["pairing"]));
+
+    send(
+        &state,
+        post("/users", Some(&session), &[("name", "Модерация")]),
+    )
+    .await;
+    let user: String = sqlx::query_scalar("SELECT id FROM users WHERE name = 'Модерация'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let settings = format!("/users/{user}/settings");
+    let dialog = send(&state, get(&settings, Some(&session))).await;
+    assert!(dialog.body.contains("Закрытая"), "{}", dialog.body);
+    let short = send(
+        &state,
+        post(
+            &settings,
+            Some(&session),
+            &[
+                ("login_on", "on"),
+                ("login", "demo"),
+                ("password", "dem"),
+                ("access", "all"),
+            ],
+        ),
+    )
+    .await;
+    assert!(
+        short.body.contains("role=\"alert\"") && short.body.contains("id=\"user-settings\""),
+        "the dialog comes back with the error: {}",
+        short.body
+    );
+    let saved = send(
+        &state,
+        post(
+            &settings,
+            Some(&session),
+            &[
+                ("login_on", "on"),
+                ("login", "demo"),
+                ("password", "demo"),
+                ("access", "selected"),
+                ("books", &open),
+            ],
+        ),
+    )
+    .await;
+    assert!(!saved.body.contains("role=\"alert\""), "{}", saved.body);
+    assert!(saved.body.contains("demo"), "the login chip");
+    assert_eq!(modes().await, serde_json::json!(["pairing", "password"]));
+
+    // Wrong password, then the login in other case.
+    assert_eq!(
+        send(&state, app_login("demo", "nope")).await.problem(),
+        "login_failed"
+    );
+    assert_eq!(
+        send(&state, app_login("nobody", "demo")).await.problem(),
+        "login_failed"
+    );
+    let signed = send(&state, app_login("DEMO", "demo")).await;
+    assert_eq!(signed.status, StatusCode::OK, "{}", signed.body);
+    let signed = signed.json();
+    let token = signed["access_token"].as_str().unwrap().to_owned();
+    let scopes: Vec<String> =
+        sqlx::query_scalar("SELECT scope FROM device_scopes WHERE device_id = $1")
+            .bind(signed["device_id"].as_str().unwrap())
+            .fetch_all(&state.db)
+            .await
+            .unwrap();
+    assert_eq!(scopes, ["listen"]);
+
+    // Only the picked book, everywhere.
+    let page = send(&state, bearer_get("/v1/sync", &token)).await.json();
+    let ids: Vec<&str> = page["books"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["id"].as_str().unwrap())
+        .collect();
+    assert_eq!(ids, [open.as_str()]);
+    assert_eq!(page["reset"], true);
+    for path in [
+        format!("/v1/books/{hidden}/files/0/stream"),
+        format!("/v1/books/{hidden}/download-manifest"),
+    ] {
+        assert_eq!(
+            send(&state, bearer_get(&path, &token)).await.problem(),
+            "not_found",
+            "{path}"
+        );
+    }
+    let stream = send(
+        &state,
+        bearer_get(&format!("/v1/books/{open}/files/0/stream"), &token),
+    )
+    .await;
+    assert_eq!(stream.status, StatusCode::OK, "{}", stream.body);
+
+    // Opening the whole library changes the policy: the next sync is a full slice.
+    let cursor = page["cursor"].as_str().unwrap().to_owned();
+    send(
+        &state,
+        post(
+            &settings,
+            Some(&session),
+            &[
+                ("login_on", "on"),
+                ("login", "demo"),
+                ("password", ""),
+                ("access", "all"),
+            ],
+        ),
+    )
+    .await;
+    let page = send(
+        &state,
+        bearer_get(&format!("/v1/sync?cursor={cursor}"), &token),
+    )
+    .await
+    .json();
+    assert_eq!(page["reset"], true);
+    assert_eq!(page["books"].as_array().unwrap().len(), 2);
+    // An empty password kept the saved one.
+    assert_eq!(
+        send(&state, app_login("demo", "demo")).await.status,
+        StatusCode::OK
+    );
+
+    // The owner cannot get a login; turning the listener's login off closes it.
+    let owner: String = sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let tenant_id = tenant(&state).await;
+    let refused = berth_server::service::users::set_login(
+        &state.db,
+        &tenant_id,
+        &owner,
+        "boss",
+        "long enough",
+    )
+    .await;
+    assert!(matches!(
+        refused,
+        Err(berth_core::BerthError::Validation(code)) if code == "login_admin"
+    ));
+    send(
+        &state,
+        post(&settings, Some(&session), &[("access", "all")]),
+    )
+    .await;
+    assert_eq!(modes().await, serde_json::json!(["pairing"]));
+    assert_eq!(
+        send(&state, app_login("demo", "demo")).await.problem(),
+        "login_failed"
+    );
 }

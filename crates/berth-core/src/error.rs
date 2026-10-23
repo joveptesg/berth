@@ -50,6 +50,9 @@ pub enum AuthError {
     /// The pairing code is unknown.
     #[error("pairing token invalid")]
     PairingTokenInvalid,
+    /// The login or the password is wrong, or the login is turned off.
+    #[error("login failed")]
+    LoginFailed,
 }
 
 impl AuthError {
@@ -63,6 +66,7 @@ impl AuthError {
             Self::PairingTokenExpired => "pairing_token_expired",
             Self::PairingTokenUsed => "pairing_token_used",
             Self::PairingTokenInvalid => "pairing_token_invalid",
+            Self::LoginFailed => "login_failed",
         }
     }
 }

@@ -100,7 +100,7 @@ settings:
 
 users:
   title: Пользователи
-  subtitle: Вы и те, кто слушает книги на этом сервере. У слушателей нет пароля — их телефоны подключаются по коду.
+  subtitle: Вы и те, кто слушает книги на этом сервере. Телефоны слушателей подключаются по коду или по логину и паролю, если вы их дали.
   add_title: Добавить слушателя
   add_hint: Затем покажите QR-код, чтобы подключить его телефон.
   name_label: Имя
@@ -113,6 +113,23 @@ users:
   devices: "Устройств: %{count}"
   connect_phone: Подключить телефон
   cancel: Отмена
+  settings: Доступ
+  settings_title: "Доступ: %{name}"
+  settings_hint: Вход в приложение по логину и паролю и книги, которые видит слушатель.
+  login_title: Вход по логину и паролю
+  login_hint: Для телефонов, которым нечем отсканировать QR, например для модерации в App Store и Google Play. В приложении — «Войти по логину и паролю».
+  login_label: Логин
+  password_label: Пароль
+  password_keep: без изменений
+  password_hint: Не короче %{min} символов. Для демо-аккаунта сойдёт demo, для настоящих людей выберите пароль подлиннее.
+  login_chip: "Вход: %{login}"
+  access_title: Какие книги видит слушатель
+  access_all: Вся библиотека
+  access_selected: Только выбранные
+  access_picked: "Выбрано:"
+  access_of: из %{count}
+  access_chip: "Книг: %{count}"
+  access_no_books: В библиотеке пока нет книг.
 
 connect:
   qr_label: QR-код для приложения Berth
@@ -293,6 +310,12 @@ errors:
   password_wrong: Неверный пароль.
   user_name_required: Введите имя.
   user_name_too_long: Слишком длинное имя (не больше 64 символов).
+  login_invalid: "Логин — от 3 до 64 символов: буквы, цифры, точка, дефис, подчёркивание, @."
+  login_taken: Этот логин уже занят.
+  login_password_short: Пароль слишком короткий.
+  login_password_required: Задайте пароль.
+  login_admin: Логин можно дать только слушателю.
+  login_failed: Неверный логин или пароль.
   storage_name_required: Введите название.
   storage_name_too_long: Слишком длинное название (не больше 64 символов).
   storage_name_taken: Хранилище с таким названием уже есть.

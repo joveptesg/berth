@@ -70,7 +70,8 @@ impl Modify for BearerAuth {
 }
 
 fn routes() -> OpenApiRouter<AppState> {
-    // Pairing codes have about 40 bits: guessing is slowed per client address.
+    // Pairing codes have about 40 bits and passwords may be short: guessing is slowed per
+    // client address.
     let pair_limit = GovernorLayer::new(Arc::new(
         GovernorConfigBuilder::default()
             .per_second(3)
@@ -85,6 +86,7 @@ fn routes() -> OpenApiRouter<AppState> {
         .merge(
             OpenApiRouter::new()
                 .routes(routes!(auth::pair))
+                .routes(routes!(auth::login))
                 .layer(pair_limit),
         )
         .routes(routes!(auth::refresh))

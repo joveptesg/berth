@@ -147,9 +147,12 @@ pub async fn open_token(db: &SqlitePool, secret: &SecretKey, token: &str) -> Res
 async fn files(
     db: &SqlitePool,
     tenant_id: &str,
-    _policy: &PolicyFilter,
+    policy: &PolicyFilter,
     book_id: &str,
 ) -> Result<Vec<BookFile>> {
+    if !policy.allows(book_id) {
+        return Err(BerthError::NotFound);
+    }
     let files: Vec<BookFile> = sqlx::query_as(
         "SELECT f.idx, f.blob_hash, bl.size, f.offset_ms, f.duration_ms FROM book_files f
          JOIN books b ON b.id = f.book_id AND b.tenant_id = f.tenant_id
