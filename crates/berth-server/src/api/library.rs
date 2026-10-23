@@ -18,6 +18,7 @@ use crate::{
     service::{
         blobs,
         books::{self, PolicyFilter, SyncPage},
+        settings,
     },
 };
 
@@ -48,13 +49,14 @@ pub(crate) async fn sync(
     Query(query): Query<SyncQuery>,
 ) -> Result<Json<SyncPage>, ApiError> {
     let policy = PolicyFilter::for_user(&state.db, &device.tenant_id, &device.user_id).await?;
-    let page = books::sync(
+    let mut page = books::sync(
         &state.db,
         &device.tenant_id,
         &policy,
         query.cursor.as_deref(),
     )
     .await?;
+    page.server_urls = settings::server_urls(&state.config.load());
     Ok(Json(page))
 }
 

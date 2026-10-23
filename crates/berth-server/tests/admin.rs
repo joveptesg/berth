@@ -334,6 +334,18 @@ async fn settings_apply_to_server_info() {
     let info = send(&state, get("/v1/server-info", None)).await;
     let info: serde_json::Value = serde_json::from_str(&info.body).unwrap();
     assert_eq!(info["name"], "Home books");
+    assert!(
+        info.get("server_urls").is_none(),
+        "addresses only for devices"
+    );
+
+    // Paired phones learn the addresses with the library sync.
+    let token = admin_token(&state).await;
+    let page = send(&state, bearer_get("/v1/sync", &token)).await.json();
+    assert_eq!(
+        page["server_urls"],
+        serde_json::json!(["http://192.168.0.4:8080"])
+    );
 }
 
 #[tokio::test]

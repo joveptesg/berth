@@ -632,6 +632,10 @@ pub struct SyncPage {
     pub books: Vec<SyncBook>,
     /// Ids of books removed or no longer visible.
     pub removed: Vec<String>,
+    /// The server's addresses as the admin set them, home network first: a paired phone
+    /// learns new ones here and switches between them without pairing again. Empty when
+    /// none are set.
+    pub server_urls: Vec<String>,
 }
 
 fn parse_cursor(cursor: &str) -> Option<(i64, i64)> {
@@ -741,6 +745,8 @@ pub async fn sync(
         has_more,
         books,
         removed,
+        // The API layer fills it from the settings.
+        server_urls: Vec::new(),
     })
 }
 

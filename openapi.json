@@ -2696,7 +2696,8 @@
           "reset",
           "has_more",
           "books",
-          "removed"
+          "removed",
+          "server_urls"
         ],
         "properties": {
           "books": {
@@ -2724,6 +2725,13 @@
           "reset": {
             "type": "boolean",
             "description": "The client must drop every book that is not in this sync's pages."
+          },
+          "server_urls": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "The server's addresses as the admin set them, home network first: a paired phone\nlearns new ones here and switches between them without pairing again. Empty when\nnone are set."
           }
         }
       },
