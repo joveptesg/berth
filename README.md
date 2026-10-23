@@ -1,12 +1,31 @@
-# Berth
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset=".github/assets/banner-dark.png">
+    <img alt="Berth — self-hosted audiobook server" src=".github/assets/banner-light.png" width="100%">
+  </picture>
+</p>
 
-Self-hosted audiobook server with pluggable storage.
+<p align="center">
+  <a href="https://github.com/joveptesg/berth/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/joveptesg/berth/actions/workflows/ci.yml/badge.svg"></a>
+  <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-F2662B"></a>
+  <img alt="Rust 1.99+" src="https://img.shields.io/badge/rust-1.99%2B-0E1014?logo=rust">
+  <img alt="Status: early development" src="https://img.shields.io/badge/status-early%20development-4A505A">
+</p>
+
+<p align="center">
+  <b>English</b> · <a href="README.ru.md">Русский</a>
+</p>
+
+Berth is a self-hosted audiobook server for you and your family. Upload books through the web admin, keep the files on any storage, and listen in the Berth app on Android and iOS.
+
+## Why Berth
 
 - **Database is the source of truth** — books are entities, not scanned folders.
 - **Pluggable storage** — local disk, any S3-compatible service (AWS, Cloudflare R2, Backblaze B2, MinIO, Yandex Object Storage), Google Drive.
 - **Delivery separated from storage** — the server authorizes, bytes can come straight from object storage or a CDN via short-lived signed URLs.
 - **Web admin** for setup, uploads and users; phones connect by QR code.
 
+> [!NOTE]
 > **Status:** early development. Nothing to install yet.
 
 ## Running with Docker
@@ -16,8 +35,10 @@ docker compose up -d --build      # http://localhost:8080, data in ./data
 docker compose logs berth         # the one-time setup link is in the log
 ```
 
-`./data` holds the database, its backups, the local storage and `secret.key`. Keep a copy of
-`secret.key` apart from the backups: storage keys in the database cannot be read without it.
+`./data` holds the database, its backups, the local storage and `secret.key`.
+
+> [!IMPORTANT]
+> Keep a copy of `secret.key` apart from the backups: storage keys in the database cannot be read without it.
 
 ### Updating and rolling back
 
@@ -41,6 +62,24 @@ docker compose up -d --build
   automatic backup or an uploaded file. The current database is saved to the automatic backups
   first, so a restore can be undone the same way.
 - From the console (server stopped): `berth admin restore <file>`.
+
+## Repository layout
+
+| Path | What it is |
+|---|---|
+| [`crates/berth-cli`](crates/berth-cli) | `berth` — the server binary |
+| [`crates/berth-server`](crates/berth-server) | HTTP server: JSON API v1 and the web admin on axum |
+| [`crates/berth-core`](crates/berth-core) | Core domain types |
+| [`openapi.json`](openapi.json) | API contract; `cargo test` fails when the API changes |
+
+## Contributing
+
+Contributions are welcome. Read [CONTRIBUTING.md](CONTRIBUTING.md) first: commits are signed off under the DCO and follow Conventional Commits.
+
+## Security
+
+Please do not report vulnerabilities in public issues — see [SECURITY.md](SECURITY.md).
+
 ## License
 
 [Apache License 2.0](LICENSE)
