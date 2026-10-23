@@ -1,15 +1,17 @@
 ﻿# Berth with its data in ./data (database, backups, local storage, secret.key).
 #
-# Update:    git pull && docker compose up -d --build
+# Update:    docker compose pull && docker compose up -d
 #            (the new version backs the database up to ./data/backups before migrating)
-# Roll back: check out the previous version, then restore the backup made before the update:
+# Roll back: pin the previous version in `image` (e.g. ghcr.io/joveptesg/berth:1.0.0),
+#            then restore the backup made before the update:
 #            docker compose stop berth
 #            docker compose run --rm berth admin restore /data/backups/auto-<time>.sqlite
-#            docker compose up -d --build
+#            docker compose up -d
+# From source: uncomment `build` and run docker compose up -d --build
 services:
   berth:
-    image: berth:latest
-    build: .
+    image: ghcr.io/joveptesg/berth:1
+    # build: .
     restart: unless-stopped
     ports:
       - "8080:8080"

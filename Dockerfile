@@ -7,6 +7,9 @@ RUN cargo build --release --locked --bin berth \
     && mkdir /data
 
 FROM scratch
+LABEL org.opencontainers.image.source="https://github.com/joveptesg/berth" \
+      org.opencontainers.image.description="Self-hosted audiobook server" \
+      org.opencontainers.image.licenses="Apache-2.0"
 COPY --from=build /src/target/release/berth /berth
 # Root certificates: S3, R2 and other storages are reached over https.
 COPY --from=build /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt

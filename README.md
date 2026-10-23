@@ -8,9 +8,7 @@
 <p align="center">
   <a href="https://github.com/joveptesg/berth/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/joveptesg/berth/actions/workflows/ci.yml/badge.svg"></a>
   <a href="LICENSE"><img alt="License: Apache-2.0" src="https://img.shields.io/badge/license-Apache--2.0-F2662B"></a>
-  <img alt="Rust 1.99+" src="https://img.shields.io/badge/rust-1.99%2B-0E1014?logo=rust">
-  <img alt="Status: early development" src="https://img.shields.io/badge/status-early%20development-4A505A">
-</p>
+  <img alt="Rust 1.99+" src="https://img.shields.io/badge/rust-1.99%2B-0E1014?logo=rust"></p>
 
 <p align="center">
   <b>English</b> · <a href="README.ru.md">Русский</a>
@@ -25,13 +23,14 @@ Berth is a self-hosted audiobook server for you and your family. Upload books th
 - **Delivery separated from storage** — the server authorizes, bytes can come straight from object storage or a CDN via short-lived signed URLs.
 - **Web admin** for setup, uploads and users; phones connect by QR code.
 
-> [!NOTE]
-> **Status:** early development. Nothing to install yet.
-
 ## Running with Docker
 
+The image `ghcr.io/joveptesg/berth` is built for amd64 and arm64 (Raspberry Pi, ARM NAS).
+
 ```sh
-docker compose up -d --build      # http://localhost:8080, data in ./data
+mkdir berth && cd berth
+curl -fsSLO https://raw.githubusercontent.com/joveptesg/berth/main/docker-compose.yml
+docker compose up -d              # http://localhost:8080, data in ./data
 docker compose logs berth         # the one-time setup link is in the log
 ```
 
@@ -43,18 +42,44 @@ docker compose logs berth         # the one-time setup link is in the log
 ### Updating and rolling back
 
 ```sh
-git pull && docker compose up -d --build
+docker compose pull && docker compose up -d
 ```
+
+The `1` tag follows the 1.x releases; a new major version needs a change of the tag in
+`docker-compose.yml`. Avoid `latest` with auto-updaters such as Watchtower.
 
 Before it changes the database schema, the new version saves a copy to `./data/backups`
 (the last 3 are kept; they are also listed under Settings → Backup in the admin). To roll back,
-check out the previous version and restore the copy made before the update:
+pin the previous version in `docker-compose.yml` (e.g. `image: ghcr.io/joveptesg/berth:1.0.0`)
+and restore the copy made before the update:
 
 ```sh
 docker compose stop berth
 docker compose run --rm berth admin restore /data/backups/auto-<time>.sqlite
-docker compose up -d --build
+docker compose up -d
 ```
+
+### Access from the internet
+
+Berth serves plain HTTP. At home that is enough; for access from outside put a reverse proxy
+with HTTPS in front, e.g. [Caddy](https://caddyserver.com) with a `Caddyfile`:
+
+```
+books.example.com {
+	reverse_proxy localhost:8080
+}
+```
+
+Then enter `https://books.example.com` in the admin under Settings → Internet address, so the
+QR codes for phones include it.
+
+> [!WARNING]
+> Keep `./data` on a local disk. SQLite on a network share (NFS, SMB) can corrupt the database.
+
+### Building from source
+
+Uncomment `build: .` in `docker-compose.yml` inside a clone of this repository and run
+`docker compose up -d --build`.
 
 ### Backups and restore
 
