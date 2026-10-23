@@ -1,7 +1,8 @@
 //! Delivery of audio bytes (design doc §7, §22.A7): a device asks for a book file and gets a
 //! short-lived URL that works without authorization headers. Presigned profiles hand out a
-//! presigned S3 GET, CDN profiles a public URL under their CDN address; everything else a
-//! signed `/v1/blobs/{token}` that the server streams with range requests.
+//! presigned S3 GET, CDN profiles a URL under their CDN address (signed when the CDN requires
+//! it); everything else a signed `/v1/blobs/{token}` that the server streams with range
+//! requests.
 //!
 //! A blob token is `base64url(tenant \n hash \n device \n exp) . base64url(HMAC)`. It lives
 //! longer than a presigned URL because players keep one URL for hours of range requests;
@@ -196,11 +197,15 @@ async fn link(
     if mode == "cdn" {
         let config: S3Config = serde_json::from_str(&config).context("s3 config")?;
         let content = ContentHash::parse(hash).context("sha256 hex")?;
-        // The URL never expires; the client still refreshes it like a proxy link.
-        return Ok(StreamLink {
-            url: storage::cdn_link(&config.cdn_url, tenant_id, &content),
-            expires_at: now_ms() + ms(PROXY_TTL),
-        });
+        let expires_at = now_ms() + ms(PROXY_TTL);
+        // An unsigned URL never expires; the client still refreshes it like a proxy link.
+        let url = if config.cdn_signing.is_none() {
+            storage::cdn_link(&config.cdn_url, tenant_id, &content)
+        } else {
+            let expires = u64::try_from(expires_at / 1000).unwrap_or_default();
+            profiles::cdn_link(state, tenant_id, &storage_id, &content, expires).await?
+        };
+        return Ok(StreamLink { url, expires_at });
     }
     if mode == "presigned" {
         let store = profiles::open(state, tenant_id, &storage_id).await?;

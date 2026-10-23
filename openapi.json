@@ -142,7 +142,7 @@
             }
           },
           "400": {
-            "description": "`validation`; `detail`: `storage_name_required`, `storage_name_too_long`, `storage_name_taken`, `storage_path_required`, `storage_bucket_required`, `storage_endpoint_invalid`, `storage_delivery_invalid`, `storage_keys_required` or `invalid_body`",
+            "description": "`validation`; `detail`: `storage_name_required`, `storage_name_too_long`, `storage_name_taken`, `storage_path_required`, `storage_bucket_required`, `storage_endpoint_invalid`, `storage_delivery_invalid`, `storage_cdn_signing_invalid`, `storage_cdn_token_required`, `storage_keys_required` or `invalid_body`",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1789,6 +1789,14 @@
           }
         }
       },
+      "CdnSigning": {
+        "type": "string",
+        "description": "How links under `cdn_url` are signed.",
+        "enum": [
+          "none",
+          "bunny"
+        ]
+      },
       "Chapter": {
         "type": "object",
         "description": "A chapter on the book timeline.",
@@ -2586,6 +2594,17 @@
             ],
             "description": "`s3`: bucket."
           },
+          "cdn_signing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdnSigning",
+                "description": "`s3`: how CDN links are signed."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "cdn_url": {
             "type": [
               "string",
@@ -2659,7 +2678,7 @@
               "string",
               "null"
             ],
-            "description": "Code of the last failed check: `storage_auth_failed`, `storage_access_denied`,\n`storage_bucket_not_found`, `storage_unreachable`, `storage_mismatch`,\n`storage_local_unwritable`, `storage_endpoint_invalid`, `storage_cdn_unreachable`,\n`storage_cdn_mismatch` or `storage_failed`."
+            "description": "Code of the last failed check: `storage_auth_failed`, `storage_access_denied`,\n`storage_bucket_not_found`, `storage_unreachable`, `storage_mismatch`,\n`storage_local_unwritable`, `storage_endpoint_invalid`, `storage_cdn_unreachable`,\n`storage_cdn_mismatch`, `storage_cdn_not_protected` or `storage_failed`."
           }
         }
       },
@@ -2682,9 +2701,27 @@
             "type": "string",
             "description": "`s3`: bucket."
           },
+          "cdn_signing": {
+            "oneOf": [
+              {
+                "$ref": "#/components/schemas/CdnSigning",
+                "description": "`s3`: `none` (default) or `bunny`, which needs `cdn_url` and a token key."
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "cdn_token_key": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "`s3`: token authentication key of the Bunny pull zone; absent on update keeps the\nsaved one. Never returned."
+          },
           "cdn_url": {
             "type": "string",
-            "description": "`s3`: public http(s) address of the bucket root, required for `cdn`; the blob at key\n`k` must be readable at `cdn_url/k` without signing."
+            "description": "`s3`: public http(s) address of the bucket root, required for `cdn`; the blob at key\n`k` must be readable at `cdn_url/k` (signed per `cdn_signing`)."
           },
           "delivery_mode": {
             "oneOf": [

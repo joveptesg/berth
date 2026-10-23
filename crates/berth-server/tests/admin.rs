@@ -1122,6 +1122,34 @@ async fn storage_api_crud() {
     assert_eq!(with_cdn.status, StatusCode::OK, "{}", with_cdn.body);
     assert_eq!(with_cdn.json()["delivery_mode"], "cdn");
     assert_eq!(with_cdn.json()["cdn_url"], "https://cdn.example.com");
+    assert_eq!(with_cdn.json()["cdn_signing"], "none");
+    let bunny = |key: Option<&str>| {
+        let mut body = cdn("https://zone.b-cdn.net");
+        body["cdn_signing"] = "bunny".into();
+        if let Some(key) = key {
+            body["cdn_token_key"] = key.into();
+        }
+        body
+    };
+    let no_token = send(&state, api("PUT", &item, &token, Some(&bunny(None)))).await;
+    assert_eq!(no_token.json()["detail"], "storage_cdn_token_required");
+    let signed = send(
+        &state,
+        api("PUT", &item, &token, Some(&bunny(Some("zone-key")))),
+    )
+    .await;
+    assert_eq!(signed.status, StatusCode::OK, "{}", signed.body);
+    assert_eq!(signed.json()["cdn_signing"], "bunny");
+    assert!(
+        !signed.body.contains("zone-key"),
+        "the token key is never returned"
+    );
+    let kept = send(&state, api("PUT", &item, &token, Some(&bunny(None)))).await;
+    assert_eq!(
+        kept.status,
+        StatusCode::OK,
+        "empty keeps the saved token key"
+    );
     let kind = send(
         &state,
         api(
@@ -1480,7 +1508,8 @@ async fn upload_analyse_save_and_sync() {
     sqlx::query(
         "INSERT INTO storage_profiles (id, tenant_id, name, kind, config, delivery_mode, created_at)
          SELECT $1, tenant_id, 'CDN', 's3',
-            '{\"bucket\":\"books\",\"region\":\"auto\",\"cdn_url\":\"https://cdn.example.com/b\"}',
+            '{\"endpoint\":\"\",\"bucket\":\"books\",\"region\":\"auto\",\"path_style\":false,
+              \"cdn_url\":\"https://cdn.example.com/b\"}',
             'cdn', 0
          FROM storage_profiles WHERE name = 'Local'",
     )
@@ -1514,6 +1543,43 @@ async fn upload_analyse_save_and_sync() {
             )),
         "{public}"
     );
+    // A Bunny CDN that signs links: a token valid as long as the link says.
+    let tenant_id = tenant(&state).await;
+    berth_server::service::storage::update(
+        &state,
+        &tenant_id,
+        &cdn,
+        &berth_server::service::storage::ProfileInput {
+            name: "CDN".into(),
+            kind: "s3".into(),
+            bucket: "books".into(),
+            region: "auto".into(),
+            delivery_mode: "cdn".into(),
+            cdn_url: "https://cdn.example.com/b".into(),
+            cdn_signing: "bunny".into(),
+            cdn_token_key: "zone-key".into(),
+            access_key_id: "id".into(),
+            secret_access_key: "key".into(),
+            ..Default::default()
+        },
+    )
+    .await
+    .unwrap();
+    let link = send(
+        &state,
+        bearer_get(&format!("/v1/books/{book_id}/files/1/stream"), &token),
+    )
+    .await
+    .json();
+    let expires_at = link["expires_at"].as_i64().unwrap();
+    let expected = berth_server::storage::bunny_sign(
+        public,
+        "zone-key",
+        u64::try_from(expires_at / 1000).unwrap(),
+    )
+    .unwrap();
+    assert_eq!(link["url"], expected);
+    assert!(expires_at > now() + 5 * 3_600_000, "{expires_at}");
     sqlx::query("DELETE FROM blob_locations WHERE storage_id = $1")
         .bind(&cdn)
         .execute(&state.db)

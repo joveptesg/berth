@@ -13,7 +13,8 @@ use aws_sigv4::{
     sign::v4,
 };
 use berth_server::storage::{
-    self, Backend, BlobStore, ContentHash, ObjectBlobStore, S3Config, S3Keys, put_headers,
+    self, Backend, BlobStore, CdnSigning, ContentHash, ObjectBlobStore, S3Config, S3Keys,
+    put_headers,
 };
 use bytes::Bytes;
 use futures_util::TryStreamExt;
@@ -26,6 +27,7 @@ fn keys(secret: &str) -> S3Keys {
     S3Keys {
         access_key_id: USER.into(),
         secret_access_key: secret.into(),
+        cdn_token_key: String::new(),
     }
 }
 
@@ -36,6 +38,7 @@ fn store(endpoint: &str, bucket: &str, secret: &str) -> ObjectBlobStore {
         region: "us-east-1".into(),
         path_style: true,
         cdn_url: String::new(),
+        cdn_signing: CdnSigning::None,
     };
     storage::open(&Backend::S3(config, keys(secret)), Path::new(".")).unwrap()
 }

@@ -180,13 +180,13 @@ storage:
   subtitle: Where audiobook files are kept. New books go to the default storage.
   add_title: Add storage
   edit_title: Edit storage
-  add_hint: "A folder on this server or any S3-compatible bucket: AWS, Cloudflare R2, Backblaze B2, MinIO, Yandex Object Storage."
+  add_hint: "A folder on this server or any S3-compatible bucket: AWS, Cloudflare R2, Backblaze B2, Bunny Storage, MinIO, Yandex Object Storage."
   add_submit: Add storage
   kind_label: Type
   kind_local: Folder on the server
   kind_local_hint: Files are kept next to Berth and streamed through it.
   kind_s3: S3 bucket
-  kind_s3_hint: AWS, R2, B2, MinIO, Yandex and other S3-compatible storage.
+  kind_s3_hint: AWS, R2, B2, Bunny, MinIO, Yandex and other S3-compatible storage.
   name_label: Name
   name_placeholder: e.g. Home disk
   path_label: Folder
@@ -208,7 +208,12 @@ storage:
   delivery_proxy: Through the server
   delivery_cdn: Through a CDN
   cdn_url_label: CDN address
-  cdn_url_hint: Public address of the bucket root or of a CDN in front of it (an R2 custom domain, Yandex Cloud CDN, CloudFront). Files open there without signing; their names are sha256 and cannot be guessed, but revoking a device does not close links it already has.
+  cdn_url_hint: Address of the bucket root or of a CDN in front of it (an R2 custom domain, Yandex Cloud CDN, CloudFront, a Bunny pull zone like https://zone.b-cdn.net). Without signing files open there by a link that never expires; their names are sha256 and cannot be guessed, but revoking a device does not close links it already has.
+  cdn_signing_label: Link signing
+  cdn_signing_none: None, public links
+  cdn_signing_bunny: Bunny CDN token
+  cdn_token_label: Token authentication key
+  cdn_token_hint: "Bunny pull zone → Security → Token Authentication: turn it on and copy the key. Links then expire after 6 hours and are not tied to an IP address."
   status: Check
   verified: Passed
   unchecked: Not checked yet
@@ -330,6 +335,9 @@ errors:
   storage_cdn_url_invalid: The CDN address must start with https:// or http:// and have no parameters.
   storage_cdn_unreachable: The test file did not open at the CDN address. Check that the bucket or CDN is public and the address leads to the bucket root.
   storage_cdn_mismatch: The CDN address returned another file. It must lead to the bucket root.
+  storage_cdn_signing_invalid: Choose how CDN links are signed.
+  storage_cdn_token_required: Enter the token authentication key of the pull zone.
+  storage_cdn_not_protected: The CDN opens files without a token too. Turn on Token Authentication in the pull zone's security settings.
   storage_keys_required: Enter both keys.
   storage_is_default: The default storage cannot be deleted. Make another one the default first.
   storage_in_use: "Books are stored here: it cannot be deleted or moved."

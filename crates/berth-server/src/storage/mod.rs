@@ -135,12 +135,53 @@ pub struct S3Config {
     /// out `cdn_url/<blob path>`. Empty when unused.
     #[serde(default, skip_serializing_if = "String::is_empty")]
     pub cdn_url: String,
+    /// How links under `cdn_url` are signed.
+    #[serde(default, skip_serializing_if = "CdnSigning::is_none")]
+    pub cdn_signing: CdnSigning,
+}
+
+/// Signing of CDN links.
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum CdnSigning {
+    /// Public URLs that never expire.
+    #[default]
+    None,
+    /// Bunny CDN token authentication (HS256) with the pull zone's key.
+    Bunny,
+}
+
+impl CdnSigning {
+    /// No signature.
+    #[must_use]
+    pub fn is_none(&self) -> bool {
+        *self == Self::None
+    }
 }
 
 /// The public URL of a blob behind `cdn_url` (no trailing slash).
 #[must_use]
 pub fn cdn_link(cdn_url: &str, tenant: &str, hash: &ContentHash) -> String {
     format!("{cdn_url}/{}", blob_path(tenant, hash))
+}
+
+/// `url` (without a query) signed for Bunny CDN token authentication until `expires`, unix
+/// seconds: `?token=HS256-<base64url HMAC-SHA256(key, path + expires)>&expires=<expires>`.
+///
+/// # Errors
+/// A URL that does not parse.
+pub fn bunny_sign(url: &str, key: &str, expires: u64) -> anyhow::Result<String> {
+    use base64::{Engine, engine::general_purpose::URL_SAFE_NO_PAD};
+    let path = Url::parse(url)
+        .context("invalid CDN URL")?
+        .path()
+        .to_owned();
+    let expires = expires.to_string();
+    let mac = crate::secret::hmac_sha256(key.as_bytes(), &[path.as_bytes(), expires.as_bytes()]);
+    Ok(format!(
+        "{url}?token=HS256-{}&expires={expires}",
+        URL_SAFE_NO_PAD.encode(mac)
+    ))
 }
 
 /// Access keys of an S3 profile: stored encrypted, never shown again.
@@ -150,6 +191,9 @@ pub struct S3Keys {
     pub access_key_id: String,
     /// Secret access key.
     pub secret_access_key: String,
+    /// Token authentication key of the CDN when it signs links.
+    #[serde(default, skip_serializing_if = "String::is_empty")]
+    pub cdn_token_key: String,
 }
 
 /// A profile ready to open.
@@ -357,40 +401,45 @@ impl ObjectBlobStore {
         }
     }
 
-    /// Writes a probe under `prefix`, reads it back through `cdn_url` without signing, then
-    /// deletes it.
+    /// Writes a probe under `prefix`, reads it back through `cdn_url` (signed with
+    /// `token_key` when the CDN signs links), then deletes it.
     ///
     /// # Errors
     /// The codes of [`Self::verify`] for the write, `storage_cdn_unreachable` when the CDN does
-    /// not answer 2xx (403: not public; 404: the address is not the bucket root) and
-    /// `storage_cdn_mismatch` for other bytes.
+    /// not answer 2xx (403: not public or a wrong token key; 404: the address is not the bucket
+    /// root), `storage_cdn_mismatch` for other bytes and `storage_cdn_not_protected` when a
+    /// signing CDN also serves the probe without a token.
     pub async fn verify_cdn(
         &self,
         prefix: &str,
         cdn_url: &str,
+        token_key: Option<&str>,
         client: &reqwest::Client,
     ) -> Result<(), VerifyError> {
         let mut probe = [0; 16];
         getrandom::fill(&mut probe).map_err(|_| "storage_failed")?;
         let path = Path::from(format!("{prefix}/.berth-verify/{}", hex::encode(probe)));
+        let url = format!("{cdn_url}/{path}");
+        let signed = match token_key {
+            Some(key) => bunny_sign(&url, key, unix_now() + 300).map_err(|_| "storage_failed")?,
+            None => url.clone(),
+        };
         let local = self.presigner.is_none();
         self.store
             .put(&path, PutPayload::from(probe.to_vec()))
             .await
             .map_err(|err| error_code(&err, local))?;
-        let fetched = async {
-            let response = client
-                .get(format!("{cdn_url}/{path}"))
-                .send()
-                .await?
-                .error_for_status()?;
+        let fetch = |url: String| async move {
+            let response = client.get(url).send().await?.error_for_status()?;
             response.bytes().await
-        }
-        .await;
+        };
+        let fetched = fetch(signed).await;
+        let open = token_key.is_some() && fetch(url).await.is_ok();
         if let Err(err) = self.store.delete(&path).await {
             tracing::warn!(error = %err, "CDN check could not delete its probe");
         }
         match fetched {
+            Ok(_) if open => Err("storage_cdn_not_protected"),
             Ok(bytes) if bytes.as_ref() == probe => Ok(()),
             Ok(_) => Err("storage_cdn_mismatch"),
             Err(err) => {
@@ -399,6 +448,14 @@ impl ObjectBlobStore {
             }
         }
     }
+}
+
+/// Seconds since the unix epoch.
+#[must_use]
+pub fn unix_now() -> u64 {
+    SystemTime::now()
+        .duration_since(SystemTime::UNIX_EPOCH)
+        .map_or(0, |d| d.as_secs())
 }
 
 fn error_code(err: &object_store::Error, local: bool) -> VerifyError {
@@ -572,6 +629,7 @@ mod tests {
             region: "us-east-1".into(),
             path_style: true,
             cdn_url: String::new(),
+            cdn_signing: CdnSigning::None,
         };
         assert_eq!(
             bucket_url(&config).unwrap().as_str(),
@@ -591,6 +649,21 @@ mod tests {
         );
         config.endpoint = "ftp://host".into();
         assert!(bucket_url(&config).is_err());
+    }
+
+    #[test]
+    fn bunny_tokens() {
+        // Vector of the reference implementation (BunnyWay/BunnyCDN.TokenAuthentication).
+        assert_eq!(
+            bunny_sign(
+                "https://token-tester.b-cdn.net/abc/",
+                "SecurityKey",
+                1_598_024_587
+            )
+            .unwrap(),
+            "https://token-tester.b-cdn.net/abc/\
+             ?token=HS256-bTMv4RVOkjx2UXLfVDl-JIygaxfSIQP8UCnCy7CILuY&expires=1598024587"
+        );
     }
 
     #[tokio::test]
@@ -642,20 +715,59 @@ mod tests {
         );
     }
 
+    /// How the fake CDN lets requests through.
+    #[derive(Clone, Copy)]
+    enum Access {
+        Public,
+        Private,
+        /// Bunny token authentication with this key.
+        Token(&'static str),
+    }
+
     /// A CDN in front of the folder: it serves its files, or refuses with 403.
-    async fn fake_cdn(root: std::path::PathBuf, public: bool) -> String {
-        use axum::{extract::Path as UrlPath, http::StatusCode, routing::get};
+    async fn fake_cdn(root: std::path::PathBuf, access: Access) -> String {
+        use std::collections::HashMap;
+
+        use axum::{
+            extract::{Path as UrlPath, Query},
+            http::{StatusCode, Uri},
+            routing::get,
+        };
         let app = axum::Router::new().route(
             "/{*key}",
-            get(move |UrlPath(key): UrlPath<String>| {
-                let file = root.join(key);
-                async move {
-                    if !public {
-                        return Err(StatusCode::FORBIDDEN);
+            get(
+                move |UrlPath(key): UrlPath<String>,
+                      Query(query): Query<HashMap<String, String>>,
+                      uri: Uri| {
+                    let file = root.join(key);
+                    async move {
+                        let allowed = match access {
+                            Access::Public => true,
+                            Access::Private => false,
+                            Access::Token(secret) => {
+                                let expires: u64 = query
+                                    .get("expires")
+                                    .and_then(|e| e.parse().ok())
+                                    .unwrap_or_default();
+                                let expected = bunny_sign(
+                                    &format!("http://cdn{}", uri.path()),
+                                    secret,
+                                    expires,
+                                )
+                                .unwrap();
+                                expires > unix_now()
+                                    && query.get("token").is_some_and(|token| {
+                                        expected.contains(&format!("token={token}&"))
+                                    })
+                            }
+                        };
+                        if !allowed {
+                            return Err(StatusCode::FORBIDDEN);
+                        }
+                        std::fs::read(file).map_err(|_| StatusCode::NOT_FOUND)
                     }
-                    std::fs::read(file).map_err(|_| StatusCode::NOT_FOUND)
-                }
-            }),
+                },
+            ),
         );
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
@@ -676,19 +788,39 @@ mod tests {
         let _ = rustls::crypto::ring::default_provider().install_default();
         let client = reqwest::Client::new();
         let root = dir.path().join("blobs");
-        let public = fake_cdn(root.clone(), true).await;
-        assert_eq!(store.verify_cdn("t1", &public, &client).await, Ok(()));
-        let private = fake_cdn(root, false).await;
+        let public = fake_cdn(root.clone(), Access::Public).await;
+        assert_eq!(store.verify_cdn("t1", &public, None, &client).await, Ok(()));
+        let private = fake_cdn(root.clone(), Access::Private).await;
         assert_eq!(
-            store.verify_cdn("t1", &private, &client).await,
+            store.verify_cdn("t1", &private, None, &client).await,
             Err("storage_cdn_unreachable")
         );
         assert_eq!(
             store
-                .verify_cdn("t1", &format!("{public}/elsewhere"), &client)
+                .verify_cdn("t1", &format!("{public}/elsewhere"), None, &client)
                 .await,
             Err("storage_cdn_unreachable"),
             "404: not the bucket root"
+        );
+        let signing = fake_cdn(root, Access::Token("zone-key")).await;
+        assert_eq!(
+            store
+                .verify_cdn("t1", &signing, Some("zone-key"), &client)
+                .await,
+            Ok(())
+        );
+        assert_eq!(
+            store
+                .verify_cdn("t1", &signing, Some("wrong-key"), &client)
+                .await,
+            Err("storage_cdn_unreachable")
+        );
+        assert_eq!(
+            store
+                .verify_cdn("t1", &public, Some("zone-key"), &client)
+                .await,
+            Err("storage_cdn_not_protected"),
+            "a signing profile in front of a public CDN"
         );
         assert!(
             !dir.path().join("blobs/t1/.berth-verify").exists(),

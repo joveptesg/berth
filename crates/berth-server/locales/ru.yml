@@ -178,13 +178,13 @@ storage:
   subtitle: Где лежат файлы аудиокниг. Новые книги попадают в хранилище по умолчанию.
   add_title: Добавить хранилище
   edit_title: Изменить хранилище
-  add_hint: "Папка на этом сервере или любой S3-совместимый бакет: AWS, Cloudflare R2, Backblaze B2, MinIO, Yandex Object Storage."
+  add_hint: "Папка на этом сервере или любой S3-совместимый бакет: AWS, Cloudflare R2, Backblaze B2, Bunny Storage, MinIO, Yandex Object Storage."
   add_submit: Добавить хранилище
   kind_label: Тип
   kind_local: Папка на сервере
   kind_local_hint: Файлы лежат рядом с Berth, и он сам их отдаёт.
   kind_s3: S3-бакет
-  kind_s3_hint: AWS, R2, B2, MinIO, Yandex и другие S3-совместимые.
+  kind_s3_hint: AWS, R2, B2, Bunny, MinIO, Yandex и другие S3-совместимые.
   name_label: Название
   name_placeholder: например, Домашний диск
   path_label: Папка
@@ -206,7 +206,12 @@ storage:
   delivery_proxy: Через сервер
   delivery_cdn: Через CDN
   cdn_url_label: Адрес CDN
-  cdn_url_hint: Публичный адрес корня бакета или CDN перед ним (свой домен R2, Yandex Cloud CDN, CloudFront). Файлы по нему открываются без подписи; имена — sha256, их не угадать, но отзыв устройства не закрывает уже выданные ссылки.
+  cdn_url_hint: Адрес корня бакета или CDN перед ним (свой домен R2, Yandex Cloud CDN, CloudFront, pull zone Bunny вида https://zone.b-cdn.net). Без подписи файлы открываются по вечной ссылке; имена — sha256, их не угадать, но отзыв устройства не закрывает уже выданные ссылки.
+  cdn_signing_label: Подпись ссылок
+  cdn_signing_none: Нет, публичные ссылки
+  cdn_signing_bunny: Токен Bunny CDN
+  cdn_token_label: Ключ Token Authentication
+  cdn_token_hint: "Pull zone в Bunny → Security → Token Authentication: включите и скопируйте ключ. Ссылки тогда живут 6 часов и не привязаны к IP-адресу."
   status: Проверка
   verified: Пройдена
   unchecked: Ещё не проверялось
@@ -328,6 +333,9 @@ errors:
   storage_cdn_url_invalid: Адрес CDN должен начинаться с https:// или http:// и быть без параметров.
   storage_cdn_unreachable: Тестовый файл не открылся по адресу CDN. Проверьте, что бакет или CDN публичные и адрес ведёт в корень бакета.
   storage_cdn_mismatch: По адресу CDN пришёл другой файл. Адрес должен вести в корень бакета.
+  storage_cdn_signing_invalid: Выберите, как подписывать ссылки CDN.
+  storage_cdn_token_required: Укажите ключ Token Authentication из pull zone.
+  storage_cdn_not_protected: CDN отдаёт файлы и без токена. Включите Token Authentication в настройках безопасности pull zone.
   storage_keys_required: Укажите оба ключа.
   storage_is_default: Хранилище по умолчанию удалить нельзя. Сначала сделайте основным другое.
   storage_in_use: "Здесь хранятся книги: его нельзя удалить или перенести."

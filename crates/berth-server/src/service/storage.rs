@@ -13,7 +13,7 @@ use sqlx::{SqliteConnection, SqlitePool};
 use crate::{
     AppState, SecretKey, crypto,
     db::{self, now_ms},
-    storage::{self, Backend, LocalConfig, S3Config, S3Keys},
+    storage::{self, Backend, CdnSigning, LocalConfig, S3Config, S3Keys},
 };
 
 /// Setting key of the tenant's default profile.
@@ -45,6 +45,8 @@ pub struct Profile {
     pub path_style: bool,
     /// Public address of the bucket root for `cdn` delivery; empty when unused.
     pub cdn_url: String,
+    /// How CDN links are signed: `none` or `bunny` (its key is never shown).
+    pub cdn_signing: String,
     /// Whether new books go here.
     pub is_default: bool,
     /// When the last connection check passed, epoch milliseconds.
@@ -76,6 +78,10 @@ pub struct ProfileInput {
     pub delivery_mode: String,
     /// Public address of the bucket root, required for `cdn`.
     pub cdn_url: String,
+    /// CDN link signing: `none` (default) or `bunny`.
+    pub cdn_signing: String,
+    /// Bunny CDN token authentication key; empty on update keeps the stored one.
+    pub cdn_token_key: String,
     /// S3 access key id.
     pub access_key_id: String,
     /// S3 secret access key.
@@ -116,6 +122,8 @@ struct Prepared {
     delivery_mode: &'static str,
     /// New keys; `None` keeps the stored ones.
     keys: Option<S3Keys>,
+    /// New CDN token key; `None` keeps the stored one.
+    cdn_token_key: Option<String>,
 }
 
 fn prepare(input: &ProfileInput) -> Result<Prepared> {
@@ -141,6 +149,7 @@ fn prepare(input: &ProfileInput) -> Result<Prepared> {
                     .context("local config")?,
                 delivery_mode: "proxy",
                 keys: None,
+                cdn_token_key: None,
             })
         }
         "s3" => {
@@ -157,6 +166,14 @@ fn prepare(input: &ProfileInput) -> Result<Prepared> {
             if !cdn_url.is_empty() && !public_base(cdn_url) {
                 return Err(invalid("storage_cdn_url_invalid"));
             }
+            let cdn_signing = match input.cdn_signing.as_str() {
+                "" | "none" => CdnSigning::None,
+                "bunny" => CdnSigning::Bunny,
+                _ => return Err(invalid("storage_cdn_signing_invalid")),
+            };
+            if !cdn_signing.is_none() && cdn_url.is_empty() {
+                return Err(invalid("storage_cdn_url_required"));
+            }
             let config = S3Config {
                 endpoint: endpoint.into(),
                 bucket: bucket.into(),
@@ -164,6 +181,7 @@ fn prepare(input: &ProfileInput) -> Result<Prepared> {
                 // A bucket cannot be a subdomain of an IP address or localhost.
                 path_style: input.path_style || storage::needs_path_style(endpoint),
                 cdn_url: cdn_url.into(),
+                cdn_signing,
             };
             if storage::bucket_url(&config).is_err() {
                 return Err(invalid("storage_endpoint_invalid"));
@@ -181,6 +199,7 @@ fn prepare(input: &ProfileInput) -> Result<Prepared> {
                 (false, false) => Some(S3Keys {
                     access_key_id: id.into(),
                     secret_access_key: key.into(),
+                    cdn_token_key: String::new(),
                 }),
                 _ => return Err(invalid("storage_keys_required")),
             };
@@ -190,6 +209,10 @@ fn prepare(input: &ProfileInput) -> Result<Prepared> {
                 config: serde_json::to_value(config).context("s3 config")?,
                 delivery_mode,
                 keys,
+                cdn_token_key: match input.cdn_token_key.trim() {
+                    "" => None,
+                    key => Some(key.into()),
+                },
             })
         }
         _ => Err(invalid("storage_kind_invalid")),
@@ -209,23 +232,56 @@ fn public_base(url: &str) -> bool {
 fn backend(secret: &SecretKey, row: &Row) -> anyhow::Result<Backend> {
     Ok(match row.kind.as_str() {
         "local" => Backend::Local(serde_json::from_str(&row.config).context("local config")?),
-        "s3" => {
-            let stored = row
-                .secrets_encrypted
-                .as_deref()
-                .context("s3 profile without keys")?;
-            let keys = crypto::decrypt(secret, &row.id, stored)?;
-            Backend::S3(
-                serde_json::from_str(&row.config).context("s3 config")?,
-                serde_json::from_slice(&keys).context("s3 keys")?,
-            )
-        }
+        "s3" => Backend::S3(
+            serde_json::from_str(&row.config).context("s3 config")?,
+            decrypt_keys(secret, row)?.context("s3 profile without keys")?,
+        ),
         kind => anyhow::bail!("unsupported storage kind {kind}"),
     })
 }
 
 fn encrypt_keys(secret: &SecretKey, id: &str, keys: &S3Keys) -> anyhow::Result<String> {
     crypto::encrypt(secret, id, &serde_json::to_vec(keys)?)
+}
+
+fn decrypt_keys(secret: &SecretKey, row: &Row) -> anyhow::Result<Option<S3Keys>> {
+    row.secrets_encrypted
+        .as_deref()
+        .map(|stored| {
+            let keys = crypto::decrypt(secret, &row.id, stored)?;
+            serde_json::from_slice(&keys).context("s3 keys")
+        })
+        .transpose()
+}
+
+impl Prepared {
+    /// Keys to store for an S3 profile: the new ones or `stored`, with the new CDN token key;
+    /// none when links are not signed.
+    ///
+    /// # Errors
+    /// `storage_keys_required` without access keys, `storage_cdn_token_required` when links
+    /// are signed but there is no token key.
+    fn keys(&self, stored: Option<S3Keys>) -> Result<S3Keys> {
+        let invalid = |code: &str| BerthError::Validation(code.into());
+        let mut keys = match (&self.keys, stored) {
+            (Some(new), stored) => S3Keys {
+                cdn_token_key: stored.map(|s| s.cdn_token_key).unwrap_or_default(),
+                ..new.clone()
+            },
+            (None, Some(stored)) => stored,
+            (None, None) => return Err(invalid("storage_keys_required")),
+        };
+        if let Some(key) = &self.cdn_token_key {
+            keys.cdn_token_key.clone_from(key);
+        }
+        // `cdn_signing` is absent from the config when links are not signed.
+        if self.config.get("cdn_signing").is_none() {
+            keys.cdn_token_key.clear();
+        } else if keys.cdn_token_key.is_empty() {
+            return Err(invalid("storage_cdn_token_required"));
+        }
+        Ok(keys)
+    }
 }
 
 fn profile(row: Row, default_id: Option<&str>) -> anyhow::Result<Profile> {
@@ -241,6 +297,7 @@ fn profile(row: Row, default_id: Option<&str>) -> anyhow::Result<Profile> {
         region: String::new(),
         path_style: false,
         cdn_url: String::new(),
+        cdn_signing: "none".into(),
         verified_at: row.verified_at,
         verify_error: row.verify_error,
         created_at: row.created_at,
@@ -257,6 +314,9 @@ fn profile(row: Row, default_id: Option<&str>) -> anyhow::Result<Profile> {
             out.region = config.region;
             out.path_style = config.path_style;
             out.cdn_url = config.cdn_url;
+            if config.cdn_signing == CdnSigning::Bunny {
+                out.cdn_signing = "bunny".into();
+            }
         }
         _ => {}
     }
@@ -334,12 +394,9 @@ async fn insert(
     prepared: &Prepared,
     verified_at: Option<i64>,
 ) -> Result<()> {
-    let secrets = match &prepared.keys {
-        Some(keys) => Some(encrypt_keys(secret, id, keys)?),
-        None if prepared.kind == "s3" => {
-            return Err(BerthError::Validation("storage_keys_required".into()));
-        }
-        None => None,
+    let secrets = match prepared.kind {
+        "s3" => Some(encrypt_keys(secret, id, &prepared.keys(None)?)?),
+        _ => None,
     };
     let now = now_ms();
     sqlx::query(
@@ -369,7 +426,8 @@ async fn insert(
 /// `Validation` with `storage_name_required`, `storage_name_too_long`, `storage_name_taken`,
 /// `storage_kind_invalid`, `storage_path_required`, `storage_bucket_required`,
 /// `storage_endpoint_invalid`, `storage_delivery_invalid`, `storage_cdn_url_required`,
-/// `storage_cdn_url_invalid` or `storage_keys_required`.
+/// `storage_cdn_url_invalid`, `storage_cdn_signing_invalid`, `storage_cdn_token_required` or
+/// `storage_keys_required`.
 pub async fn create(state: &AppState, tenant_id: &str, input: &ProfileInput) -> Result<String> {
     let prepared = prepare(input)?;
     let id = uuid::Uuid::now_v7().to_string();
@@ -398,11 +456,12 @@ pub async fn update(
     }
     let current_config: Value =
         serde_json::from_str(&current.config).context("stored storage config")?;
-    // The CDN address is how clients read, not where the bytes are.
+    // The CDN is how clients read, not where the bytes are.
     let location = |config: &Value| {
         let mut config = config.clone();
         if let Some(map) = config.as_object_mut() {
             map.remove("cdn_url");
+            map.remove("cdn_signing");
         }
         config
     };
@@ -410,12 +469,21 @@ pub async fn update(
     if moved && has_blobs(&mut tx, tenant_id, id).await? {
         return Err(BerthError::Conflict("storage_in_use".into()));
     }
-    let secrets = match &prepared.keys {
-        Some(keys) => Some(encrypt_keys(&state.secret, id, keys)?),
-        None => current.secrets_encrypted.clone(),
+    let secrets = match prepared.kind {
+        "s3" => {
+            let stored = decrypt_keys(&state.secret, &current)?;
+            let keys = prepared.keys(stored.clone())?;
+            if stored.as_ref() == Some(&keys) {
+                current.secrets_encrypted.clone()
+            } else {
+                Some(encrypt_keys(&state.secret, id, &keys)?)
+            }
+        }
+        _ => current.secrets_encrypted.clone(),
     };
     let recheck = moved
         || prepared.keys.is_some()
+        || prepared.cdn_token_key.is_some()
         || current_config != prepared.config
         || current.delivery_mode != prepared.delivery_mode;
     sqlx::query(
@@ -501,12 +569,8 @@ pub async fn set_default(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<(
     Ok(())
 }
 
-/// Opens the blob store of a profile (a deleted profile still opens: its blobs may remain).
-pub(crate) async fn open(
-    state: &AppState,
-    tenant_id: &str,
-    id: &str,
-) -> anyhow::Result<storage::ObjectBlobStore> {
+/// A profile ready to open (a deleted profile still opens: its blobs may remain).
+async fn load_backend(state: &AppState, tenant_id: &str, id: &str) -> anyhow::Result<Backend> {
     let row: Row = sqlx::query_as(
         "SELECT id, name, kind, config, secrets_encrypted, delivery_mode, verified_at,
             verify_error, created_at FROM storage_profiles WHERE tenant_id = $1 AND id = $2",
@@ -516,10 +580,38 @@ pub(crate) async fn open(
     .fetch_one(&state.db)
     .await
     .context("load storage profile")?;
+    backend(&state.secret, &row)
+}
+
+/// Opens the blob store of a profile (a deleted profile still opens: its blobs may remain).
+pub(crate) async fn open(
+    state: &AppState,
+    tenant_id: &str,
+    id: &str,
+) -> anyhow::Result<storage::ObjectBlobStore> {
     storage::open(
-        &backend(&state.secret, &row)?,
+        &load_backend(state, tenant_id, id).await?,
         &state.config.load().data_dir,
     )
+}
+
+/// The address of a blob under the profile's CDN, signed until `expires` (unix seconds) when
+/// the CDN signs links.
+pub(crate) async fn cdn_link(
+    state: &AppState,
+    tenant_id: &str,
+    id: &str,
+    hash: &storage::ContentHash,
+    expires: u64,
+) -> anyhow::Result<String> {
+    let Backend::S3(config, keys) = load_backend(state, tenant_id, id).await? else {
+        anyhow::bail!("only S3 profiles have a CDN");
+    };
+    let url = storage::cdn_link(&config.cdn_url, tenant_id, hash);
+    match config.cdn_signing {
+        CdnSigning::None => Ok(url),
+        CdnSigning::Bunny => storage::bunny_sign(&url, &keys.cdn_token_key, expires),
+    }
 }
 
 /// Checks the connection (write, read back, delete a probe) and stores the result.
@@ -565,12 +657,15 @@ async fn check(
     })?;
     store.verify(tenant_id).await?;
     match backend {
-        Backend::S3(config, _) if cdn => {
+        Backend::S3(config, keys) if cdn => {
             let client = reqwest::Client::builder()
                 .timeout(std::time::Duration::from_secs(20))
                 .build()
                 .map_err(|_| "storage_failed")?;
-            store.verify_cdn(tenant_id, &config.cdn_url, &client).await
+            let token_key = (!config.cdn_signing.is_none()).then_some(keys.cdn_token_key.as_str());
+            store
+                .verify_cdn(tenant_id, &config.cdn_url, token_key, &client)
+                .await
         }
         _ => Ok(()),
     }
@@ -586,13 +681,10 @@ pub(crate) async fn prepare_first(
     input: &ProfileInput,
 ) -> Result<FirstProfile> {
     let prepared = prepare(input)?;
-    if prepared.kind == "s3" && prepared.keys.is_none() {
-        return Err(BerthError::Validation("storage_keys_required".into()));
-    }
-    let backend = match (&prepared.keys, prepared.kind) {
-        (Some(keys), "s3") => Backend::S3(
+    let backend = match prepared.kind {
+        "s3" => Backend::S3(
             serde_json::from_value(prepared.config.clone()).context("s3 config")?,
-            keys.clone(),
+            prepared.keys(None)?,
         ),
         _ => {
             Backend::Local(serde_json::from_value(prepared.config.clone()).context("local config")?)
@@ -728,6 +820,87 @@ mod tests {
                 ..ProfileInput::local_default()
             }),
             "storage_path_required"
+        );
+        assert_eq!(
+            code(&ProfileInput {
+                cdn_signing: "akamai".into(),
+                ..s3()
+            }),
+            "storage_cdn_signing_invalid"
+        );
+        assert_eq!(
+            code(&ProfileInput {
+                cdn_signing: "bunny".into(),
+                ..s3()
+            }),
+            "storage_cdn_url_required"
+        );
+    }
+
+    fn key_code(prepared: &Prepared, stored: Option<S3Keys>) -> String {
+        match prepared.keys(stored) {
+            Err(BerthError::Validation(code)) => code,
+            _ => panic!("accepted"),
+        }
+    }
+
+    #[test]
+    fn merges_cdn_token_keys() {
+        let bunny = ProfileInput {
+            delivery_mode: "cdn".into(),
+            cdn_url: "https://zone.b-cdn.net".into(),
+            cdn_signing: "bunny".into(),
+            ..s3()
+        };
+        let unsigned = prepare(&s3()).unwrap();
+        assert!(
+            unsigned.config.get("cdn_signing").is_none(),
+            "old configs stay the same"
+        );
+
+        let new = prepare(&ProfileInput {
+            cdn_token_key: " zone-key ".into(),
+            ..bunny.clone()
+        })
+        .unwrap();
+        assert_eq!(new.config["cdn_signing"], "bunny");
+        let stored = new.keys(None).unwrap();
+        assert_eq!(stored.cdn_token_key, "zone-key");
+        assert_eq!(
+            key_code(&prepare(&bunny).unwrap(), None),
+            "storage_cdn_token_required"
+        );
+
+        // Editing: empty keys keep the stored ones, new access keys keep the token key.
+        let keep = prepare(&ProfileInput {
+            access_key_id: String::new(),
+            secret_access_key: String::new(),
+            ..bunny.clone()
+        })
+        .unwrap();
+        assert!(keep.keys(Some(stored.clone())).unwrap() == stored);
+        let rotated = prepare(&ProfileInput {
+            access_key_id: "id2".into(),
+            secret_access_key: "key2".into(),
+            ..bunny
+        })
+        .unwrap()
+        .keys(Some(stored.clone()))
+        .unwrap();
+        assert_eq!(
+            (
+                rotated.access_key_id.as_str(),
+                rotated.cdn_token_key.as_str()
+            ),
+            ("id2", "zone-key")
+        );
+        assert!(
+            unsigned
+                .keys(Some(stored))
+                .unwrap()
+                .cdn_token_key
+                .is_empty(),
+            "turning signing off drops the key"
         );
     }
 }

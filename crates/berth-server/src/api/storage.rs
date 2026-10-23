@@ -34,8 +34,18 @@ pub(crate) enum DeliveryMode {
     Proxy,
     /// Presigned URLs straight to S3.
     Presigned,
-    /// Public URLs under `cdn_url` (a CDN or a public bucket); they need no signature.
+    /// URLs under `cdn_url` (a CDN or a public bucket), signed per `cdn_signing`.
     Cdn,
+}
+
+/// How links under `cdn_url` are signed.
+#[derive(Clone, Copy, Deserialize, Serialize, ToSchema)]
+#[serde(rename_all = "lowercase")]
+pub(crate) enum CdnSigning {
+    /// Public URLs that never expire.
+    None,
+    /// Bunny CDN token authentication (HS256): links expire with the stream link.
+    Bunny,
 }
 
 /// Create or replace a storage profile.
@@ -63,9 +73,14 @@ pub(crate) struct StorageProfileRequest {
     /// `s3`: `presigned` (default), `proxy` or `cdn`; local storage is always `proxy`.
     delivery_mode: Option<DeliveryMode>,
     /// `s3`: public http(s) address of the bucket root, required for `cdn`; the blob at key
-    /// `k` must be readable at `cdn_url/k` without signing.
+    /// `k` must be readable at `cdn_url/k` (signed per `cdn_signing`).
     #[serde(default)]
     cdn_url: String,
+    /// `s3`: `none` (default) or `bunny`, which needs `cdn_url` and a token key.
+    cdn_signing: Option<CdnSigning>,
+    /// `s3`: token authentication key of the Bunny pull zone; absent on update keeps the
+    /// saved one. Never returned.
+    cdn_token_key: Option<String>,
     /// `s3`: access key id; required on create, absent on update keeps the saved keys.
     access_key_id: Option<String>,
     /// `s3`: secret access key; sent together with `access_key_id`. Never returned.
@@ -94,6 +109,12 @@ impl StorageProfileRequest {
             path_style: self.path_style,
             delivery_mode,
             cdn_url: self.cdn_url,
+            cdn_signing: match self.cdn_signing {
+                None => String::new(),
+                Some(CdnSigning::None) => "none".into(),
+                Some(CdnSigning::Bunny) => "bunny".into(),
+            },
+            cdn_token_key: self.cdn_token_key.unwrap_or_default(),
             access_key_id: self.access_key_id.unwrap_or_default(),
             secret_access_key: self.secret_access_key.unwrap_or_default(),
         }
@@ -131,6 +152,10 @@ pub(crate) struct StorageProfile {
     /// `s3`: public address of the bucket root; empty when unused.
     #[serde(skip_serializing_if = "Option::is_none")]
     cdn_url: Option<String>,
+    /// `s3`: how CDN links are signed.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[schema(value_type = Option<CdnSigning>)]
+    cdn_signing: Option<String>,
     /// New books go here.
     is_default: bool,
     /// When the last connection check passed, epoch milliseconds.
@@ -138,7 +163,7 @@ pub(crate) struct StorageProfile {
     /// Code of the last failed check: `storage_auth_failed`, `storage_access_denied`,
     /// `storage_bucket_not_found`, `storage_unreachable`, `storage_mismatch`,
     /// `storage_local_unwritable`, `storage_endpoint_invalid`, `storage_cdn_unreachable`,
-    /// `storage_cdn_mismatch` or `storage_failed`.
+    /// `storage_cdn_mismatch`, `storage_cdn_not_protected` or `storage_failed`.
     verify_error: Option<String>,
     /// Creation time, epoch milliseconds.
     created_at: i64,
@@ -155,6 +180,7 @@ impl From<Profile> for StorageProfile {
             region: s3(p.region),
             path_style: (!local).then_some(p.path_style),
             cdn_url: s3(p.cdn_url),
+            cdn_signing: s3(p.cdn_signing),
             id: p.id,
             name: p.name,
             kind: p.kind,
@@ -195,7 +221,7 @@ pub(crate) async fn list_storage_profiles(
     request_body = StorageProfileRequest,
     responses(
         (status = CREATED, description = "Created profile", body = StorageProfile),
-        (status = BAD_REQUEST, description = "`validation`; `detail`: `storage_name_required`, `storage_name_too_long`, `storage_name_taken`, `storage_path_required`, `storage_bucket_required`, `storage_endpoint_invalid`, `storage_delivery_invalid`, `storage_keys_required` or `invalid_body`", body = Problem, content_type = "application/problem+json"),
+        (status = BAD_REQUEST, description = "`validation`; `detail`: `storage_name_required`, `storage_name_too_long`, `storage_name_taken`, `storage_path_required`, `storage_bucket_required`, `storage_endpoint_invalid`, `storage_delivery_invalid`, `storage_cdn_signing_invalid`, `storage_cdn_token_required`, `storage_keys_required` or `invalid_body`", body = Problem, content_type = "application/problem+json"),
         (status = UNAUTHORIZED, description = "`unauthenticated` or `device_revoked`", body = Problem, content_type = "application/problem+json"),
         (status = FORBIDDEN, description = "`forbidden`: the device has no `admin` scope", body = Problem, content_type = "application/problem+json"),
     )

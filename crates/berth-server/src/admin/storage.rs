@@ -50,6 +50,10 @@ pub(crate) struct StorageForm {
     pub(super) delivery_mode: String,
     #[serde(default)]
     pub(super) cdn_url: String,
+    #[serde(default)]
+    pub(super) cdn_signing: String,
+    #[serde(default, skip_serializing)]
+    pub(super) cdn_token_key: String,
     #[serde(default, skip_serializing)]
     pub(super) access_key_id: String,
     #[serde(default, skip_serializing)]
@@ -68,6 +72,8 @@ impl StorageForm {
             path_style: self.path_style.is_some(),
             delivery_mode: self.delivery_mode.clone(),
             cdn_url: self.cdn_url.clone(),
+            cdn_signing: self.cdn_signing.clone(),
+            cdn_token_key: self.cdn_token_key.clone(),
             access_key_id: self.access_key_id.clone(),
             secret_access_key: self.secret_access_key.clone(),
         }
