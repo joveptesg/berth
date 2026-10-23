@@ -517,6 +517,10 @@ pub(crate) async fn backup_restore_upload(
                 .map_err(anyhow::Error::from)?;
             received = true;
         }
+        // A tokio file finishes its last write in the background: wait for it before reading.
+        tokio::io::AsyncWriteExt::flush(&mut file)
+            .await
+            .map_err(anyhow::Error::from)?;
     }
     let result = if received {
         backup::restore(&state.db, &data_dir, &upload).await
