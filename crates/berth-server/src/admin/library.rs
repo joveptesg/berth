@@ -22,6 +22,7 @@ use crate::{
     service::{
         books::{self, BookEdits, BookQuery, PolicyFilter, RATINGS},
         categories,
+        languages::LANGUAGES,
     },
 };
 
@@ -51,6 +52,8 @@ pub(crate) struct LibraryQuery {
     #[serde(default)]
     category: String,
     #[serde(default)]
+    language: String,
+    #[serde(default)]
     view: String,
 }
 
@@ -67,19 +70,21 @@ pub(crate) async fn library(
         author: query.author.clone(),
         series: query.series.clone(),
         category: query.category.clone(),
+        language: query.language.clone(),
         rating: query.rating.parse().ok(),
     };
     let list = books::list(&state.db, tenant_id, &PolicyFilter::admin(), &id, &filter).await?;
-    let (authors, series) = books::facets(&state.db, tenant_id, &id).await?;
+    let (authors, series, languages) = books::facets(&state.db, tenant_id, &id).await?;
     let categories = categories::list(&state.db, tenant_id).await?;
     let filtered = !(query.q.is_empty()
         && query.author.is_empty()
         && query.series.is_empty()
         && query.category.is_empty()
+        && query.language.is_empty()
         && query.rating.is_empty());
     let ctx = context! {
         library_id => id, books => serde(&list), authors, series, ratings => RATINGS.to_vec(),
-        categories => serde(categories),
+        categories => serde(categories), languages,
         query => serde(&query), filtered, list_view => query.view == "list",
         ..shell(&state, "library")
     };
@@ -104,7 +109,7 @@ async fn book_ctx(
     let categories = categories::list(&state.db, tenant_id).await?;
     Ok(context! {
         book => serde(&detail), form, error, saved, ratings => RATINGS.to_vec(),
-        categories => serde(categories),
+        categories => serde(categories), languages => LANGUAGES.to_vec(),
         ..shell(state, "library")
     })
 }
@@ -136,6 +141,9 @@ pub(crate) struct BookForm {
     /// Section ids, comma-separated.
     #[serde(default)]
     pub(super) category_ids: String,
+    /// Language code; empty for none.
+    #[serde(default)]
+    pub(super) language: String,
 }
 
 impl BookForm {
@@ -157,6 +165,7 @@ impl BookForm {
             series_no,
             rating: self.rating.parse().ok(),
             category_ids: books::split_names(&self.category_ids),
+            language: Some(self.language.clone()),
         })
     }
 }

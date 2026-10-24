@@ -38,6 +38,8 @@ pub struct User {
     pub book_access: String,
     /// Books picked for a `selected` user.
     pub books: i64,
+    /// Languages the user sees; empty for all.
+    pub languages: Vec<String>,
 }
 
 /// Users of the tenant, owner first, then by name.
@@ -54,6 +56,7 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
         Option<String>,
         String,
         i64,
+        String,
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT u.id, u.name, u.role, u.created_at,
@@ -62,7 +65,8 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
                      SELECT 1 FROM device_scopes s WHERE s.device_id = d.id AND s.scope = 'admin'))),
                 u.login, COALESCE(p.book_access, 'all'),
                 (SELECT COUNT(*) FROM user_books ub JOIN books b ON b.id = ub.book_id
-                 WHERE ub.user_id = u.id AND b.deleted_at IS NULL)
+                 WHERE ub.user_id = u.id AND b.deleted_at IS NULL),
+                COALESCE(p.languages, '')
          FROM users u
          LEFT JOIN access_policies p ON p.tenant_id = u.tenant_id AND p.user_id = u.id
          WHERE u.tenant_id = $1 AND u.deleted_at IS NULL
@@ -74,7 +78,7 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
     Ok(rows
         .into_iter()
         .map(
-            |(id, name, role, created_at, devices, login, book_access, books)| User {
+            |(id, name, role, created_at, devices, login, book_access, books, languages)| User {
                 id,
                 name,
                 role,
@@ -83,6 +87,7 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
                 login,
                 book_access,
                 books,
+                languages: super::languages::parse_list(&languages),
             },
         )
         .collect())
@@ -237,12 +242,11 @@ pub async fn access(
     tenant_id: &str,
     user_id: &str,
 ) -> anyhow::Result<Option<HashSet<String>>> {
-    Ok(super::books::PolicyFilter::for_user(db, tenant_id, user_id)
-        .await?
-        .books)
+    super::books::PolicyFilter::picked(db, tenant_id, user_id).await
 }
 
-/// Sets what a listener sees: the whole library (`None`) or only `books`. Changes the policy
+/// Sets what a listener sees: the whole library (`None`) or only `books`, and of those only
+/// the books in `languages` (empty for all; unknown codes are dropped). Changes the policy
 /// version, so the next sync of their phones is a full slice without the hidden books.
 ///
 /// # Errors
@@ -252,7 +256,9 @@ pub async fn set_access(
     tenant_id: &str,
     user_id: &str,
     books: Option<&[String]>,
+    languages: &[String],
 ) -> Result<()> {
+    let languages = super::languages::parse_list(&languages.join(","));
     listener(db, tenant_id, user_id).await?;
     let mut tx = db.begin().await.context("begin")?;
     sqlx::query("DELETE FROM user_books WHERE tenant_id = $1 AND user_id = $2")
@@ -274,19 +280,22 @@ pub async fn set_access(
         .context("pick book")?;
     }
     sqlx::query(
-        "INSERT INTO access_policies (tenant_id, user_id, book_access) VALUES ($1, $2, $3)
+        "INSERT INTO access_policies (tenant_id, user_id, book_access, languages)
+         VALUES ($1, $2, $3, $4)
          ON CONFLICT (tenant_id, user_id) DO UPDATE SET
-            book_access = excluded.book_access, policy_version = policy_version + 1",
+            book_access = excluded.book_access, languages = excluded.languages,
+            policy_version = policy_version + 1",
     )
     .bind(tenant_id)
     .bind(user_id)
     .bind(if books.is_some() { "selected" } else { "all" })
+    .bind(languages.join(","))
     .execute(&mut *tx)
     .await
     .context("save access")?;
     tx.commit().await.context("commit access")?;
     let selected = books.map(<[String]>::len);
-    tracing::info!(user = %user_id, ?selected, "access changed (None = whole library)");
+    tracing::info!(user = %user_id, ?selected, ?languages, "access changed (None = whole library)");
     Ok(())
 }
 

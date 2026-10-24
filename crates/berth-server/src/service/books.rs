@@ -40,33 +40,69 @@ impl PolicyFilter {
         }
     }
 
-    /// The filter of a user.
+    /// The filter of a user: the books picked for them, if any, and of those only the ones
+    /// in their languages or without a language.
     ///
     /// # Errors
     /// Database failures.
     pub async fn for_user(db: &SqlitePool, tenant_id: &str, user_id: &str) -> anyhow::Result<Self> {
         let policy: Option<(i64, String)> = sqlx::query_as(
-            "SELECT policy_version, book_access FROM access_policies
+            "SELECT policy_version, languages FROM access_policies
              WHERE tenant_id = $1 AND user_id = $2",
         )
         .bind(tenant_id)
         .bind(user_id)
         .fetch_optional(db)
         .await?;
-        let (version, access) = policy.unwrap_or((1, "all".into()));
-        let books = if access == "selected" {
-            let ids: Vec<String> = sqlx::query_scalar(
-                "SELECT book_id FROM user_books WHERE tenant_id = $1 AND user_id = $2",
+        let (version, languages) = policy.unwrap_or((1, String::new()));
+        let mut books = Self::picked(db, tenant_id, user_id).await?;
+        let languages = super::languages::parse_list(&languages);
+        if !languages.is_empty() {
+            let spoken: HashSet<String> = sqlx::query_scalar(
+                "SELECT id FROM books WHERE tenant_id = $1
+                 AND (language IS NULL OR instr(',' || $2 || ',', ',' || language || ',') > 0)",
             )
             .bind(tenant_id)
-            .bind(user_id)
+            .bind(languages.join(","))
             .fetch_all(db)
-            .await?;
-            Some(ids.into_iter().collect())
-        } else {
-            None
-        };
+            .await?
+            .into_iter()
+            .collect();
+            books = Some(match books {
+                Some(picked) => picked.intersection(&spoken).cloned().collect(),
+                None => spoken,
+            });
+        }
         Ok(Self { version, books })
+    }
+
+    /// The books picked for a user; `None` when they see the whole library.
+    ///
+    /// # Errors
+    /// Database failures.
+    pub async fn picked(
+        db: &SqlitePool,
+        tenant_id: &str,
+        user_id: &str,
+    ) -> anyhow::Result<Option<HashSet<String>>> {
+        let access: Option<String> = sqlx::query_scalar(
+            "SELECT book_access FROM access_policies WHERE tenant_id = $1 AND user_id = $2",
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_optional(db)
+        .await?;
+        if access.as_deref() != Some("selected") {
+            return Ok(None);
+        }
+        let ids: Vec<String> = sqlx::query_scalar(
+            "SELECT book_id FROM user_books WHERE tenant_id = $1 AND user_id = $2",
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_all(db)
+        .await?;
+        Ok(Some(ids.into_iter().collect()))
     }
 
     /// Whether the reader may see book `id`.
@@ -173,6 +209,8 @@ pub struct Book {
     pub series_no: Option<f64>,
     /// Age rating: 0, 6, 12, 16, 18.
     pub rating: Option<i64>,
+    /// Language, ISO 639-1; `None` when not known.
+    pub language: Option<String>,
     /// Playing time.
     pub duration_ms: i64,
     /// Cover blob.
@@ -191,6 +229,7 @@ struct BookRow {
     series: Option<String>,
     series_no: Option<f64>,
     rating: Option<i64>,
+    language: Option<String>,
     duration_ms: i64,
     cover_hash: Option<String>,
     revision: i64,
@@ -215,6 +254,7 @@ impl BookRow {
             series: self.series,
             series_no: self.series_no,
             rating: self.rating,
+            language: self.language,
             duration_ms: self.duration_ms,
             cover_hash: self.cover_hash,
             revision: self.revision,
@@ -287,6 +327,8 @@ pub struct BookQuery {
     pub series: String,
     /// Section id.
     pub category: String,
+    /// Language code.
+    pub language: String,
     /// Rating, or empty.
     pub rating: Option<i64>,
 }
@@ -304,7 +346,7 @@ pub async fn list(
 ) -> anyhow::Result<Vec<Book>> {
     let search = format!("%{}%", query.search.trim().to_lowercase());
     let rows: Vec<BookRow> = sqlx::query_as(
-        "SELECT id, library_id, title, series, series_no, rating, duration_ms, cover_hash, revision,
+        "SELECT id, library_id, title, series, series_no, rating, language, duration_ms, cover_hash, revision,
                 created_at, deleted_at
          FROM books b
          WHERE tenant_id = $1 AND library_id = $2 AND deleted_at IS NULL
@@ -315,6 +357,7 @@ pub async fn list(
            AND ($6 IS NULL OR rating = $6)
            AND ($7 = '' OR EXISTS (SELECT 1 FROM book_categories bc
                  WHERE bc.book_id = b.id AND bc.category_id = $7))
+           AND ($8 = '' OR language = $8)
          ORDER BY CASE WHEN series IS NULL THEN title ELSE series END, series_no, title",
     )
     .bind(tenant_id)
@@ -324,6 +367,7 @@ pub async fn list(
     .bind(query.series.trim())
     .bind(query.rating)
     .bind(query.category.trim())
+    .bind(query.language.trim())
     .fetch_all(db)
     .await?;
     let mut links = links(db, tenant_id, 0, i64::MAX).await?;
@@ -334,7 +378,7 @@ pub async fn list(
         .collect())
 }
 
-/// Authors and series of a library, for the filters.
+/// Authors, series and languages of a library, for the filters.
 ///
 /// # Errors
 /// Database failures.
@@ -342,7 +386,7 @@ pub async fn facets(
     db: &SqlitePool,
     tenant_id: &str,
     library_id: &str,
-) -> anyhow::Result<(Vec<String>, Vec<String>)> {
+) -> anyhow::Result<(Vec<String>, Vec<String>, Vec<String>)> {
     let authors = sqlx::query_scalar(
         "SELECT DISTINCT p.person FROM book_people p JOIN books b ON b.id = p.book_id
          WHERE p.tenant_id = $1 AND b.library_id = $2 AND b.deleted_at IS NULL AND p.role = 'author'
@@ -361,7 +405,16 @@ pub async fn facets(
     .bind(library_id)
     .fetch_all(db)
     .await?;
-    Ok((authors, series))
+    let used: Vec<String> = sqlx::query_scalar(
+        "SELECT DISTINCT language FROM books
+         WHERE tenant_id = $1 AND library_id = $2 AND deleted_at IS NULL AND language IS NOT NULL",
+    )
+    .bind(tenant_id)
+    .bind(library_id)
+    .fetch_all(db)
+    .await?;
+    let languages = super::languages::parse_list(&used.join(","));
+    Ok((authors, series, languages))
 }
 
 /// A book with its files, chapters and storage.
@@ -380,7 +433,7 @@ pub struct BookDetail {
 
 async fn row(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<BookRow> {
     sqlx::query_as(
-        "SELECT id, library_id, title, series, series_no, rating, duration_ms, cover_hash, revision,
+        "SELECT id, library_id, title, series, series_no, rating, language, duration_ms, cover_hash, revision,
                 created_at, deleted_at
          FROM books WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
     )
@@ -474,6 +527,8 @@ pub struct BookEdits {
     pub rating: Option<i64>,
     /// Sections; ids that do not exist are dropped on save.
     pub category_ids: Vec<String>,
+    /// Language code; `None` when not known.
+    pub language: Option<String>,
 }
 
 impl BookEdits {
@@ -491,6 +546,14 @@ impl BookEdits {
         }
         if self.rating.is_some_and(|r| !RATINGS.contains(&r)) {
             return Err(BerthError::Validation("book_rating_invalid".into()));
+        }
+        let language = self
+            .language
+            .as_deref()
+            .map(str::trim)
+            .filter(|l| !l.is_empty());
+        if language.is_some_and(|l| !super::languages::LANGUAGES.contains(&l)) {
+            return Err(BerthError::Validation("book_language_invalid".into()));
         }
         let names = |list: &[String]| {
             let mut out: Vec<String> = Vec::new();
@@ -510,6 +573,7 @@ impl BookEdits {
             series,
             rating: self.rating,
             category_ids: names(&self.category_ids),
+            language: language.map(str::to_owned),
         })
     }
 
@@ -544,7 +608,7 @@ pub(crate) async fn write_edits(
 ) -> sqlx::Result<()> {
     sqlx::query(
         "UPDATE books SET title = $3, series = $4, series_no = $5, rating = $6, search_text = $7,
-            revision = $8, updated_at = $9
+            revision = $8, updated_at = $9, language = $10
          WHERE tenant_id = $1 AND id = $2",
     )
     .bind(tenant_id)
@@ -556,6 +620,7 @@ pub(crate) async fn write_edits(
     .bind(edits.search_text())
     .bind(revision)
     .bind(now_ms())
+    .bind(&edits.language)
     .execute(&mut *conn)
     .await?;
     sqlx::query("DELETE FROM book_people WHERE tenant_id = $1 AND book_id = $2")
@@ -749,7 +814,7 @@ pub async fn sync(
         _ => (0, true),
     };
     let rows: Vec<BookRow> = sqlx::query_as(
-        "SELECT id, library_id, title, series, series_no, rating, duration_ms, cover_hash, revision,
+        "SELECT id, library_id, title, series, series_no, rating, language, duration_ms, cover_hash, revision,
                 created_at, deleted_at
          FROM books WHERE tenant_id = $1 AND revision > $2
            AND ($3 = 0 OR deleted_at IS NULL)

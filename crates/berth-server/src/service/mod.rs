@@ -10,6 +10,7 @@ pub mod categories;
 pub mod delivery;
 pub mod devices;
 pub mod ingest;
+pub mod languages;
 pub mod pairing;
 pub mod progress;
 pub mod r2;

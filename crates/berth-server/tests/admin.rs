@@ -1214,6 +1214,7 @@ fn chapter_mp3(title: &str, track: u32, seconds: u32) -> Vec<u8> {
         narrator: None,
         track: Some(track),
         genre: Some("Sci-Fi"),
+        language: None,
         chapters: &[],
         cover: false,
     })
@@ -1369,6 +1370,7 @@ async fn upload_analyse_save_and_sync() {
     assert_eq!(draft["chapters"][1]["title"], "Вторая");
     assert!(draft["cover_hash"].is_string());
     assert_eq!(draft["genres"], serde_json::json!(["Sci-Fi"]));
+    assert_eq!(draft["language"], "ru", "guessed from the Cyrillic title");
     assert_eq!(draft["category_ids"].as_array().unwrap().len(), 1);
 
     let saved = send(
@@ -2630,4 +2632,122 @@ async fn apps_sign_in_with_a_login_and_see_only_picked_books() {
         send(&state, app_login("demo", "demo")).await.problem(),
         "login_failed"
     );
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: languages of books, the filter, a listener's languages"
+)]
+async fn listeners_see_only_books_in_their_languages() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let admin = admin_token(&state).await;
+    let russian = add_book(&state, &admin, "Сами боги").await;
+    let english = add_book(&state, &admin, "Foundation").await;
+    let unknown = add_book(&state, &admin, "Untitled").await;
+    let set_language = |id: String, title: &'static str, language: &'static str| {
+        let state = &state;
+        let session = &session;
+        async move {
+            let saved = send(
+                state,
+                post(
+                    &format!("/book/{id}"),
+                    Some(session),
+                    &[("title", title), ("language", language)],
+                ),
+            )
+            .await;
+            assert!(!saved.body.contains("alert-error"), "{}", saved.body);
+        }
+    };
+    set_language(english.clone(), "Foundation", "en").await;
+    set_language(unknown.clone(), "Untitled", "").await;
+    let wrong = send(
+        &state,
+        post(
+            &format!("/book/{english}"),
+            Some(&session),
+            &[("title", "Foundation"), ("language", "xx")],
+        ),
+    )
+    .await;
+    assert!(wrong.body.contains("alert-error"), "{}", wrong.body);
+
+    // The library filters by language once there are two.
+    let library: String = sqlx::query_scalar("SELECT library_id FROM books LIMIT 1")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let page = send(&state, get(&format!("/library/{library}"), Some(&session))).await;
+    assert!(page.body.contains("name=\"language\""), "{}", page.body);
+    let only = send(
+        &state,
+        get(&format!("/library/{library}?language=en"), Some(&session)),
+    )
+    .await;
+    assert!(only.body.contains(&format!("/book/{english}")));
+    assert!(!only.body.contains(&format!("/book/{russian}")));
+
+    // A listener who reads English: no Russian book, the one without a language stays.
+    send(
+        &state,
+        post("/users", Some(&session), &[("name", "Reader")]),
+    )
+    .await;
+    let user: String = sqlx::query_scalar("SELECT id FROM users WHERE name = 'Reader'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let settings = format!("/users/{user}/settings");
+    let saved = send(
+        &state,
+        post(
+            &settings,
+            Some(&session),
+            &[
+                ("login_on", "on"),
+                ("login", "reader"),
+                ("password", "reader"),
+                ("access", "all"),
+                ("languages", "en"),
+            ],
+        ),
+    )
+    .await;
+    assert!(!saved.body.contains("role=\"alert\""), "{}", saved.body);
+    let token = send(&state, app_login("reader", "reader")).await.json()["access_token"]
+        .as_str()
+        .unwrap()
+        .to_owned();
+    let page = send(&state, bearer_get("/v1/sync", &token)).await.json();
+    let mut ids: Vec<&str> = page["books"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|b| b["id"].as_str().unwrap())
+        .collect();
+    ids.sort_unstable();
+    let mut expected = [english.as_str(), unknown.as_str()];
+    expected.sort_unstable();
+    assert_eq!(ids, expected);
+    let stream = send(
+        &state,
+        bearer_get(&format!("/v1/books/{russian}/files/0/stream"), &token),
+    )
+    .await;
+    assert_eq!(stream.problem(), "not_found");
+
+    // A book that turns Russian leaves the phone on the next sync.
+    let cursor = page["cursor"].as_str().unwrap().to_owned();
+    set_language(english.clone(), "Foundation", "ru").await;
+    let next = send(
+        &state,
+        bearer_get(&format!("/v1/sync?cursor={cursor}"), &token),
+    )
+    .await
+    .json();
+    assert_eq!(next["removed"], serde_json::json!([english]));
 }

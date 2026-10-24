@@ -1420,7 +1420,7 @@
             }
           },
           "400": {
-            "description": "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid` or `invalid_body`",
+            "description": "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid`, `book_language_invalid` or `invalid_body`",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1715,6 +1715,13 @@
             "type": "string",
             "description": "Id."
           },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Language, ISO 639-1; `None` when not known."
+          },
           "library_id": {
             "type": "string",
             "description": "Library."
@@ -2006,6 +2013,13 @@
               "type": "string"
             },
             "description": "Genres from the file tags."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Language code from the tags, else guessed from the title and names."
           },
           "narrators": {
             "type": "array",
@@ -2540,6 +2554,13 @@
               "type": "string"
             },
             "description": "Section ids; omitted, the sections the proposal matched."
+          },
+          "language": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Language code (`\"\"` for none); omitted, the language of the proposal."
           },
           "narrators": {
             "type": "array",

@@ -105,6 +105,10 @@ settings:
   password_submit: Change password
 
 users:
+  languages_title: Languages of books
+  languages_all: All languages
+  languages_selected: Selected
+  languages_hint: Books without a language are shown always. Phones sync again in full.
   title: Users
   subtitle: You and the people who listen on this server. Listeners' phones pair with a code, or with a login and password if you gave them one.
   add_title: Add a listener
@@ -230,6 +234,20 @@ storage:
   delete_confirm: Delete %{name}? Only the profile is removed; the files stay where they are.
   footnote: The check writes, reads back and deletes a small test file.
 
+lang:
+  ru: "Русский"
+  en: "English"
+  uk: "Українська"
+  be: "Беларуская"
+  kk: "Қазақша"
+  de: "Deutsch"
+  fr: "Français"
+  es: "Español"
+  it: "Italiano"
+  pl: "Polski"
+  zh: "中文"
+  ja: "日本語"
+
 categories:
   title: Sections
   subtitle: Shelves of the library on the phones, such as Children, Psychology or Science fiction. A book may be in several.
@@ -261,6 +279,8 @@ library:
   any_rating: Any age
   category: Section
   any_category: Any section
+  language: Language
+  any_language: Any language
   view: View
   view_grid: Grid
   view_list: List
@@ -274,6 +294,8 @@ library:
 book:
   title_label: Title
   categories_label: Sections
+  language_label: Language
+  language_none: Not set
   authors_label: Authors
   narrators_label: Narrators
   names_hint: "Several names: separate them with commas."
@@ -320,6 +342,7 @@ upload:
   save_hint: Phones get the book on their next sync.
 
 errors:
+  book_language_invalid: Choose a language from the list.
   category_name_required: Enter the section name.
   category_name_too_long: "The name is too long: 64 characters at most."
   category_name_taken: There is a section with this name already.

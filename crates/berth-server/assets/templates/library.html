@@ -35,6 +35,12 @@
       <option value="">{{ t('library.any_series') }}</option>
       {% for s in series %}<option value="{{ s }}" {% if query.series == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
     </select>
+    {% if languages | length > 1 %}
+    <select name="language" aria-label="{{ t('library.language') }}" class="input select sm:w-44">
+      <option value="">{{ t('library.any_language') }}</option>
+      {% for code in languages %}<option value="{{ code }}" {% if query.language == code %}selected{% endif %}>{{ t('lang.' ~ code) }}</option>{% endfor %}
+    </select>
+    {% endif %}
     <select name="rating" aria-label="{{ t('library.rating') }}" class="input select sm:w-44">
       <option value="">{{ t('library.any_rating') }}</option>
       {% for r in ratings %}<option value="{{ r }}" {% if query.rating == r ~ '' %}selected{% endif %}>{{ r }}+</option>{% endfor %}

@@ -1,12 +1,13 @@
 {% import "partials/ui.html" as ui %}
 {# A listener's login for apps and the books they see. `user_settings`: user, books, picked (ids),
-   access (all | selected), login_on, login, has_password, min_password, error. #}
+   access (all | selected), login_on, login, has_password, min_password, error;
+   languages (all codes), spoken (the codes the user sees, empty for all). #}
 {% set s = user_settings %}
 <dialog id="user-settings" x-init="$el.showModal()" @close="$el.remove()"
   class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,640px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
   <form method="post" action="/users/{{ s.user.id }}/settings" hx-post="/users/{{ s.user.id }}/settings"
     hx-target="#users-section" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
-    x-data='{ loginOn: {{ "true" if s.login_on else "false" }}, access: {{ s.access | tojson }}, picked: {{ s.picked | tojson }}, q: "" }'
+    x-data='{ loginOn: {{ "true" if s.login_on else "false" }}, access: {{ s.access | tojson }}, picked: {{ s.picked | tojson }}, q: "", spokenOn: {{ "true" if s.spoken else "false" }}, spoken: {{ s.spoken | tojson }} }'
     class="form-dense flex max-h-[calc(100dvh-34px)] flex-col">
     <div class="relative border-b border-line px-6 pt-5 pb-4 pr-16">
       <h2 class="text-[20px] font-bold">{{ t('users.settings_title', name=s.user.name) }}</h2>
@@ -72,6 +73,28 @@
           {% else %}
           <p class="text-[14px] text-text-3">{{ t('users.access_no_books') }}</p>
           {% endif %}
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-3 border-t border-line pt-5">
+        <h3 class="text-[15px] font-semibold">{{ t('users.languages_title') }}</h3>
+        <div class="inline-flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 sm:w-auto sm:self-start">
+          {% for value, on in [("all", false), ("selected", true)] %}
+          <label class="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-[11px] px-4 text-[14px] font-semibold whitespace-nowrap text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)]">
+            <input type="radio" name="languages_on" value="{{ value }}" @change="spokenOn = {{ 'true' if on else 'false' }}" {% if (s.spoken | length > 0) == on %}checked{% endif %} class="sr-only">{{ t('users.languages_' ~ value) }}
+          </label>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="languages" :value="spokenOn ? spoken.join(',') : ''" value="{{ s.spoken | join(',') }}">
+        <div x-show="spokenOn" {% if not s.spoken %}style="display: none"{% endif %} class="flex flex-col gap-2">
+          <div class="flex flex-wrap gap-2">
+            {% for code in s.languages %}
+            <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+              <input type="checkbox" value="{{ code }}" x-model="spoken" {% if code in s.spoken %}checked{% endif %} class="sr-only">{{ t('lang.' ~ code) }}
+            </label>
+            {% endfor %}
+          </div>
+          <p class="text-[13px] text-text-3">{{ t('users.languages_hint') }}</p>
         </div>
       </section>
     </div>

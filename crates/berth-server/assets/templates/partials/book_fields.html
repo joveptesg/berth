@@ -1,11 +1,12 @@
 {# Book metadata fields, shared by /book/{id} and the upload cards.
    f: title, authors, narrators (lists or "A, B" text), series, series_no, rating,
-   category_ids (a list or "id,id" text); categories: the sections to pick from. #}
+   category_ids (a list or "id,id" text), language; categories: the sections to pick from;
+   languages: the language codes to pick from. #}
 {% macro names(value) -%}
 {%- if value is string %}{{ value }}{% elif value %}{{ value | join(", ") }}{% endif -%}
 {%- endmacro %}
 
-{% macro fields(f, uid, ratings, categories=[]) -%}
+{% macro fields(f, uid, ratings, categories=[], languages=[]) -%}
 <div class="flex flex-col gap-4">
   <div>
     <label for="{{ uid }}-title" class="field-label">{{ t('book.title_label') }}</label>
@@ -22,7 +23,7 @@
     </div>
   </div>
   <p class="-mt-2 text-[13px] text-text-3">{{ t('book.names_hint') }}</p>
-  <div class="grid grid-cols-[minmax(0,1fr)_96px] gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px]">
+  <div class="grid grid-cols-[minmax(0,1fr)_96px] gap-4 sm:grid-cols-[minmax(0,1fr)_110px_150px_170px]">
     <div>
       <label for="{{ uid }}-series" class="field-label">{{ t('book.series_label') }}</label>
       <input id="{{ uid }}-series" name="series" value="{{ f.series or '' }}" autocomplete="off" class="input">
@@ -40,6 +41,17 @@
         {% endfor %}
       </select>
     </div>
+    {% if languages %}
+    <div class="col-span-2 sm:col-span-1">
+      <label for="{{ uid }}-language" class="field-label">{{ t('book.language_label') }}</label>
+      <select id="{{ uid }}-language" name="language" class="input select">
+        <option value="">{{ t('book.language_none') }}</option>
+        {% for code in languages %}
+        <option value="{{ code }}" {% if f.language == code %}selected{% endif %}>{{ t('lang.' ~ code) }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    {% endif %}
   </div>
   {% if categories %}
   {% set picked = f.category_ids if f.category_ids is string else (f.category_ids or []) | join(",") %}

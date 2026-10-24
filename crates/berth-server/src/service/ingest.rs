@@ -23,7 +23,7 @@ use tokio::io::AsyncWriteExt;
 use super::{
     blobs,
     books::{self, BookEdits},
-    categories, storage as profiles,
+    categories, languages, storage as profiles,
 };
 use crate::{
     AppState,
@@ -453,6 +453,9 @@ pub struct Draft {
     /// Sections the genres match; the admin changes them before saving.
     #[serde(default)]
     pub category_ids: Vec<String>,
+    /// Language code from the tags, else guessed from the title and names.
+    #[serde(default)]
+    pub language: Option<String>,
 }
 
 /// Natural order: "2.mp3" before "10.mp3".
@@ -584,6 +587,15 @@ fn propose(upload_name: &str, mut audio: Vec<(FileRow, media::AudioInfo)>) -> Dr
             draft.genres.push(genre.clone());
         }
     }
+    let tagged = audio
+        .iter()
+        .find_map(|(_, i)| i.language.as_deref().and_then(languages::normalize));
+    let guessed = || {
+        languages::guess(
+            std::iter::once(draft.title.as_str()).chain(draft.authors.iter().map(String::as_str)),
+        )
+    };
+    draft.language = tagged.or_else(guessed).map(str::to_owned);
     let mut offset = 0u64;
     for (file, info) in &audio {
         let end = offset + info.duration_ms;

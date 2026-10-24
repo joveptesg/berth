@@ -28,7 +28,7 @@ use crate::{
         books::RATINGS,
         categories,
         ingest::{self, Created, NewFile, Upload},
-        storage,
+        languages, storage,
     },
     storage::BlobStore,
 };
@@ -56,7 +56,7 @@ pub(crate) async fn page(
         "upload.html",
         context! {
             uploads => serde(uploads), presigned, ratings => RATINGS.to_vec(),
-            categories => serde(categories),
+            categories => serde(categories), languages => languages::LANGUAGES.to_vec(),
             ..shell(&state, "upload")
         },
     )
@@ -124,7 +124,7 @@ async fn card(
         "partials/upload_card.html",
         context! {
             upload => serde(upload), form, error, ratings => RATINGS.to_vec(),
-            categories => serde(categories),
+            categories => serde(categories), languages => languages::LANGUAGES.to_vec(),
         },
     )
 }

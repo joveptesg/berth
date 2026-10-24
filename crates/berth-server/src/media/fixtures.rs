@@ -21,6 +21,8 @@ pub struct Mp3<'a> {
     pub track: Option<u32>,
     /// `TCON`.
     pub genre: Option<&'a str>,
+    /// `TLAN`.
+    pub language: Option<&'a str>,
     /// `CHAP` frames: (title, start ms, end ms).
     pub chapters: &'a [(&'a str, u32, u32)],
     /// An `APIC` front cover (a 1×1 PNG).
@@ -69,6 +71,7 @@ pub fn mp3(spec: &Mp3<'_>) -> Vec<u8> {
         (b"TPE1", spec.artist),
         (b"TCOM", spec.narrator),
         (b"TCON", spec.genre),
+        (b"TLAN", spec.language),
     ] {
         if let Some(value) = value {
             frames.extend(text_frame(id, value));

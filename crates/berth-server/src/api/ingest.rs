@@ -181,6 +181,8 @@ pub(crate) struct SaveBook {
     rating: Option<i64>,
     /// Section ids; omitted, the sections the proposal matched.
     category_ids: Option<Vec<String>>,
+    /// Language code (`""` for none); omitted, the language of the proposal.
+    language: Option<String>,
 }
 
 /// The created book.
@@ -199,7 +201,7 @@ pub(crate) struct SavedBook {
     request_body = SaveBook,
     responses(
         (status = CREATED, description = "Book created", body = SavedBook),
-        (status = BAD_REQUEST, description = "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid` or `invalid_body`", body = Problem, content_type = "application/problem+json"),
+        (status = BAD_REQUEST, description = "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid`, `book_language_invalid` or `invalid_body`", body = Problem, content_type = "application/problem+json"),
         (status = UNAUTHORIZED, description = "`unauthenticated` or `device_revoked`", body = Problem, content_type = "application/problem+json"),
         (status = FORBIDDEN, description = "`forbidden`: no `upload` or `admin` scope", body = Problem, content_type = "application/problem+json"),
         (status = NOT_FOUND, description = "`not_found`", body = Problem, content_type = "application/problem+json"),
@@ -213,14 +215,12 @@ pub(crate) async fn save_upload(
     JsonBody(req): JsonBody<SaveBook>,
 ) -> Result<(StatusCode, Json<SavedBook>), ApiError> {
     may_upload(&device)?;
-    let category_ids = match req.category_ids {
-        Some(ids) => ids,
-        None => ingest::get(&state.db, &device.tenant_id, &id)
-            .await?
-            .draft
-            .map(|d| d.category_ids)
-            .unwrap_or_default(),
-    };
+    let draft = ingest::get(&state.db, &device.tenant_id, &id)
+        .await?
+        .draft
+        .unwrap_or_default();
+    let category_ids = req.category_ids.unwrap_or(draft.category_ids);
+    let language = req.language.or(draft.language);
     let edits = BookEdits {
         title: req.title,
         authors: req.authors,
@@ -229,6 +229,7 @@ pub(crate) async fn save_upload(
         series_no: req.series_no,
         rating: req.rating,
         category_ids,
+        language,
     };
     let book_id = ingest::save(&state, &device.tenant_id, &id, &edits).await?;
     Ok((StatusCode::CREATED, Json(SavedBook { book_id })))

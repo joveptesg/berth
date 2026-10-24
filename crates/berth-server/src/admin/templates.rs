@@ -119,6 +119,8 @@ mod tests {
                         has_password => true,
                         min_password => 4,
                         error => "login_taken",
+                        languages => vec!["ru", "en"],
+                        spoken => vec!["en"],
                     },
                 },
             );
@@ -126,6 +128,10 @@ mod tests {
             // Alpine expressions sit in single-quoted attributes: a title's quote is escaped.
             assert!(dialog.contains("book\\u0027s"), "{dialog}");
             assert!(dialog.contains("picked: [\"b1\"]"), "{dialog}");
+            assert!(
+                dialog.contains("spoken: [\"en\"]") && dialog.contains(">English"),
+                "{dialog}"
+            );
         }
     }
 

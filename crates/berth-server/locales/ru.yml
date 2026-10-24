@@ -103,6 +103,10 @@ settings:
   password_submit: Сменить пароль
 
 users:
+  languages_title: Языки книг
+  languages_all: Все языки
+  languages_selected: Выбранные
+  languages_hint: Книги без языка видны всегда. Телефоны заново получат всю библиотеку.
   title: Пользователи
   subtitle: Вы и те, кто слушает книги на этом сервере. Телефоны слушателей подключаются по коду или по логину и паролю, если вы их дали.
   add_title: Добавить слушателя
@@ -228,6 +232,20 @@ storage:
   delete_confirm: Удалить «%{name}»? Удаляется только профиль, файлы остаются на месте.
   footnote: Проверка записывает, читает и удаляет маленький тестовый файл.
 
+lang:
+  ru: "Русский"
+  en: "English"
+  uk: "Українська"
+  be: "Беларуская"
+  kk: "Қазақша"
+  de: "Deutsch"
+  fr: "Français"
+  es: "Español"
+  it: "Italiano"
+  pl: "Polski"
+  zh: "中文"
+  ja: "日本語"
+
 categories:
   title: Разделы
   subtitle: Полки библиотеки на телефонах — например, Детские, Психология или Фантастика. Книга может быть в нескольких.
@@ -259,6 +277,8 @@ library:
   any_rating: Любой возраст
   category: Раздел
   any_category: Все разделы
+  language: Язык
+  any_language: Любой язык
   view: Вид
   view_grid: Сетка
   view_list: Список
@@ -272,6 +292,8 @@ library:
 book:
   title_label: Название
   categories_label: Разделы
+  language_label: Язык
+  language_none: Не указан
   authors_label: Авторы
   narrators_label: Чтецы
   names_hint: Несколько имён — через запятую.
@@ -318,6 +340,7 @@ upload:
   save_hint: Телефоны получат книгу при следующем синке.
 
 errors:
+  book_language_invalid: Выберите язык из списка.
   category_name_required: Введите название раздела.
   category_name_too_long: "Слишком длинное название: не больше 64 символов."
   category_name_taken: Раздел с таким названием уже есть.
