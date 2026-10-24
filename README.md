@@ -31,8 +31,15 @@ The image `ghcr.io/joveptesg/berth` is built for amd64 and arm64 (Raspberry Pi, 
 mkdir berth && cd berth
 curl -fsSLO https://raw.githubusercontent.com/joveptesg/berth/main/docker-compose.yml
 docker compose up -d              # http://localhost:8080, data in ./data
-docker compose logs berth         # the one-time setup link is in the log
+docker compose logs berth         # the setup code is in the log
 ```
+
+Then open the server's address in a browser: `http://<server>:8080`, an IP with a port or the
+domain your hosting assigned (e.g. `berth-….sslip.io`). Enter the setup code from the log line
+`server is not set up: … enter the setup code K7P2-9QXM`; the code changes on every restart
+until setup is done. The address you opened becomes the home or internet address in the phone
+QR codes (Settings → Server). If the hosting passes its domain to the container, put it in
+`BERTH_WAN_URL` and the log shows a ready link.
 
 `./data` holds the database, its backups, the local storage and `secret.key`.
 
@@ -58,7 +65,7 @@ For plain Docker or a NAS that asks for an image name (Synology, Unraid, CasaOS)
 ```sh
 docker run -d --name berth --restart unless-stopped \
   -p 8080:8080 -v "$PWD/data:/data" ghcr.io/joveptesg/berth:1
-docker logs berth                 # the one-time setup link is in the log
+docker logs berth                 # the setup code is in the log
 ```
 
 In a NAS interface: image `ghcr.io/joveptesg/berth:1`, port `8080`, a folder mounted at `/data`.

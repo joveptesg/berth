@@ -7,7 +7,7 @@ use std::{net::SocketAddr, path::Path};
 use axum::{
     body::Body,
     extract::ConnectInfo,
-    http::{HeaderMap, Request, StatusCode, header},
+    http::{HeaderMap, HeaderValue, Request, StatusCode, header},
 };
 use berth_server::{
     AppState,
@@ -144,14 +144,14 @@ fn between<'a>(text: &'a str, start: &str, end: &str) -> &'a str {
 }
 
 async fn set_up(state: &AppState) -> String {
-    let token = state.setup.get().expect("setup pending");
+    let code = state.setup.get().expect("setup pending");
     let reply = send(
         state,
         post(
             "/setup",
             None,
             &[
-                ("token", &token),
+                ("code", &code),
                 ("name", "Family shelf"),
                 ("password", PASSWORD),
                 ("confirm", PASSWORD),
@@ -164,65 +164,123 @@ async fn set_up(state: &AppState) -> String {
 }
 
 #[tokio::test]
-async fn setup_requires_the_token_and_runs_once() {
+async fn setup_requires_the_code_and_runs_once() {
     let dir = tempfile::tempdir().unwrap();
     let state = start(dir.path()).await;
+    let code = state.setup.get().unwrap();
+    assert_eq!(code.len(), 8);
 
-    assert_eq!(
-        send(&state, get("/setup", None)).await.status,
-        StatusCode::NOT_FOUND
-    );
-    assert_eq!(
-        send(&state, get("/setup?token=guess", None)).await.status,
-        StatusCode::NOT_FOUND
-    );
-    let token = state.setup.get().unwrap();
-    let page = send(&state, get(&format!("/setup?token={token}"), None)).await;
+    // The wizard opens at the server address; the code from the log link is filled in.
+    let page = send(&state, get("/setup", None)).await;
     assert_eq!(page.status, StatusCode::OK);
+    assert!(page.body.contains("name=\"code\" value=\"\""));
     assert!(page.body.contains("name=\"password\""));
+    let linked = send(&state, get(&format!("/setup?code={code}"), None)).await;
+    assert!(linked.body.contains(&format!("value=\"{code}\"")));
 
-    let short = send(
-        &state,
+    let form = |code: &str, password: &str| {
         post(
             "/setup",
             None,
             &[
-                ("token", &token),
-                ("name", "X"),
-                ("password", "short"),
-                ("confirm", "short"),
+                ("code", code),
+                ("name", "Family shelf"),
+                ("password", password),
+                ("confirm", password),
             ],
-        ),
-    )
-    .await;
-    assert_eq!(short.status, StatusCode::OK);
+        )
+    };
+    let wrong = send(&state, form("AAAA-AAAA", PASSWORD)).await;
+    assert_eq!(wrong.status, StatusCode::OK);
+    assert!(wrong.body.contains("setup code"), "{}", wrong.body);
+    assert!(wrong.session().is_none());
+    let short = send(&state, form(&code, "short")).await;
     assert!(short.body.contains("role=\"alert\""));
     assert!(short.session().is_none());
 
-    let session = set_up(&state).await;
+    // Typed by hand: lower case with a dash.
+    let typed = format!("{}-{}", &code[..4], &code[4..]).to_lowercase();
+    let reply = send(&state, form(&typed, PASSWORD)).await;
+    assert_eq!(reply.location(), Some("/"), "{}", reply.body);
+    let session = reply.session().expect("session cookie");
     assert!(state.setup.get().is_none());
     assert_eq!(
         send(&state, get("/", Some(&session))).await.status,
         StatusCode::OK
     );
 
-    let again = send(&state, get(&format!("/setup?token={token}"), None)).await;
+    let again = send(&state, get(&format!("/setup?code={code}"), None)).await;
     assert_eq!(again.location(), Some("/login"));
+    let late = send(&state, form(&code, PASSWORD)).await;
+    assert_eq!(late.location(), Some("/login"));
+}
+
+#[tokio::test]
+async fn setup_remembers_the_address_it_was_opened_at() {
+    for (host, proto, lan, wan) in [
+        (
+            "berth-test-acae1371.178.18.249.144.sslip.io",
+            Some("https"),
+            None,
+            Some("https://berth-test-acae1371.178.18.249.144.sslip.io/"),
+        ),
+        (
+            "178.18.249.144:8080",
+            None,
+            None,
+            Some("http://178.18.249.144:8080/"),
+        ),
+        (
+            "192.168.1.5:8080",
+            None,
+            Some("http://192.168.1.5:8080/"),
+            None,
+        ),
+        ("localhost:8080", None, None, None),
+    ] {
+        let dir = tempfile::tempdir().unwrap();
+        let state = start(dir.path()).await;
+        let code = state.setup.get().unwrap();
+        let mut req = post(
+            "/setup",
+            None,
+            &[
+                ("code", &code),
+                ("name", "Family shelf"),
+                ("password", PASSWORD),
+                ("confirm", PASSWORD),
+            ],
+        );
+        req.headers_mut()
+            .insert(header::HOST, HeaderValue::from_static(host));
+        if let Some(proto) = proto {
+            req.headers_mut()
+                .insert("x-forwarded-proto", HeaderValue::from_static(proto));
+        }
+        let reply = send(&state, req).await;
+        assert_eq!(reply.location(), Some("/"), "{host}: {}", reply.body);
+        let config = state.config.load();
+        assert_eq!(config.lan_url.as_ref().map(url::Url::as_str), lan, "{host}");
+        assert_eq!(config.wan_url.as_ref().map(url::Url::as_str), wan, "{host}");
+    }
 }
 
 #[tokio::test]
 async fn pages_need_a_session() {
     let dir = tempfile::tempdir().unwrap();
     let state = start(dir.path()).await;
+    // Not set up yet: the server address leads to the setup wizard.
+    for path in ["/", "/login"] {
+        let reply = send(&state, get(path, None)).await;
+        assert_eq!(reply.status, StatusCode::SEE_OTHER, "{path}");
+        assert_eq!(reply.location(), Some("/setup"), "{path}");
+    }
+    set_up(&state).await;
     let reply = send(&state, get("/", None)).await;
     assert_eq!(reply.status, StatusCode::SEE_OTHER);
     assert_eq!(reply.location(), Some("/login"));
     let reply = send(&state, get("/settings", Some("forged"))).await;
     assert_eq!(reply.location(), Some("/login"));
-    let login = send(&state, get("/login", None)).await;
-    // Not set up yet: the login page explains where the setup link is instead of a form.
-    assert_eq!(login.status, StatusCode::OK);
-    assert!(!login.body.contains("name=\"password\""));
 }
 
 #[tokio::test]
@@ -1001,14 +1059,14 @@ async fn storage_page_manages_profiles() {
 async fn setup_checks_s3_storage_first() {
     let dir = tempfile::tempdir().unwrap();
     let state = start(dir.path()).await;
-    let token = state.setup.get().unwrap();
+    let code = state.setup.get().unwrap();
     let reply = send(
         &state,
         post(
             "/setup",
             None,
             &[
-                ("token", &token),
+                ("code", &code),
                 ("name", "Family shelf"),
                 ("password", PASSWORD),
                 ("confirm", PASSWORD),
@@ -1033,7 +1091,7 @@ async fn setup_checks_s3_storage_first() {
         .await
         .unwrap();
     assert_eq!(tenants, 0, "nothing is created");
-    assert!(state.setup.get().is_some(), "the token still works");
+    assert!(state.setup.get().is_some(), "the code still works");
 }
 
 #[tokio::test]

@@ -13,7 +13,7 @@ use berth_core::BerthError;
 use minijinja::{Value, context};
 use serde::Deserialize;
 
-use super::{is_htmx, redirect, session, storage::StorageForm};
+use super::{is_htmx, redirect, request_origin, session, storage::StorageForm};
 use crate::{
     AppState, backup,
     db::now_ms,
@@ -82,14 +82,15 @@ pub(super) fn shell(state: &AppState, page: &str) -> Value {
 // ── Setup ────────────────────────────────────────────────
 
 #[derive(Deserialize)]
-pub(crate) struct TokenQuery {
+pub(crate) struct SetupQuery {
+    /// The code from the link in the server log, filled into the form.
     #[serde(default)]
-    token: String,
+    code: String,
 }
 
 #[derive(Deserialize)]
 pub(crate) struct SetupForm {
-    token: String,
+    code: String,
     name: String,
     password: String,
     confirm: String,
@@ -141,19 +142,17 @@ impl SetupForm {
     }
 }
 
-pub(crate) async fn setup_page(State(state): State<AppState>, Query(q): Query<TokenQuery>) -> Page {
+/// The wizard opens at the server's own address; only the post checks the code from the log
+/// (rate limited), so the page gives nothing away.
+pub(crate) async fn setup_page(State(state): State<AppState>, Query(q): Query<SetupQuery>) -> Page {
     if setup::is_configured(&state.db).await? {
         return Ok(Redirect::to("/login").into_response());
-    }
-    // Without the token from the log the wizard does not exist.
-    if !state.setup.matches(&q.token) {
-        return Err(BerthError::NotFound.into());
     }
     let name = state.config.load().name.clone();
     render(
         &state,
         "setup.html",
-        context! { token => q.token, name, locked => locked(&state), data_dir => data_dir(&state) },
+        context! { code => q.code, name, locked => locked(&state), data_dir => data_dir(&state) },
     )
 }
 
@@ -165,19 +164,22 @@ pub(crate) async fn setup_submit(
     if setup::is_configured(&state.db).await? {
         return Ok(redirect(&headers, "/login"));
     }
-    if !state.setup.matches(&form.token) {
-        return Err(BerthError::NotFound.into());
-    }
     let storage = form.storage();
-    match setup::create_owner(
-        &state,
-        &form.name,
-        &form.password,
-        &form.confirm,
-        &storage.input(),
-    )
-    .await
-    {
+    let result = if state.setup.matches(&form.code) {
+        let opened_at = url::Url::parse(&request_origin(&headers)).ok();
+        setup::create_owner(
+            &state,
+            &form.name,
+            &form.password,
+            &form.confirm,
+            &storage.input(),
+            opened_at.as_ref(),
+        )
+        .await
+    } else {
+        Err(BerthError::Validation("setup_code_invalid".into()))
+    };
+    match result {
         Ok(owner) => {
             let mut conn = state.db.acquire().await.map_err(anyhow::Error::from)?;
             let token = auth::create_session(
@@ -198,7 +200,7 @@ pub(crate) async fn setup_submit(
                 "setup.html",
                 "partials/setup_form.html",
                 context! {
-                    token => form.token, name => form.name, error,
+                    code => form.code, name => form.name, error,
                     locked => locked(&state), data_dir => data_dir(&state),
                     storage => storage.view(""),
                 },
@@ -220,12 +222,10 @@ pub(crate) async fn login_page(State(state): State<AppState>, headers: HeaderMap
     {
         return Ok(Redirect::to("/").into_response());
     }
-    let configured = setup::is_configured(&state.db).await?;
-    render(
-        &state,
-        "login.html",
-        context! { configured, ..shell(&state, "login") },
-    )
+    if !setup::is_configured(&state.db).await? {
+        return Ok(Redirect::to("/setup").into_response());
+    }
+    render(&state, "login.html", shell(&state, "login"))
 }
 
 pub(crate) async fn login_submit(
@@ -246,7 +246,7 @@ pub(crate) async fn login_submit(
                 &headers,
                 "login.html",
                 "partials/login_form.html",
-                context! { error, configured => true, ..shell(&state, "login") },
+                context! { error, ..shell(&state, "login") },
             )
         }
     }

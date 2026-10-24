@@ -31,8 +31,8 @@ nav:
 setup:
   title: Set up the server
   subtitle: Four steps and Berth is ready for your family's audiobooks.
-  step_token: Setup link
-  step_token_done: Opened with the token from the server log
+  step_code: Setup code
+  code_hint: "It is in the server log, in the line “server is not set up”: docker compose logs berth"
   step_name: Server name
   step_storage: Storage
   storage_hint: Where audiobook files are kept. You can add other storage and switch to it later.
@@ -52,7 +52,6 @@ login:
   password_label: Admin password
   submit: Sign in
   forgot: Forgot it? Run berth admin reset-password on the server.
-  not_configured: This server is not set up yet. Open the setup link printed in the server log.
   or: or
   phone_start: Sign in with the phone
   phone_qr_label: QR code to sign in with the phone
@@ -381,6 +380,7 @@ errors:
   lan_url_invalid: Enter a full address starting with http:// or https://.
   wan_url_invalid: Enter a full address starting with http:// or https://.
   password_too_short: The password is too short.
+  setup_code_invalid: "Wrong setup code. Check it in the server log; it changes when the server restarts."
   password_mismatch: The passwords do not match.
   password_wrong: Wrong password.
   user_name_required: Enter a name.

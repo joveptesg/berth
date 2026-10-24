@@ -1,4 +1,4 @@
-//! First start: the one-time setup token and creation of the tenant with its owner.
+//! First start: the one-time setup code and creation of the tenant with its owner.
 
 use std::sync::Mutex;
 
@@ -7,42 +7,47 @@ use berth_core::{BerthError, Result};
 use serde_json::Value;
 use sqlx::SqlitePool;
 use subtle::ConstantTimeEq;
+use url::Url;
 
 use super::{
-    auth, books, random_token, settings,
+    auth, books, pairing, settings,
     storage::{self, ProfileInput},
 };
 use crate::{AppState, db, db::now_ms};
 
-/// One-time token that guards `/setup` until the server is set up (design doc §22.A2).
+/// One-time code from the server log that guards `/setup` until the server is set up
+/// (design doc §22.A2): without it the first visitor of a fresh server would become its admin.
+/// 8 characters like a pairing code, short enough to type; `POST /setup` is rate limited.
 /// It lives only in memory: a restart before setup prints a new one.
-pub struct SetupToken(Mutex<Option<String>>);
+pub struct SetupCode(Mutex<Option<String>>);
 
-impl SetupToken {
+impl SetupCode {
     pub(crate) fn new(configured: bool) -> anyhow::Result<Self> {
-        let token = if configured {
+        let code = if configured {
             None
         } else {
-            Some(random_token()?)
+            Some(pairing::generate_code()?)
         };
-        Ok(Self(Mutex::new(token)))
+        Ok(Self(Mutex::new(code)))
     }
 
-    /// The token while setup is pending.
+    /// The code while setup is pending.
     #[must_use]
     pub fn get(&self) -> Option<String> {
         self.0.lock().ok()?.clone()
     }
 
-    /// Constant-time comparison; always false once setup is done.
-    pub(crate) fn matches(&self, provided: &str) -> bool {
+    /// Constant-time comparison of a typed code (any case, dashes and spaces ignored);
+    /// always false once setup is done.
+    pub(crate) fn matches(&self, typed: &str) -> bool {
+        let typed = pairing::normalize(typed);
         self.get()
-            .is_some_and(|token| bool::from(token.as_bytes().ct_eq(provided.as_bytes())))
+            .is_some_and(|code| bool::from(code.as_bytes().ct_eq(typed.as_bytes())))
     }
 
     fn consume(&self) {
-        if let Ok(mut token) = self.0.lock() {
-            *token = None;
+        if let Ok(mut code) = self.0.lock() {
+            *code = None;
         }
     }
 }
@@ -70,6 +75,9 @@ pub async fn is_configured(db: &SqlitePool) -> anyhow::Result<bool> {
 /// name setting and the default storage profile in one transaction. The storage is checked
 /// (a probe is written, read and deleted) before anything is created.
 ///
+/// `opened_at` is the address the wizard was opened at; it becomes the home or internet
+/// address for pairing QR codes (see [`settings::address_setting`]).
+///
 /// # Errors
 /// `Validation` for a bad name, password or storage (including a failed check),
 /// `Conflict("already_set_up")` when a tenant exists.
@@ -79,6 +87,7 @@ pub async fn create_owner(
     password: &str,
     confirm: &str,
     storage: &ProfileInput,
+    opened_at: Option<&Url>,
 ) -> Result<Owner> {
     let name = settings::validate_name(name)?;
     auth::validate_new_password(password, confirm)?;
@@ -132,10 +141,24 @@ pub async fn create_owner(
     books::default_library(&mut tx, &tenant_id)
         .await
         .context("create library")?;
-    if !settings::locked(state).name {
+    let locked = settings::locked(state);
+    if !locked.name {
         db::put_server_setting(&mut tx, "name", Some(&Value::String(name)))
             .await
             .context("save name")?;
+    }
+    if let Some(url) = opened_at
+        && let Some(key) = settings::address_setting(url)
+        && !(if key == "lan_url" {
+            locked.lan_url
+        } else {
+            locked.wan_url
+        })
+    {
+        let value = Value::String(settings::display_url(url));
+        db::put_server_setting(&mut tx, key, Some(&value))
+            .await
+            .context("save address")?;
     }
     tx.commit().await.context("commit setup")?;
 

@@ -92,8 +92,12 @@ async fn serve(config: Option<PathBuf>) -> anyhow::Result<()> {
         .await
         .with_context(|| format!("failed to bind {addr}"))?;
     tracing::info!(%addr, server_id = %state.server_id, "listening");
-    if let Some(url) = state.setup_url() {
-        tracing::warn!("server is not set up; open {url} (or run `berth admin bootstrap`)");
+    if let (Some(code), Some(url)) = (state.setup.get(), state.setup_url()) {
+        let (first, second) = code.split_at(code.len() / 2);
+        tracing::warn!(
+            "server is not set up: open this server's address in a browser and enter the setup \
+             code {first}-{second} (or open {url}, or run `berth admin bootstrap`)"
+        );
     }
     berth_server::cleanup::spawn(state.db.clone());
     berth_server::jobs::spawn(state.clone());
@@ -123,6 +127,7 @@ async fn admin(command: AdminCommand) -> anyhow::Result<()> {
                 &password,
                 &confirm,
                 &ProfileInput::local_default(),
+                None,
             )
             .await
             .map_err(|e| anyhow::anyhow!("{e}"))?;

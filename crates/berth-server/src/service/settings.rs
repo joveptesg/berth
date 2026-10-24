@@ -6,7 +6,7 @@ use anyhow::Context;
 use berth_core::{BerthError, Result};
 use serde::Serialize;
 use serde_json::Value;
-use url::Url;
+use url::{Host, Url};
 
 use crate::{AppState, Config, config, db};
 
@@ -113,6 +113,30 @@ pub fn display_url(url: &Url) -> String {
         .to_owned()
 }
 
+/// The setting for an address the server was opened at: `lan_url` for a home network address
+/// (private IP, `.local`, a name without a dot), `wan_url` otherwise; `None` for loopback,
+/// which a phone cannot reach.
+#[must_use]
+pub fn address_setting(url: &Url) -> Option<&'static str> {
+    let home = match url.host()? {
+        Host::Ipv4(ip) if ip.is_loopback() || ip.is_unspecified() => return None,
+        Host::Ipv6(ip) if ip.is_loopback() || ip.is_unspecified() => return None,
+        Host::Ipv4(ip) => ip.is_private() || ip.is_link_local(),
+        Host::Ipv6(ip) => ip.is_unique_local() || ip.is_unicast_link_local(),
+        Host::Domain(name) => {
+            let name = name.trim_end_matches('.');
+            if name == "localhost" || name.ends_with(".localhost") {
+                return None;
+            }
+            !name.contains('.')
+                || [".local", ".lan", ".home.arpa", ".internal"]
+                    .iter()
+                    .any(|suffix| name.ends_with(suffix))
+        }
+    };
+    Some(if home { "lan_url" } else { "wan_url" })
+}
+
 /// Server addresses for pairing QR codes: home network first, then internet.
 #[must_use]
 pub fn server_urls(config: &Config) -> Vec<String> {
@@ -165,5 +189,34 @@ mod tests {
         assert!(validate_name(" ").is_err());
         assert!(validate_name(&"x".repeat(65)).is_err());
         assert_eq!(validate_name(" Home ").unwrap(), "Home");
+    }
+
+    #[test]
+    fn sorts_addresses_into_home_and_internet() {
+        let setting = |raw: &str| address_setting(&Url::parse(raw).unwrap());
+        for home in [
+            "http://192.168.1.5:8080",
+            "http://10.0.0.2",
+            "http://172.20.0.3:8080",
+            "http://nas.local:8080",
+            "http://nas:8080",
+            "http://[fd00::5]:8080",
+        ] {
+            assert_eq!(setting(home), Some("lan_url"), "{home}");
+        }
+        for internet in [
+            "https://berth-test-acae1371.178.18.249.144.sslip.io",
+            "http://178.18.249.144:8080",
+            "https://books.example.com",
+        ] {
+            assert_eq!(setting(internet), Some("wan_url"), "{internet}");
+        }
+        for loopback in [
+            "http://localhost:8080",
+            "http://127.0.0.1:8080",
+            "http://[::1]:8080",
+        ] {
+            assert_eq!(setting(loopback), None, "{loopback}");
+        }
     }
 }

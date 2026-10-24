@@ -6,7 +6,7 @@ A Docker image for **amd64 and arm64** (Raspberry Pi, ARM NAS): `ghcr.io/jovepte
 mkdir berth && cd berth
 curl -fsSLO https://raw.githubusercontent.com/joveptesg/berth/main/docker-compose.yml
 docker compose up -d              # http://localhost:8080, data in ./data
-docker compose logs berth         # the one-time setup link is in the log
+docker compose logs berth         # the setup code is in the log
 ```
 
 Update an existing install: `docker compose pull && docker compose up -d`.

@@ -23,7 +23,7 @@ use sqlx::SqlitePool;
 pub use api::{openapi, router};
 pub use config::Config;
 pub use secret::SecretKey;
-use service::setup::SetupToken;
+use service::setup::SetupCode;
 
 rust_i18n::i18n!("locales", fallback = "en");
 
@@ -40,8 +40,8 @@ pub struct AppState {
     pub server_id: Arc<str>,
     /// Key that encrypts stored secrets and signs tokens.
     pub secret: Arc<SecretKey>,
-    /// One-time `/setup` token while the server has no tenant.
-    pub setup: Arc<SetupToken>,
+    /// One-time `/setup` code while the server has no tenant.
+    pub setup: Arc<SetupCode>,
     /// Wakes the job worker when a job is queued.
     jobs: Arc<tokio::sync::Notify>,
     templates: Arc<minijinja::Environment<'static>>,
@@ -53,17 +53,19 @@ impl AppState {
         self.jobs.notify_one();
     }
 
-    /// Setup link to print on start while the server is not set up.
+    /// Setup link to print on start while the server is not set up: at the internet or home
+    /// address from the settings (e.g. `BERTH_WAN_URL`), else at the listen address, which
+    /// inside a container is only `localhost`.
     #[must_use]
     pub fn setup_url(&self) -> Option<String> {
-        let token = self.setup.get()?;
+        let code = self.setup.get()?;
         let config = self.config.load();
-        let host = if config.host.is_unspecified() {
-            "localhost".to_owned()
-        } else {
-            config.host.to_string()
+        let base = match config.wan_url.as_ref().or(config.lan_url.as_ref()) {
+            Some(url) => service::settings::display_url(url),
+            None if config.host.is_unspecified() => format!("http://localhost:{}", config.port),
+            None => format!("http://{}:{}", config.host, config.port),
         };
-        Some(format!("http://{host}:{}/setup?token={token}", config.port))
+        Some(format!("{base}/setup?code={code}"))
     }
 }
 
@@ -96,7 +98,7 @@ pub async fn bootstrap(config_file: Option<&Path>) -> anyhow::Result<AppState> {
         .context("invalid configuration")?;
     // The database lives in data_dir, so the database layer cannot move it.
     config.data_dir = data_dir;
-    let setup = SetupToken::new(service::setup::is_configured(&db).await?)?;
+    let setup = SetupCode::new(service::setup::is_configured(&db).await?)?;
 
     Ok(AppState {
         config: Arc::new(ArcSwap::from_pointee(config)),

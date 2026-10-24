@@ -150,7 +150,7 @@ mod tests {
             server_name => "Home", page => "dashboard",
             settings => context! { name => "Home", lan_url => "", wan_url => "" },
             locked => context! { name => false, lan_url => false, wan_url => true },
-            token => "tok", configured => true,
+            code => "K7P29QXM",
         };
         for (locale, dashboard, login) in [("en", "Dashboard", "Sign in"), ("ru", "Обзор", "Войти")]
         {
@@ -158,7 +158,7 @@ mod tests {
             assert!(html.contains(dashboard), "{locale}: {html}");
             assert!(html.contains(&format!("lang=\"{locale}\"")));
             assert!(render(locale, "login.html", base.clone()).contains(login));
-            assert!(render(locale, "setup.html", base.clone()).contains("tok"));
+            assert!(render(locale, "setup.html", base.clone()).contains("K7P29QXM"));
             let settings = render(locale, "settings.html", base.clone());
             assert!(settings.contains("name=\"wan_url\""));
             assert!(settings.contains("readonly"));

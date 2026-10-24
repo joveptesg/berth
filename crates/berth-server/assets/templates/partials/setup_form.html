@@ -9,12 +9,15 @@
 </div>
 {%- endmacro %}
 <form method="post" action="/setup" hx-post="/setup" hx-target="this" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" class="flex flex-col gap-6">
-  <input type="hidden" name="token" value="{{ token }}">
   {% if error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
 
-  <div>
-    {{ step(1, t('setup.step_token'), done=true) }}
-    <p class="mt-1 pl-10 text-[14px] text-text-3">{{ t('setup.step_token_done') }}</p>
+  <div class="flex flex-col gap-3">
+    {{ step(1, t('setup.step_code')) }}
+    <div class="pl-10">
+      <label for="code" class="sr-only">{{ t('setup.step_code') }}</label>
+      <input id="code" name="code" value="{{ code }}" required maxlength="16" autocomplete="off" autocapitalize="characters" spellcheck="false" placeholder="XXXX-XXXX" class="input mono uppercase">
+      <p class="field-hint">{{ t('setup.code_hint') }}</p>
+    </div>
   </div>
 
   <div class="flex flex-col gap-3">

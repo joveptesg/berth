@@ -31,8 +31,15 @@ Berth — сервер аудиокниг, который вы разворач�
 mkdir berth && cd berth
 curl -fsSLO https://raw.githubusercontent.com/joveptesg/berth/main/docker-compose.yml
 docker compose up -d              # http://localhost:8080, данные в ./data
-docker compose logs berth         # одноразовая ссылка для настройки — в логе
+docker compose logs berth         # код настройки — в логе
 ```
+
+Затем откройте адрес сервера в браузере: `http://<сервер>:8080`, IP с портом или домен, выданный
+хостингом (например, `berth-….sslip.io`). Введите код настройки из строки лога
+`server is not set up: … enter the setup code K7P2-9QXM`; до завершения настройки код меняется
+при каждом перезапуске. Открытый адрес станет домашним или интернет-адресом в QR-кодах для телефонов
+(Настройки → Сервер). Если хостинг передаёт свой домен в контейнер, укажите его в `BERTH_WAN_URL` —
+тогда в логе будет готовая ссылка.
 
 В `./data` лежат база данных, её резервные копии, локальное хранилище и `secret.key`.
 
@@ -58,7 +65,7 @@ docker compose logs berth         # одноразовая ссылка для �
 ```sh
 docker run -d --name berth --restart unless-stopped \
   -p 8080:8080 -v "$PWD/data:/data" ghcr.io/joveptesg/berth:1
-docker logs berth                 # одноразовая ссылка для настройки — в логе
+docker logs berth                 # код настройки — в логе
 ```
 
 В интерфейсе NAS: образ `ghcr.io/joveptesg/berth:1`, порт `8080`, папка, подключённая к `/data`.

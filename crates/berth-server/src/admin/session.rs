@@ -7,7 +7,11 @@ use axum::{
     response::{IntoResponse, Response},
 };
 
-use crate::{AppState, error::ApiError, service::auth};
+use crate::{
+    AppState,
+    error::ApiError,
+    service::{auth, setup},
+};
 
 pub(crate) const COOKIE: &str = "berth_session";
 const MAX_AGE_S: i64 = 30 * 24 * 60 * 60;
@@ -21,7 +25,8 @@ pub(crate) fn token(headers: &HeaderMap) -> Option<&str> {
     super::cookie(headers, COOKIE)
 }
 
-/// Redirects to `/login` without a valid session.
+/// Redirects to `/login` without a valid session, or to the setup wizard while the server is
+/// not set up.
 pub(crate) async fn require(
     State(state): State<AppState>,
     mut req: Request,
@@ -39,7 +44,11 @@ pub(crate) async fn require(
             req.extensions_mut().insert(AdminSession(session));
             next.run(req).await
         }
-        None => super::redirect(req.headers(), "/login"),
+        None => match setup::is_configured(&state.db).await {
+            Ok(true) => super::redirect(req.headers(), "/login"),
+            Ok(false) => super::redirect(req.headers(), "/setup"),
+            Err(err) => ApiError::from(err).into_response(),
+        },
     }
 }
 

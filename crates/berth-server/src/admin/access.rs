@@ -3,7 +3,7 @@
 use axum::{
     Extension, Form,
     extract::{Path, Query, State},
-    http::{HeaderMap, StatusCode, header},
+    http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
 use minijinja::{Value, context};
@@ -12,7 +12,7 @@ use serde::Deserialize;
 
 use super::{
     pages::{Page, form_error, render, render_form, shell},
-    redirect,
+    redirect, request_origin,
     session::AdminSession,
 };
 use crate::{
@@ -52,15 +52,7 @@ fn qr_urls(state: &AppState, headers: &HeaderMap) -> (Vec<String>, bool) {
     if !configured.is_empty() {
         return (configured, false);
     }
-    let host = headers
-        .get(header::HOST)
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("localhost");
-    let scheme = headers
-        .get("x-forwarded-proto")
-        .and_then(|v| v.to_str().ok())
-        .unwrap_or("http");
-    (vec![format!("{scheme}://{host}")], true)
+    (vec![request_origin(headers)], true)
 }
 
 /// The QR as inline SVG; the payload is what the app expects:

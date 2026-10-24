@@ -167,6 +167,20 @@ fn cookie<'a>(headers: &'a HeaderMap, name: &str) -> Option<&'a str> {
         .find_map(|pair| pair.trim().strip_prefix(name)?.strip_prefix('='))
 }
 
+/// The address this page was opened at as the browser sees it: `Host` with `https` when a TLS
+/// proxy in front says so in `X-Forwarded-Proto`, else `http`.
+fn request_origin(headers: &HeaderMap) -> String {
+    let host = headers
+        .get(header::HOST)
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("localhost");
+    let scheme = headers
+        .get("x-forwarded-proto")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("http");
+    format!("{scheme}://{host}")
+}
+
 fn is_htmx(headers: &HeaderMap) -> bool {
     headers.contains_key("hx-request")
 }
