@@ -28,6 +28,8 @@ pub struct PolicyFilter {
     pub version: i64,
     /// The only books the reader may see; `None` for the whole library.
     pub books: Option<HashSet<String>>,
+    /// Closed sections not given to the reader: their books and names stay hidden.
+    pub hidden_categories: HashSet<String>,
 }
 
 impl PolicyFilter {
@@ -37,26 +39,78 @@ impl PolicyFilter {
         Self {
             version: 0,
             books: None,
+            hidden_categories: HashSet::new(),
         }
     }
 
-    /// The filter of a user: the books picked for them, if any, and of those only the ones
-    /// in their languages or without a language.
+    /// The filter of a user. The owner sees everything. A listener sees the whole library,
+    /// or the books picked for them plus the books of the sections given to them; then
+    /// without the books of closed sections not given to them, and only the books in their
+    /// languages or without a language.
     ///
     /// # Errors
     /// Database failures.
     pub async fn for_user(db: &SqlitePool, tenant_id: &str, user_id: &str) -> anyhow::Result<Self> {
-        let policy: Option<(i64, String)> = sqlx::query_as(
-            "SELECT policy_version, languages FROM access_policies
-             WHERE tenant_id = $1 AND user_id = $2",
+        let policy: Option<(i64, String, String)> = sqlx::query_as(
+            "SELECT p.policy_version, p.languages, u.role FROM access_policies p
+             JOIN users u ON u.id = p.user_id
+             WHERE p.tenant_id = $1 AND p.user_id = $2",
         )
         .bind(tenant_id)
         .bind(user_id)
         .fetch_optional(db)
         .await?;
-        let (version, languages) = policy.unwrap_or((1, String::new()));
+        let (version, languages, role) = policy.unwrap_or((1, String::new(), "member".into()));
+        if role == "owner" {
+            return Ok(Self {
+                version,
+                ..Self::admin()
+            });
+        }
         let mut books = Self::picked(db, tenant_id, user_id).await?;
-        let languages = super::languages::parse_list(&languages);
+        if let Some(picked) = books.as_mut() {
+            let shelved: Vec<String> = sqlx::query_scalar(
+                "SELECT bc.book_id FROM book_categories bc JOIN user_categories uc
+                   ON uc.tenant_id = bc.tenant_id AND uc.category_id = bc.category_id
+                 WHERE bc.tenant_id = $1 AND uc.user_id = $2",
+            )
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_all(db)
+            .await?;
+            picked.extend(shelved);
+        }
+        let hidden_categories: HashSet<String> = sqlx::query_scalar(
+            "SELECT id FROM categories c WHERE c.tenant_id = $1 AND c.closed
+             AND NOT EXISTS (SELECT 1 FROM user_categories uc
+                 WHERE uc.category_id = c.id AND uc.user_id = $2)",
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .collect();
+        if !hidden_categories.is_empty() {
+            let open: HashSet<String> = sqlx::query_scalar(
+                "SELECT id FROM books b WHERE b.tenant_id = $1 AND NOT EXISTS (
+                     SELECT 1 FROM book_categories bc JOIN categories c ON c.id = bc.category_id
+                     WHERE bc.book_id = b.id AND c.closed AND NOT EXISTS (
+                         SELECT 1 FROM user_categories uc
+                         WHERE uc.category_id = c.id AND uc.user_id = $2))",
+            )
+            .bind(tenant_id)
+            .bind(user_id)
+            .fetch_all(db)
+            .await?
+            .into_iter()
+            .collect();
+            books = Some(match books {
+                Some(picked) => picked.intersection(&open).cloned().collect(),
+                None => open,
+            });
+        }
+        let languages = super::languages::split(&languages);
         if !languages.is_empty() {
             let spoken: HashSet<String> = sqlx::query_scalar(
                 "SELECT id FROM books WHERE tenant_id = $1
@@ -73,7 +127,11 @@ impl PolicyFilter {
                 None => spoken,
             });
         }
-        Ok(Self { version, books })
+        Ok(Self {
+            version,
+            books,
+            hidden_categories,
+        })
     }
 
     /// The books picked for a user; `None` when they see the whole library.
@@ -386,7 +444,7 @@ pub async fn facets(
     db: &SqlitePool,
     tenant_id: &str,
     library_id: &str,
-) -> anyhow::Result<(Vec<String>, Vec<String>, Vec<String>)> {
+) -> anyhow::Result<(Vec<String>, Vec<String>, Vec<super::languages::Language>)> {
     let authors = sqlx::query_scalar(
         "SELECT DISTINCT p.person FROM book_people p JOIN books b ON b.id = p.book_id
          WHERE p.tenant_id = $1 AND b.library_id = $2 AND b.deleted_at IS NULL AND p.role = 'author'
@@ -405,15 +463,16 @@ pub async fn facets(
     .bind(library_id)
     .fetch_all(db)
     .await?;
-    let used: Vec<String> = sqlx::query_scalar(
-        "SELECT DISTINCT language FROM books
-         WHERE tenant_id = $1 AND library_id = $2 AND deleted_at IS NULL AND language IS NOT NULL",
+    let languages = sqlx::query_as(
+        "SELECT l.code, l.name FROM languages l
+         WHERE l.tenant_id = $1 AND EXISTS (SELECT 1 FROM books b WHERE b.tenant_id = l.tenant_id
+             AND b.library_id = $2 AND b.deleted_at IS NULL AND b.language = l.code)
+         ORDER BY l.position, l.code",
     )
     .bind(tenant_id)
     .bind(library_id)
     .fetch_all(db)
     .await?;
-    let languages = super::languages::parse_list(&used.join(","));
     Ok((authors, series, languages))
 }
 
@@ -552,9 +611,6 @@ impl BookEdits {
             .as_deref()
             .map(str::trim)
             .filter(|l| !l.is_empty());
-        if language.is_some_and(|l| !super::languages::LANGUAGES.contains(&l)) {
-            return Err(BerthError::Validation("book_language_invalid".into()));
-        }
         let names = |list: &[String]| {
             let mut out: Vec<String> = Vec::new();
             for name in list.iter().map(|n| n.trim()).filter(|n| !n.is_empty()) {
@@ -667,6 +723,7 @@ pub(crate) async fn write_edits(
 /// `NotFound`, the `Validation` codes of [`BookEdits::validated`].
 pub async fn update(db: &SqlitePool, tenant_id: &str, id: &str, edits: &BookEdits) -> Result<()> {
     let edits = edits.validated()?;
+    super::languages::check(db, tenant_id, edits.language.as_deref()).await?;
     row(db, tenant_id, id).await?;
     let mut tx = db.begin().await.context("begin")?;
     let revision = next_revision(&mut tx, tenant_id)
@@ -784,8 +841,11 @@ pub struct SyncPage {
     pub books: Vec<SyncBook>,
     /// Ids of books removed or no longer visible.
     pub removed: Vec<String>,
-    /// All sections in their order; the list replaces the one the device has.
+    /// The sections the reader sees, in their order; the list replaces the one the device
+    /// has.
     pub categories: Vec<super::categories::Category>,
+    /// Languages the admin keeps, in their order; the list replaces the one the device has.
+    pub languages: Vec<super::languages::Language>,
     /// The server's addresses as the admin set them, home network first: a paired phone
     /// learns new ones here and switches between them without pairing again. Empty when
     /// none are set.
@@ -900,7 +960,12 @@ pub async fn sync(
         has_more,
         books,
         removed,
-        categories: super::categories::list(db, tenant_id).await?,
+        categories: super::categories::list(db, tenant_id)
+            .await?
+            .into_iter()
+            .filter(|c| !policy.hidden_categories.contains(&c.id))
+            .collect(),
+        languages: super::languages::list(db, tenant_id).await?,
         // The API layer fills it from the settings.
         server_urls: Vec::new(),
     })

@@ -1815,6 +1815,8 @@ async fn admin_uploads_and_edits_books() {
         title: "Основание",
         artist: "Айзек Азимов",
         genre: None,
+        language: None,
+        track_language: None,
         chapters: &[(0, "Психоисторики"), (30_000, "Энциклопедисты")],
     });
     let new = serde_json::json!({ "name": "Основание.m4b", "files": [{ "name": "Основание.m4b", "size": m4b.len() }] });
@@ -2750,4 +2752,258 @@ async fn listeners_see_only_books_in_their_languages() {
     .await
     .json();
     assert_eq!(next["removed"], serde_json::json!([english]));
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: a closed section, a given one, the owner, the languages tab"
+)]
+async fn closed_and_given_sections_and_the_languages_tab() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let admin = admin_token(&state).await;
+    let open = add_book(&state, &admin, "Открытая").await;
+    let secret = add_book(&state, &admin, "Только для демо").await;
+    let fresh = add_book(&state, &admin, "Новая сказка").await;
+
+    for (name, login) in [("Мама", "mama"), ("Demo", "demo")] {
+        send(&state, post("/users", Some(&session), &[("name", name)])).await;
+        let user: String = sqlx::query_scalar("SELECT id FROM users WHERE name = $1")
+            .bind(name)
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        send(
+            &state,
+            post(
+                &format!("/users/{user}/settings"),
+                Some(&session),
+                &[
+                    ("login_on", "on"),
+                    ("login", login),
+                    ("password", login),
+                    ("access", "all"),
+                ],
+            ),
+        )
+        .await;
+    }
+    let demo: String = sqlx::query_scalar("SELECT id FROM users WHERE name = 'Demo'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+
+    // The dialog of a new section, then a closed one open to Demo only.
+    let dialog = send(&state, get("/categories/new", Some(&session))).await;
+    assert!(
+        dialog.body.contains("<dialog") && dialog.body.contains("Demo"),
+        "{}",
+        dialog.body
+    );
+    let added = send(
+        &state,
+        post(
+            "/categories",
+            Some(&session),
+            &[("name", "Демо"), ("closed", "on"), ("users", &demo)],
+        ),
+    )
+    .await;
+    assert!(!added.body.contains("alert-error"), "{}", added.body);
+    send(
+        &state,
+        post("/categories", Some(&session), &[("name", "Сказки")]),
+    )
+    .await;
+    let section = |name: &'static str| {
+        let state = &state;
+        async move {
+            sqlx::query_scalar::<_, String>("SELECT id FROM categories WHERE name = $1")
+                .bind(name)
+                .fetch_one(&state.db)
+                .await
+                .unwrap()
+        }
+    };
+    let closed = section("Демо").await;
+    let tales = section("Сказки").await;
+    let shelve = |book: String, title: &'static str, category: String| {
+        let state = &state;
+        let session = &session;
+        async move {
+            send(
+                state,
+                post(
+                    &format!("/book/{book}"),
+                    Some(session),
+                    &[
+                        ("title", title),
+                        ("language", "ru"),
+                        ("category_ids", &category),
+                    ],
+                ),
+            )
+            .await;
+        }
+    };
+    shelve(
+        secret.clone(),
+        "Только для демо",
+        format!("{closed},{tales}"),
+    )
+    .await;
+    shelve(fresh.clone(), "Новая сказка", tales.clone()).await;
+
+    let token = |login: &'static str| {
+        let state = &state;
+        async move {
+            send(state, app_login(login, login)).await.json()["access_token"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    let synced = |token: String| {
+        let state = &state;
+        async move {
+            let page = send(state, bearer_get("/v1/sync", &token)).await.json();
+            let mut books: Vec<String> = page["books"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|b| b["id"].as_str().unwrap().to_owned())
+                .collect();
+            books.sort_unstable();
+            let sections: Vec<String> = page["categories"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|c| c["name"].as_str().unwrap().to_owned())
+                .collect();
+            (books, sections)
+        }
+    };
+    let sorted = |mut ids: Vec<&String>| {
+        ids.sort_unstable();
+        ids.into_iter().cloned().collect::<Vec<_>>()
+    };
+
+    // Mama sees the whole library, but not the closed section, even through an open one.
+    let mama = token("mama").await;
+    let (books, sections) = synced(mama.clone()).await;
+    assert_eq!(books, sorted(vec![&open, &fresh]));
+    assert_eq!(
+        sections,
+        ["Сказки"],
+        "the closed section's name does not leak"
+    );
+    assert_eq!(
+        send(
+            &state,
+            bearer_get(&format!("/v1/books/{secret}/files/0/stream"), &mama)
+        )
+        .await
+        .problem(),
+        "not_found"
+    );
+    // Demo has it.
+    let (books, sections) = synced(token("demo").await).await;
+    assert_eq!(books, sorted(vec![&open, &secret, &fresh]));
+    assert_eq!(sections, ["Демо", "Сказки"]);
+    // The owner sees everything.
+    let (books, _) = synced(admin.clone()).await;
+    assert_eq!(books.len(), 3);
+
+    // Demo on "selected" with the closed section given: only its books, a new one too.
+    send(
+        &state,
+        post(
+            &format!("/users/{demo}/settings"),
+            Some(&session),
+            &[
+                ("login_on", "on"),
+                ("login", "demo"),
+                ("password", ""),
+                ("access", "selected"),
+                ("categories", &closed),
+            ],
+        ),
+    )
+    .await;
+    let demo_token = token("demo").await;
+    let (books, _) = synced(demo_token.clone()).await;
+    assert_eq!(books, std::slice::from_ref(&secret));
+    shelve(open.clone(), "Открытая", closed.clone()).await;
+    let (books, _) = synced(demo_token).await;
+    assert_eq!(
+        books,
+        sorted(vec![&open, &secret]),
+        "a new book of the section"
+    );
+
+    // Opening the section to everyone gives Mama its books on a full slice.
+    let edit = send(
+        &state,
+        get(&format!("/categories/{closed}/edit"), Some(&session)),
+    )
+    .await;
+    assert!(edit.body.contains("checked"), "{}", edit.body);
+    send(
+        &state,
+        post(
+            &format!("/categories/{closed}"),
+            Some(&session),
+            &[("name", "Демо"), ("users", &demo)],
+        ),
+    )
+    .await;
+    let page = send(&state, bearer_get("/v1/sync?cursor=v1.0.0", &mama))
+        .await
+        .json();
+    assert_eq!(page["reset"], true);
+    assert_eq!(page["books"].as_array().unwrap().len(), 3);
+
+    // Languages: add one, a book's language cannot go, an unused one can.
+    let tab = send(&state, get("/settings/languages", Some(&session))).await;
+    assert!(tab.body.contains("Русский") && tab.body.contains("English"));
+    let added = send(
+        &state,
+        post(
+            "/settings/languages",
+            Some(&session),
+            &[("code", "Pt"), ("name", "Português")],
+        ),
+    )
+    .await;
+    assert!(added.body.contains("Português"), "{}", added.body);
+    let again = send(
+        &state,
+        post(
+            "/settings/languages",
+            Some(&session),
+            &[("code", "pt"), ("name", "Portuguese")],
+        ),
+    )
+    .await;
+    assert!(again.body.contains("alert-error"), "{}", again.body);
+    send(
+        &state,
+        post("/settings/languages/ru/delete", Some(&session), &[]),
+    )
+    .await;
+    send(
+        &state,
+        post("/settings/languages/pt/delete", Some(&session), &[]),
+    )
+    .await;
+    let codes: Vec<String> = sqlx::query_scalar("SELECT code FROM languages ORDER BY position")
+        .fetch_all(&state.db)
+        .await
+        .unwrap();
+    assert!(codes.contains(&"ru".to_owned()), "books are in Russian");
+    assert!(!codes.contains(&"pt".to_owned()));
+    let page = send(&state, bearer_get("/v1/sync", &admin)).await.json();
+    assert_eq!(page["languages"][0]["name"], "Русский");
 }

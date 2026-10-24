@@ -21,8 +21,7 @@ use crate::{
     error::ApiError,
     service::{
         books::{self, BookEdits, BookQuery, PolicyFilter, RATINGS},
-        categories,
-        languages::LANGUAGES,
+        categories, languages,
     },
 };
 
@@ -84,7 +83,7 @@ pub(crate) async fn library(
         && query.rating.is_empty());
     let ctx = context! {
         library_id => id, books => serde(&list), authors, series, ratings => RATINGS.to_vec(),
-        categories => serde(categories), languages,
+        categories => serde(categories), languages => serde(languages),
         query => serde(&query), filtered, list_view => query.view == "list",
         ..shell(&state, "library")
     };
@@ -109,7 +108,8 @@ async fn book_ctx(
     let categories = categories::list(&state.db, tenant_id).await?;
     Ok(context! {
         book => serde(&detail), form, error, saved, ratings => RATINGS.to_vec(),
-        categories => serde(categories), languages => LANGUAGES.to_vec(),
+        categories => serde(categories),
+        languages => serde(languages::list(&state.db, tenant_id).await?),
         ..shell(state, "library")
     })
 }

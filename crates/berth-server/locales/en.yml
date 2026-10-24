@@ -105,6 +105,9 @@ settings:
   password_submit: Change password
 
 users:
+  sections_hint_selected: "The listener sees the books of these sections, new ones included, and the books picked below."
+  sections_hint_all: "With the whole library, only closed sections need to be given."
+  sections_title: "Sections"
   languages_title: Languages of books
   languages_all: All languages
   languages_selected: Selected
@@ -234,23 +237,32 @@ storage:
   delete_confirm: Delete %{name}? Only the profile is removed; the files stay where they are.
   footnote: The check writes, reads back and deletes a small test file.
 
-lang:
-  ru: "Русский"
-  en: "English"
-  uk: "Українська"
-  be: "Беларуская"
-  kk: "Қазақша"
-  de: "Deutsch"
-  fr: "Français"
-  es: "Español"
-  it: "Italiano"
-  pl: "Polski"
-  zh: "中文"
-  ja: "日本語"
+languages:
+  section: "Languages"
+  subtitle: "Languages books can have. An uploaded book gets one from the file tag or the folder name."
+  add: "Add language"
+  new_title: "New language"
+  edit_title: "Edit language"
+  code_label: "Code"
+  name_label: "Name"
+  code_hint: "ISO 639 code of two or three letters: fr, pt, uz. The name is best written in the language itself."
+  delete_confirm: "Delete the language «%{name}»?"
+  delete_blocked: "Books have this language: change it on them first."
+  empty: "No languages: books stay without one."
 
 categories:
+  open_to_nobody: "open to nobody"
+  open_to: "open to %{names}"
+  users_none: "No listeners yet: add them on the Users page."
+  users_hint_open: "Listeners who see only selected books get the books of this section too, new ones included."
+  users_hint_closed: "Only these listeners see the books of the section."
+  users_label: "Open to"
+  closed_badge: "Closed"
+  closed_hint: "Its books only you and the listeners below see, even those with the whole library. A book also in an open section stays hidden."
+  closed_label: "Closed section"
+  edit_title: "Edit section"
   title: Sections
-  subtitle: Shelves of the library on the phones, such as Children, Psychology or Science fiction. A book may be in several.
+  subtitle: "Shelves of the library on the phones, such as Children, Psychology or Science fiction. A book may be in several. A closed section only the listeners it is open to see."
   new_title: New section
   name_label: Name
   aliases_label: Genres from files
@@ -342,6 +354,11 @@ upload:
   save_hint: Phones get the book on their next sync.
 
 errors:
+  language_in_use: "Books have this language: change it on them first."
+  language_name_too_long: "The name is too long: 40 characters at most."
+  language_name_required: "Enter the name of the language."
+  language_code_taken: "This language is in the list already."
+  language_code_invalid: "The code is two or three Latin letters, such as fr."
   book_language_invalid: Choose a language from the list.
   category_name_required: Enter the section name.
   category_name_too_long: "The name is too long: 64 characters at most."

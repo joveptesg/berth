@@ -1,13 +1,14 @@
 {% import "partials/ui.html" as ui %}
 {# A listener's login for apps and the books they see. `user_settings`: user, books, picked (ids),
    access (all | selected), login_on, login, has_password, min_password, error;
-   languages (all codes), spoken (the codes the user sees, empty for all). #}
+   languages (code, name), spoken (the codes the user sees, empty for all);
+   sections (id, name, closed), given (ids of the sections given to the user). #}
 {% set s = user_settings %}
 <dialog id="user-settings" x-init="$el.showModal()" @close="$el.remove()"
   class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,640px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
   <form method="post" action="/users/{{ s.user.id }}/settings" hx-post="/users/{{ s.user.id }}/settings"
     hx-target="#users-section" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
-    x-data='{ loginOn: {{ "true" if s.login_on else "false" }}, access: {{ s.access | tojson }}, picked: {{ s.picked | tojson }}, q: "", spokenOn: {{ "true" if s.spoken else "false" }}, spoken: {{ s.spoken | tojson }} }'
+    x-data='{ loginOn: {{ "true" if s.login_on else "false" }}, access: {{ s.access | tojson }}, picked: {{ s.picked | tojson }}, q: "", spokenOn: {{ "true" if s.spoken else "false" }}, spoken: {{ s.spoken | tojson }}, given: {{ s.given | tojson }} }'
     class="form-dense flex max-h-[calc(100dvh-34px)] flex-col">
     <div class="relative border-b border-line px-6 pt-5 pb-4 pr-16">
       <h2 class="text-[20px] font-bold">{{ t('users.settings_title', name=s.user.name) }}</h2>
@@ -52,6 +53,21 @@
           {% endfor %}
         </div>
         <input type="hidden" name="books" :value="picked.join(',')" value="{{ s.picked | join(',') }}">
+        {% if s.sections %}
+        <div class="flex flex-col gap-2">
+          <input type="hidden" name="categories" :value="given.join(',')" value="{{ s.given | join(',') }}">
+          <p class="text-[13.5px] font-semibold text-text-2">{{ t('users.sections_title') }}</p>
+          <div class="flex flex-wrap gap-2">
+            {% for c in s.sections %}
+            <label class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+              <input type="checkbox" value="{{ c.id }}" x-model="given" {% if c.id in s.given %}checked{% endif %} class="sr-only">
+              {% if c.closed %}<span title="{{ t('categories.closed_badge') }}">{{ ui.icon("lock", "size-[15px]") }}</span>{% endif %}{{ c.name }}
+            </label>
+            {% endfor %}
+          </div>
+          <p class="text-[13px] text-text-3" x-text='access === "selected" ? {{ t("users.sections_hint_selected") | tojson }} : {{ t("users.sections_hint_all") | tojson }}'>{{ t('users.sections_hint_selected') if s.access == "selected" else t('users.sections_hint_all') }}</p>
+        </div>
+        {% endif %}
         <div x-show="access === 'selected'" {% if s.access != "selected" %}style="display: none"{% endif %} class="flex flex-col gap-2">
           <p class="text-[13px] text-text-3">{{ t('users.access_picked') }} <span x-text="picked.length" class="font-semibold text-text">{{ s.picked | length }}</span> {{ t('users.access_of', count=s.books | length) }}</p>
           {% if s.books %}
@@ -88,9 +104,9 @@
         <input type="hidden" name="languages" :value="spokenOn ? spoken.join(',') : ''" value="{{ s.spoken | join(',') }}">
         <div x-show="spokenOn" {% if not s.spoken %}style="display: none"{% endif %} class="flex flex-col gap-2">
           <div class="flex flex-wrap gap-2">
-            {% for code in s.languages %}
+            {% for l in s.languages %}
             <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
-              <input type="checkbox" value="{{ code }}" x-model="spoken" {% if code in s.spoken %}checked{% endif %} class="sr-only">{{ t('lang.' ~ code) }}
+              <input type="checkbox" value="{{ l.code }}" x-model="spoken" {% if l.code in s.spoken %}checked{% endif %} class="sr-only">{{ l.name }}
             </label>
             {% endfor %}
           </div>

@@ -8,7 +8,7 @@
 
 {# Tabs are plain links: each tab is its own page, so it can be bookmarked and needs no script. #}
 <nav class="mt-6 grid grid-cols-2 gap-1 rounded-[14px] bg-surface-2 p-1 sm:flex sm:gap-1 sm:overflow-x-auto sm:overflow-y-hidden sm:rounded-none sm:border-b sm:border-line sm:bg-transparent sm:p-0 sm:[scrollbar-width:none]" aria-label="{{ t('settings.title') }}">
-  {% for key, href, label in [("server", "/settings", t('settings.server_section')), ("password", "/settings/password", t('settings.password_section')), ("backup", "/settings/backup", t('backup.section')), ("restore", "/settings/restore", t('backup.restore_section'))] %}
+  {% for key, href, label in [("server", "/settings", t('settings.server_section')), ("password", "/settings/password", t('settings.password_section')), ("languages", "/settings/languages", t('languages.section')), ("backup", "/settings/backup", t('backup.section')), ("restore", "/settings/restore", t('backup.restore_section'))] %}
   <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}
     class="flex items-center justify-center rounded-[11px] px-2 py-2 text-center text-[14px] leading-tight font-semibold text-text-2 transition-colors hover:text-text aria-[current=page]:bg-surface aria-[current=page]:text-text aria-[current=page]:shadow-[0_1px_3px_rgb(0_0_0/0.1)] sm:-mb-px sm:shrink-0 sm:rounded-none sm:border-b-2 sm:border-transparent sm:px-4 sm:py-3 sm:text-[15px] sm:whitespace-nowrap sm:aria-[current=page]:border-accent sm:aria-[current=page]:bg-transparent sm:aria-[current=page]:shadow-none">{{ label }}</a>
   {% endfor %}
@@ -19,6 +19,8 @@
   {% include "partials/settings_restore.html" %}
   {% elif tab == "backup" %}
   {% include "partials/settings_backup.html" %}
+  {% elif tab == "languages" %}
+  {% include "partials/settings_languages.html" %}
   {% elif tab == "password" %}
   {% include "partials/settings_password.html" %}
   {% else %}

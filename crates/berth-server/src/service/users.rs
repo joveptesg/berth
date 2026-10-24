@@ -87,7 +87,7 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
                 login,
                 book_access,
                 books,
-                languages: super::languages::parse_list(&languages),
+                languages: super::languages::split(&languages),
             },
         )
         .collect())
@@ -245,8 +245,9 @@ pub async fn access(
     super::books::PolicyFilter::picked(db, tenant_id, user_id).await
 }
 
-/// Sets what a listener sees: the whole library (`None`) or only `books`, and of those only
-/// the books in `languages` (empty for all; unknown codes are dropped). Changes the policy
+/// Sets what a listener sees: the whole library (`None`) or only `books` plus the books of
+/// `categories`; closed sections among `categories` open to them; and of all that only the
+/// books in `languages` (empty for all; unknown codes are dropped). Changes the policy
 /// version, so the next sync of their phones is a full slice without the hidden books.
 ///
 /// # Errors
@@ -256,9 +257,11 @@ pub async fn set_access(
     tenant_id: &str,
     user_id: &str,
     books: Option<&[String]>,
+    categories: &[String],
     languages: &[String],
 ) -> Result<()> {
-    let languages = super::languages::parse_list(&languages.join(","));
+    let known = super::languages::list(db, tenant_id).await?;
+    let languages = super::languages::pick(&known, &languages.join(","));
     listener(db, tenant_id, user_id).await?;
     let mut tx = db.begin().await.context("begin")?;
     sqlx::query("DELETE FROM user_books WHERE tenant_id = $1 AND user_id = $2")
@@ -267,6 +270,24 @@ pub async fn set_access(
         .execute(&mut *tx)
         .await
         .context("clear books")?;
+    sqlx::query("DELETE FROM user_categories WHERE tenant_id = $1 AND user_id = $2")
+        .bind(tenant_id)
+        .bind(user_id)
+        .execute(&mut *tx)
+        .await
+        .context("clear categories")?;
+    for category in categories {
+        sqlx::query(
+            "INSERT OR IGNORE INTO user_categories (tenant_id, user_id, category_id)
+             SELECT $1, $2, id FROM categories WHERE tenant_id = $1 AND id = $3",
+        )
+        .bind(tenant_id)
+        .bind(user_id)
+        .bind(category)
+        .execute(&mut *tx)
+        .await
+        .context("give category")?;
+    }
     for book in books.unwrap_or_default() {
         sqlx::query(
             "INSERT OR IGNORE INTO user_books (tenant_id, user_id, book_id)
@@ -295,7 +316,7 @@ pub async fn set_access(
     .context("save access")?;
     tx.commit().await.context("commit access")?;
     let selected = books.map(<[String]>::len);
-    tracing::info!(user = %user_id, ?selected, ?languages, "access changed (None = whole library)");
+    tracing::info!(user = %user_id, ?selected, sections = categories.len(), ?languages, "access changed (None = whole library)");
     Ok(())
 }
 

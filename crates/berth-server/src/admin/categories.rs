@@ -1,5 +1,6 @@
-//! The sections page: thin wrappers over `crate::service::categories`. Every action answers
-//! with the whole list, as it is short.
+//! The sections page: thin wrappers over `crate::service::categories`. A section is added
+//! and edited in a dialog; every action answers with the whole list, as it is short, and a
+//! form that did not save comes back open with its error.
 
 use axum::{
     Extension, Form,
@@ -11,10 +12,16 @@ use minijinja::{Value, context};
 use serde::Deserialize;
 
 use super::{
-    pages::{Page, form_error, render_form, shell},
+    pages::{Page, form_error, render, render_form, shell},
     session::AdminSession,
 };
-use crate::{AppState, service::categories};
+use crate::{
+    AppState,
+    service::{
+        categories::{self, CategoryInput},
+        users,
+    },
+};
 
 #[derive(Deserialize)]
 pub(crate) struct CategoryForm {
@@ -22,36 +29,107 @@ pub(crate) struct CategoryForm {
     name: String,
     #[serde(default)]
     aliases: String,
+    /// Checkbox: `on` when the section is closed.
+    #[serde(default)]
+    closed: Option<String>,
+    /// Ids of the listeners it is given to, comma-separated.
+    #[serde(default)]
+    users: String,
 }
 
-/// The list, with the error of the form that failed (`""` for the new one).
+impl CategoryForm {
+    fn input(&self) -> CategoryInput {
+        CategoryInput {
+            name: self.name.clone(),
+            aliases: self.aliases.clone(),
+            closed: self.closed.is_some(),
+            users: self
+                .users
+                .split(',')
+                .map(str::trim)
+                .filter(|u| !u.is_empty())
+                .map(str::to_owned)
+                .collect(),
+        }
+    }
+}
+
+/// The dialog of a section: `id` empty for a new one.
+async fn dialog_ctx(
+    state: &AppState,
+    tenant_id: &str,
+    id: &str,
+    form: Option<&CategoryForm>,
+    error: Option<String>,
+) -> Result<Value> {
+    let saved = if id.is_empty() {
+        None
+    } else {
+        let entry = categories::entries(&state.db, tenant_id)
+            .await?
+            .into_iter()
+            .find(|c| c.id == id)
+            .ok_or(BerthError::NotFound)?;
+        Some(entry)
+    };
+    let listeners: Vec<Value> = users::list(&state.db, tenant_id)
+        .await?
+        .into_iter()
+        .filter(|u| u.role == "member")
+        .map(|u| context! { id => u.id, name => u.name })
+        .collect();
+    let (name, aliases, closed, given, books) = match (form, &saved) {
+        (Some(f), _) => {
+            let input = f.input();
+            let books = saved.as_ref().map_or(0, |s| s.books);
+            (input.name, input.aliases, input.closed, input.users, books)
+        }
+        (None, Some(s)) => (
+            s.name.clone(),
+            s.aliases.replace('\n', ", "),
+            s.closed,
+            s.users.clone(),
+            s.books,
+        ),
+        (None, None) => (String::new(), String::new(), false, Vec::new(), 0),
+    };
+    Ok(context! { id, name, aliases, closed, given, books, listeners, error })
+}
+
+/// The list; `dialog` stays open over it when a form did not save.
 async fn list(
     state: &AppState,
     headers: &HeaderMap,
     tenant_id: &str,
-    failed: Option<(&str, &CategoryForm, String)>,
+    dialog: Option<Value>,
 ) -> Page {
-    let entries = categories::entries(&state.db, tenant_id).await?;
-    let entries: Vec<Value> = entries
+    let listeners = users::list(&state.db, tenant_id).await?;
+    let entries: Vec<Value> = categories::entries(&state.db, tenant_id)
+        .await?
         .into_iter()
         .map(|c| {
             let aliases = c.aliases.replace('\n', ", ");
-            context! { id => c.id, name => c.name, aliases, books => c.books }
+            let names: Vec<String> = listeners
+                .iter()
+                .filter(|u| c.users.contains(&u.id))
+                .map(|u| u.name.clone())
+                .collect();
+            context! {
+                id => c.id, name => c.name, aliases, books => c.books, closed => c.closed,
+                users => names,
+            }
         })
         .collect();
-    let failed = failed.map(|(id, form, error)| {
-        context! { id, name => form.name.clone(), aliases => form.aliases.clone(), error }
-    });
     render_form(
         state,
         headers,
         "categories.html",
         "partials/category_list.html",
-        context! { categories => entries, failed, ..shell(state, "categories") },
+        context! { categories => entries, dialog, ..shell(state, "categories") },
     )
 }
 
-/// Shows the list again, or the form error next to the form that sent it.
+/// The list after a save, or the dialog again with the form error.
 async fn answer(
     state: &AppState,
     headers: &HeaderMap,
@@ -64,7 +142,8 @@ async fn answer(
         Ok(()) => list(state, headers, tenant_id, None).await,
         Err(err) => {
             let error = form_error(err)?;
-            list(state, headers, tenant_id, Some((id, form, error))).await
+            let dialog = dialog_ctx(state, tenant_id, id, Some(form), Some(error)).await?;
+            list(state, headers, tenant_id, Some(dialog)).await
         }
     }
 }
@@ -77,6 +156,25 @@ pub(crate) async fn page(
     list(&state, &headers, &session.0.tenant_id, None).await
 }
 
+/// The empty dialog of a new section.
+pub(crate) async fn new_dialog(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+) -> Page {
+    let dialog = dialog_ctx(&state, &session.0.tenant_id, "", None, None).await?;
+    render(&state, "partials/category_dialog.html", context! { dialog })
+}
+
+/// The dialog of a section as saved.
+pub(crate) async fn edit_dialog(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    Path(id): Path<String>,
+) -> Page {
+    let dialog = dialog_ctx(&state, &session.0.tenant_id, &id, None, None).await?;
+    render(&state, "partials/category_dialog.html", context! { dialog })
+}
+
 pub(crate) async fn create(
     State(state): State<AppState>,
     Extension(session): Extension<AdminSession>,
@@ -84,7 +182,7 @@ pub(crate) async fn create(
     Form(form): Form<CategoryForm>,
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
-    let result = categories::create(&state.db, tenant_id, &form.name, &form.aliases)
+    let result = categories::create(&state.db, tenant_id, &form.input())
         .await
         .map(|_| ());
     answer(&state, &headers, tenant_id, "", &form, result).await
@@ -98,7 +196,7 @@ pub(crate) async fn update(
     Form(form): Form<CategoryForm>,
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
-    let result = categories::update(&state.db, tenant_id, &id, &form.name, &form.aliases).await;
+    let result = categories::update(&state.db, tenant_id, &id, &form.input()).await;
     answer(&state, &headers, tenant_id, &id, &form, result).await
 }
 

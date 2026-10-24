@@ -6,6 +6,7 @@ mod access;
 mod categories;
 mod csrf;
 mod i18n;
+mod languages;
 mod library;
 mod pages;
 mod session;
@@ -33,6 +34,10 @@ use crate::AppState;
 
 /// Admin routes. Rate limits on password and setup posts are per peer IP: behind a reverse
 /// proxy all clients share one bucket.
+#[expect(
+    clippy::too_many_lines,
+    reason = "the route table of the admin, one line a route"
+)]
 pub(crate) fn router(state: AppState) -> Router<AppState> {
     // One token per `per_second` seconds after the burst.
     let limit = |per_second, burst| {
@@ -71,6 +76,17 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             "/settings/password",
             get(pages::settings_password_page).post(pages::settings_password),
         )
+        .route(
+            "/settings/languages",
+            get(languages::page).post(languages::create),
+        )
+        .route("/settings/languages/new", get(languages::new_dialog))
+        .route("/settings/languages/{code}", post(languages::update))
+        .route(
+            "/settings/languages/{code}/edit",
+            get(languages::edit_dialog),
+        )
+        .route("/settings/languages/{code}/delete", post(languages::delete))
         .route("/settings/backup", get(pages::settings_backup_page))
         .route("/settings/restore", get(pages::settings_restore_page))
         .route("/settings/backup/download", get(pages::backup_download))
@@ -107,7 +123,9 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             "/categories",
             get(categories::page).post(categories::create),
         )
+        .route("/categories/new", get(categories::new_dialog))
         .route("/categories/{id}", post(categories::update))
+        .route("/categories/{id}/edit", get(categories::edit_dialog))
         .route("/categories/{id}/delete", post(categories::delete))
         .route("/categories/{id}/{direction}", post(categories::shift))
         .route("/library", get(library::default_library))

@@ -120,6 +120,10 @@ pub struct M4b<'a> {
     pub artist: &'a str,
     /// `©gen`.
     pub genre: Option<&'a str>,
+    /// `----:com.apple.iTunes:LANGUAGE`, as Mp3tag writes it.
+    pub language: Option<&'a str>,
+    /// ISO 639-2 language of the audio track in `mdhd`; `None` for `und`.
+    pub track_language: Option<&'a str>,
     /// Nero chapters: (start ms, title).
     pub chapters: &'a [(u64, &'a str)],
 }
@@ -181,7 +185,12 @@ pub fn m4b(spec: &M4b<'_>) -> Vec<u8> {
     let mut media_header = vec![0; 12];
     media_header.extend_from_slice(&1000u32.to_be_bytes());
     media_header.extend_from_slice(&ms.to_be_bytes());
-    media_header.extend_from_slice(&[0x55, 0xc4, 0, 0]);
+    let packed = spec.track_language.map_or(0x55c4, |code| {
+        code.bytes()
+            .fold(0u16, |acc, b| (acc << 5) | u16::from(b - 0x60))
+    });
+    media_header.extend_from_slice(&packed.to_be_bytes());
+    media_header.extend_from_slice(&[0, 0]);
 
     let mut hdlr = vec![0; 8];
     hdlr.extend_from_slice(b"soun");
@@ -276,6 +285,20 @@ pub fn m4b(spec: &M4b<'_>) -> Vec<u8> {
         .concat();
         if let Some(genre) = spec.genre {
             ilst.extend(ilst_text(b"\xa9gen", genre));
+        }
+        if let Some(language) = spec.language {
+            let mut data = 1u32.to_be_bytes().to_vec();
+            data.extend_from_slice(&[0; 4]);
+            data.extend_from_slice(language.as_bytes());
+            ilst.extend(atom(
+                b"----",
+                &[
+                    atom(b"mean", &full(0, b"com.apple.iTunes")),
+                    atom(b"name", &full(0, b"LANGUAGE")),
+                    atom(b"data", &data),
+                ]
+                .concat(),
+            ));
         }
         let meta = full(
             0,

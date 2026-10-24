@@ -1,63 +1,39 @@
 {% import "partials/ui.html" as ui %}
-{# The sections and the form for a new one; every action swaps this block.
-   failed: id ("" for the new one), name, aliases and error of the form that did not save. #}
-{% macro inputs(uid, name, aliases) -%}
-<div class="grid gap-3 sm:grid-cols-[minmax(0,14rem)_minmax(0,1fr)]">
+{# The sections; every action swaps this block. `dialog`: the form that did not save, open again. #}
+<div id="categories" class="mt-8 flex flex-col gap-4">
+  <div id="category-dialog">{% if dialog is defined and dialog %}{% include "partials/category_dialog.html" %}{% endif %}</div>
   <div>
-    <label for="{{ uid }}-name" class="field-label">{{ t('categories.name_label') }}</label>
-    <input id="{{ uid }}-name" name="name" value="{{ name }}" required maxlength="64" autocomplete="off" class="input">
+    <button type="button" hx-get="/categories/new" hx-target="#category-dialog" hx-swap="innerHTML" class="btn btn-primary">{{ ui.icon("plus", "size-[18px]") }}{{ t('categories.add') }}</button>
   </div>
-  <div>
-    <label for="{{ uid }}-aliases" class="field-label">{{ t('categories.aliases_label') }}</label>
-    <input id="{{ uid }}-aliases" name="aliases" value="{{ aliases }}" autocomplete="off" placeholder="{{ t('categories.aliases_placeholder') }}" class="input">
-  </div>
-</div>
-{%- endmacro %}
-
-<div id="categories" class="mt-8 flex flex-col gap-6">
-  {% set new_failed = failed and failed.id == "" %}
-  <form method="post" action="/categories" hx-post="/categories" hx-target="#categories" hx-swap="outerHTML" class="card flex flex-col gap-4">
-    <h2 class="text-[18px] font-bold">{{ t('categories.new_title') }}</h2>
-    {% if new_failed %}<p class="alert-error" role="alert">{{ t('errors.' ~ failed.error) }}</p>{% endif %}
-    {{ inputs("category-new", failed.name if new_failed else "", failed.aliases if new_failed else "") }}
-    <p class="field-hint -mt-1">{{ t('categories.aliases_hint') }}</p>
-    <button type="submit" class="btn btn-primary self-start">{{ ui.icon("plus", "size-[18px]") }}{{ t('categories.add') }}</button>
-  </form>
 
   {% if categories %}
   <ul class="card divide-y divide-line p-0 sm:p-0" aria-label="{{ t('categories.title') }}">
     {% for c in categories %}
-    {% set row_failed = failed and failed.id == c.id %}
-    <li x-data="{ edit: {{ 'true' if row_failed else 'false' }} }" class="px-5 py-4 sm:px-6">
-      <div class="flex items-center gap-3">
-        <div class="min-w-0 flex-1">
-          <p class="truncate text-[17px] font-semibold">{{ c.name }}</p>
-          <p class="mt-0.5 truncate text-[13px] text-text-3">
-            {{ t('categories.books', count=c.books) }}{% if c.aliases %} · {{ c.aliases }}{% endif %}
-          </p>
-        </div>
-        <div class="flex shrink-0 items-center gap-1">
-          {% for direction, label, path in [("up", t('categories.up'), "M6 15l6-6 6 6"), ("down", t('categories.down'), "M6 9l6 6 6-6")] %}
-          <button type="button" hx-post="/categories/{{ c.id }}/{{ direction }}" hx-target="#categories" hx-swap="outerHTML"
-            {% if (direction == "up" and c.id == categories[0].id) or (direction == "down" and c.id == categories[-1].id) %}disabled{% endif %}
-            title="{{ label }}" aria-label="{{ label }}"
-            class="grid size-10 place-items-center rounded-[12px] text-text-2 hover:bg-surface-2 disabled:opacity-30 disabled:hover:bg-transparent">
-            <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ path }}"/></svg>
-          </button>
-          {% endfor %}
-          <button type="button" @click="edit = !edit" :aria-expanded="edit" class="btn btn-ghost min-h-10 px-3.5 text-[14px]">{{ t('categories.edit') }}</button>
-        </div>
+    <li class="flex items-center gap-3 px-5 py-4 sm:px-6">
+      <span class="grid size-11 shrink-0 place-items-center rounded-[14px] {{ 'bg-surface-2 text-text-2' if c.closed else 'bg-accent-soft text-accent-fg' }}" aria-hidden="true">
+        {{ ui.icon("lock" if c.closed else "categories") }}
+      </span>
+      <div class="min-w-0 flex-1">
+        <p class="flex items-center gap-2">
+          <span class="truncate text-[17px] font-semibold">{{ c.name }}</span>
+          {% if c.closed %}<span class="chip shrink-0 bg-surface-2 text-text-2">{{ t('categories.closed_badge') }}</span>{% endif %}
+        </p>
+        <p class="mt-0.5 truncate text-[13px] text-text-3">
+          {{ t('categories.books', count=c.books) }}
+          {% if c.users %} · {{ t('categories.open_to', names=c.users | join(", ")) }}{% elif c.closed %} · {{ t('categories.open_to_nobody') }}{% endif %}
+          {% if c.aliases %} · {{ c.aliases }}{% endif %}
+        </p>
       </div>
-      <div x-show="edit" {% if not row_failed %}style="display: none"{% endif %} class="mt-4 flex flex-col gap-4">
-        <form method="post" action="/categories/{{ c.id }}" hx-post="/categories/{{ c.id }}" hx-target="#categories" hx-swap="outerHTML" class="flex flex-col gap-4">
-          {% if row_failed %}<p class="alert-error" role="alert">{{ t('errors.' ~ failed.error) }}</p>{% endif %}
-          {{ inputs("category-" ~ c.id, failed.name if row_failed else c.name, failed.aliases if row_failed else c.aliases) }}
-          <div class="flex flex-wrap gap-2">
-            <button type="submit" class="btn btn-primary">{{ t('categories.save') }}</button>
-            <button type="button" hx-post="/categories/{{ c.id }}/delete" hx-target="#categories" hx-swap="outerHTML"
-              hx-confirm="{{ t('categories.delete_confirm', name=c.name) }}" class="btn btn-danger">{{ ui.icon("trash", "size-[18px]") }}{{ t('categories.delete') }}</button>
-          </div>
-        </form>
+      <div class="flex shrink-0 items-center gap-1">
+        {% for direction, label, path in [("up", t('categories.up'), "M6 15l6-6 6 6"), ("down", t('categories.down'), "M6 9l6 6 6-6")] %}
+        <button type="button" hx-post="/categories/{{ c.id }}/{{ direction }}" hx-target="#categories" hx-swap="outerHTML"
+          {% if (direction == "up" and c.id == categories[0].id) or (direction == "down" and c.id == categories[-1].id) %}disabled{% endif %}
+          title="{{ label }}" aria-label="{{ label }}"
+          class="grid size-10 place-items-center rounded-[12px] text-text-2 hover:bg-surface-2 disabled:opacity-30 disabled:hover:bg-transparent">
+          <svg class="size-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="{{ path }}"/></svg>
+        </button>
+        {% endfor %}
+        <button type="button" hx-get="/categories/{{ c.id }}/edit" hx-target="#category-dialog" hx-swap="innerHTML" class="btn btn-ghost min-h-10 px-3.5 text-[14px]">{{ t('categories.edit') }}</button>
       </div>
     </li>
     {% endfor %}

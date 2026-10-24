@@ -56,7 +56,8 @@ pub(crate) async fn page(
         "upload.html",
         context! {
             uploads => serde(uploads), presigned, ratings => RATINGS.to_vec(),
-            categories => serde(categories), languages => languages::LANGUAGES.to_vec(),
+            categories => serde(categories),
+            languages => serde(languages::list(&state.db, tenant_id).await?),
             ..shell(&state, "upload")
         },
     )
@@ -124,7 +125,8 @@ async fn card(
         "partials/upload_card.html",
         context! {
             upload => serde(upload), form, error, ratings => RATINGS.to_vec(),
-            categories => serde(categories), languages => languages::LANGUAGES.to_vec(),
+            categories => serde(categories),
+            languages => serde(languages::list(&state.db, tenant_id).await?),
         },
     )
 }

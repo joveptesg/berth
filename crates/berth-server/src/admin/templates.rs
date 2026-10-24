@@ -119,8 +119,13 @@ mod tests {
                         has_password => true,
                         min_password => 4,
                         error => "login_taken",
-                        languages => vec!["ru", "en"],
+                        languages => vec![
+                            context! { code => "ru", name => "Русский" },
+                            context! { code => "en", name => "English" },
+                        ],
                         spoken => vec!["en"],
+                        sections => vec![context! { id => "c1", name => "Демо", closed => true }],
+                        given => vec!["c1"],
                     },
                 },
             );
@@ -130,6 +135,10 @@ mod tests {
             assert!(dialog.contains("picked: [\"b1\"]"), "{dialog}");
             assert!(
                 dialog.contains("spoken: [\"en\"]") && dialog.contains(">English"),
+                "{dialog}"
+            );
+            assert!(
+                dialog.contains("given: [\"c1\"]") && dialog.contains("Демо"),
                 "{dialog}"
             );
         }

@@ -38,7 +38,7 @@
     {% if languages | length > 1 %}
     <select name="language" aria-label="{{ t('library.language') }}" class="input select sm:w-44">
       <option value="">{{ t('library.any_language') }}</option>
-      {% for code in languages %}<option value="{{ code }}" {% if query.language == code %}selected{% endif %}>{{ t('lang.' ~ code) }}</option>{% endfor %}
+      {% for l in languages %}<option value="{{ l.code }}" {% if query.language == l.code %}selected{% endif %}>{{ l.name }}</option>{% endfor %}
     </select>
     {% endif %}
     <select name="rating" aria-label="{{ t('library.rating') }}" class="input select sm:w-44">

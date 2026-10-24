@@ -373,7 +373,7 @@ fn settings_tab(state: &AppState, tab: &str) -> Page {
 }
 
 /// Settings page context with the backups and where the server key is kept.
-fn backup_ctx(state: &AppState, tab: &str) -> Value {
+pub(super) fn backup_ctx(state: &AppState, tab: &str) -> Value {
     let data_dir = state.config.load().data_dir.clone();
     let key_path = if std::env::var_os("BERTH_SECRET_KEY").is_some() {
         "BERTH_SECRET_KEY".to_owned()

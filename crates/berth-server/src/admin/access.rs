@@ -21,7 +21,7 @@ use crate::{
     error::ApiError,
     service::{
         books::{self, BookQuery, PolicyFilter},
-        devices, languages,
+        categories, devices, languages,
         pairing::{self, PairingStatus},
         settings, users,
     },
@@ -188,6 +188,9 @@ pub(crate) struct UserSettingsForm {
     /// Language codes the user sees, comma-separated; empty for all.
     #[serde(default)]
     languages: String,
+    /// Ids of the sections given, comma-separated.
+    #[serde(default)]
+    categories: String,
 }
 
 impl UserSettingsForm {
@@ -230,17 +233,24 @@ async fn settings_ctx(
             .map(|ids| ids.into_iter().collect())
             .unwrap_or_default(),
     };
+    let given = match form {
+        Some(form) => languages::split(&form.categories),
+        None => categories::given(&state.db, tenant_id, user_id).await?,
+    };
+    let sections = categories::entries(&state.db, tenant_id).await?;
     Ok(context! {
         user_settings => context! {
             access => form.map_or(user.book_access.clone(), |f| f.access.clone()),
             login_on => form.map_or(user.login.is_some(), |f| f.login_on.is_some()),
             login => form.map_or(user.login.clone().unwrap_or_default(), |f| f.login.clone()),
             has_password => user.login.is_some(),
-            spoken => form.map_or(user.languages.clone(), |f| languages::parse_list(&f.languages)),
+            spoken => form.map_or(user.languages.clone(), |f| languages::split(&f.languages)),
             user => serde(user),
             books => serde(list),
             picked,
-            languages => languages::LANGUAGES.to_vec(),
+            languages => serde(languages::list(&state.db, tenant_id).await?),
+            sections => serde(sections),
+            given,
             min_password => users::MIN_APP_PASSWORD_LEN,
             error,
         }
@@ -274,8 +284,9 @@ pub(crate) async fn user_settings_save(
         }
         let picked = form.picked();
         let books = (form.access == "selected").then_some(picked.as_slice());
-        let spoken = languages::parse_list(&form.languages);
-        users::set_access(&state.db, tenant_id, &user_id, books, &spoken).await
+        let spoken = languages::split(&form.languages);
+        let given = languages::split(&form.categories);
+        users::set_access(&state.db, tenant_id, &user_id, books, &given, &spoken).await
     }
     .await;
     let ctx = users_ctx(&state, &headers, &session, None).await?;

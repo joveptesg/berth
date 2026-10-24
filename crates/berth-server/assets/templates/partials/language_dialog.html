@@ -1,0 +1,33 @@
+{% import "partials/ui.html" as ui %}
+{# A language to add (`dialog.editing` none) or rename. `dialog`: editing (code), code, name, error. #}
+{% set d = dialog %}
+<dialog id="language-edit" x-init="$el.showModal()" @close="$el.remove()"
+  class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,460px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
+  <form method="post" action="/settings/languages{{ '/' ~ d.editing if d.editing }}" hx-post="/settings/languages{{ '/' ~ d.editing if d.editing }}"
+    hx-target="#languages" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]" class="form-dense flex flex-col">
+    <div class="relative border-b border-line px-6 pt-5 pb-4 pr-16">
+      <h2 class="text-[20px] font-bold">{{ t('languages.edit_title') if d.editing else t('languages.new_title') }}</h2>
+      <button type="button" onclick="this.closest('dialog').close()" aria-label="{{ t('connect.close') }}"
+        class="absolute top-4 right-4 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close") }}</button>
+    </div>
+    <div class="flex flex-col gap-4 px-6 py-5">
+      {% if d.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ d.error) }}</p>{% endif %}
+      <div class="grid grid-cols-[96px_minmax(0,1fr)] gap-3">
+        <div>
+          <label for="language-code" class="field-label">{{ t('languages.code_label') }}</label>
+          <input id="language-code" name="code" value="{{ d.code }}" {% if d.editing %}disabled{% else %}required autofocus{% endif %}
+            minlength="2" maxlength="3" pattern="[a-zA-Z]{2,3}" autocomplete="off" autocapitalize="none" spellcheck="false" placeholder="fr" class="input mono lowercase">
+        </div>
+        <div>
+          <label for="language-name" class="field-label">{{ t('languages.name_label') }}</label>
+          <input id="language-name" name="name" value="{{ d.name }}" required maxlength="40" autocomplete="off" {% if d.editing %}autofocus{% endif %} placeholder="Français" class="input">
+        </div>
+      </div>
+      <p class="field-hint -mt-1">{{ t('languages.code_hint') }}</p>
+    </div>
+    <div class="flex gap-2 border-t border-line bg-surface-2/40 px-6 py-3.5 sm:justify-end">
+      <button type="button" onclick="this.closest('dialog').close()" class="btn btn-ghost min-h-11 px-4 sm:px-5">{{ t('users.cancel') }}</button>
+      <button type="submit" class="btn btn-primary min-h-11 flex-1 px-4 sm:flex-none sm:px-5">{{ t('categories.save') if d.editing else t('languages.add') }}</button>
+    </div>
+  </form>
+</dialog>

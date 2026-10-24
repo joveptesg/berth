@@ -2184,6 +2184,24 @@
         ],
         "description": "How to send one file."
       },
+      "Language": {
+        "type": "object",
+        "description": "A language as forms and devices show it.",
+        "required": [
+          "code",
+          "name"
+        ],
+        "properties": {
+          "code": {
+            "type": "string",
+            "description": "ISO 639 code: `ru`, `en`…"
+          },
+          "name": {
+            "type": "string",
+            "description": "Name in the language itself: «Русский», «English»."
+          }
+        }
+      },
       "LoginRequest": {
         "type": "object",
         "description": "`POST /v1/auth/login` request.",
@@ -2905,6 +2923,7 @@
           "books",
           "removed",
           "categories",
+          "languages",
           "server_urls"
         ],
         "properties": {
@@ -2920,7 +2939,7 @@
             "items": {
               "$ref": "#/components/schemas/Category"
             },
-            "description": "All sections in their order; the list replaces the one the device has."
+            "description": "The sections the reader sees, in their order; the list replaces the one the device\nhas."
           },
           "cursor": {
             "type": "string",
@@ -2929,6 +2948,13 @@
           "has_more": {
             "type": "boolean",
             "description": "More pages follow right away."
+          },
+          "languages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Language"
+            },
+            "description": "Languages the admin keeps, in their order; the list replaces the one the device has."
           },
           "removed": {
             "type": "array",

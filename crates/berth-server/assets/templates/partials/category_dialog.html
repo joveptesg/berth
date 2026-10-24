@@ -1,0 +1,66 @@
+{% import "partials/ui.html" as ui %}
+{# A section to add (`dialog.id` empty) or edit. `dialog`: id, name, aliases, closed, given (ids),
+   books, listeners (id, name), error. #}
+{% set d = dialog %}
+<dialog id="category-edit" x-init="$el.showModal()" @close="$el.remove()"
+  class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,560px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
+  <form method="post" action="/categories{{ '/' ~ d.id if d.id }}" hx-post="/categories{{ '/' ~ d.id if d.id }}"
+    hx-target="#categories" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
+    x-data='{ closed: {{ "true" if d.closed else "false" }}, given: {{ d.given | tojson }} }'
+    class="form-dense flex max-h-[calc(100dvh-34px)] flex-col">
+    <div class="relative border-b border-line px-6 pt-5 pb-4 pr-16">
+      <h2 class="text-[20px] font-bold">{{ t('categories.edit_title') if d.id else t('categories.new_title') }}</h2>
+      <button type="button" onclick="this.closest('dialog').close()" aria-label="{{ t('connect.close') }}"
+        class="absolute top-4 right-4 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close") }}</button>
+    </div>
+
+    <div class="flex flex-col gap-5 overflow-y-auto px-6 py-5">
+      {% if d.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ d.error) }}</p>{% endif %}
+      <div>
+        <label for="category-name" class="field-label">{{ t('categories.name_label') }}</label>
+        <input id="category-name" name="name" value="{{ d.name }}" required maxlength="64" autocomplete="off" autofocus class="input">
+      </div>
+      <div>
+        <label for="category-aliases" class="field-label">{{ t('categories.aliases_label') }}</label>
+        <input id="category-aliases" name="aliases" value="{{ d.aliases }}" autocomplete="off" placeholder="{{ t('categories.aliases_placeholder') }}" class="input">
+        <p class="field-hint mt-1.5">{{ t('categories.aliases_hint') }}</p>
+      </div>
+
+      <section class="flex flex-col gap-3 border-t border-line pt-5">
+        <label class="flex cursor-pointer items-start gap-3">
+          <input type="checkbox" name="closed" value="on" x-model="closed" {% if d.closed %}checked{% endif %} class="mt-0.5 size-[18px] shrink-0 accent-accent">
+          <span>
+            <span class="flex items-center gap-1.5 text-[15px] font-semibold">{{ ui.icon("lock", "size-4") }}{{ t('categories.closed_label') }}</span>
+            <span class="block text-[13px] leading-snug text-text-3">{{ t('categories.closed_hint') }}</span>
+          </span>
+        </label>
+        <input type="hidden" name="users" :value="given.join(',')" value="{{ d.given | join(',') }}">
+        <div class="flex flex-col gap-2">
+          <p class="text-[13.5px] font-semibold text-text-2">{{ t('categories.users_label') }}</p>
+          {% if d.listeners %}
+          <div class="flex flex-wrap gap-2">
+            {% for u in d.listeners %}
+            <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+              <input type="checkbox" value="{{ u.id }}" x-model="given" {% if u.id in d.given %}checked{% endif %} class="sr-only">{{ u.name }}
+            </label>
+            {% endfor %}
+          </div>
+          <p class="text-[13px] text-text-3" x-text='closed ? {{ t("categories.users_hint_closed") | tojson }} : {{ t("categories.users_hint_open") | tojson }}'>{{ t('categories.users_hint_closed') if d.closed else t('categories.users_hint_open') }}</p>
+          {% else %}
+          <p class="text-[13px] text-text-3">{{ t('categories.users_none') }}</p>
+          {% endif %}
+        </div>
+      </section>
+    </div>
+
+    <div class="flex flex-wrap gap-2 border-t border-line bg-surface-2/40 px-6 py-3.5">
+      {% if d.id %}
+      <button type="button" hx-post="/categories/{{ d.id }}/delete" hx-target="#categories" hx-swap="outerHTML"
+        hx-confirm="{{ t('categories.delete_confirm', name=d.name) }}" class="btn btn-danger min-h-11 px-4">{{ ui.icon("trash", "size-[18px]") }}{{ t('categories.delete') }}</button>
+      {% endif %}
+      <span class="flex-1"></span>
+      <button type="button" onclick="this.closest('dialog').close()" class="btn btn-ghost min-h-11 px-4 sm:px-5">{{ t('users.cancel') }}</button>
+      <button type="submit" class="btn btn-primary min-h-11 px-4 sm:px-5">{{ t('categories.save') if d.id else t('categories.add') }}</button>
+    </div>
+  </form>
+</dialog>

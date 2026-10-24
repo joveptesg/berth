@@ -458,6 +458,27 @@ pub struct Draft {
     pub language: Option<String>,
 }
 
+/// The language of a proposal: what the files or the folder say, if the admin keeps that
+/// language, else Russian for a Cyrillic title or author (when Russian is kept).
+async fn resolve_language(
+    db: &SqlitePool,
+    tenant_id: &str,
+    draft: &Draft,
+) -> anyhow::Result<Option<String>> {
+    let known = languages::list(db, tenant_id).await?;
+    let said = draft
+        .language
+        .as_deref()
+        .and_then(|v| languages::resolve(&known, v));
+    let guessed = || {
+        languages::guess(
+            std::iter::once(draft.title.as_str()).chain(draft.authors.iter().map(String::as_str)),
+        )
+        .and_then(|code| languages::resolve(&known, code))
+    };
+    Ok(said.or_else(guessed))
+}
+
 /// Natural order: "2.mp3" before "10.mp3".
 fn natural(a: &str, b: &str) -> Ordering {
     let key = |s: &str| {
@@ -526,6 +547,28 @@ fn parse_folder(name: &str) -> (Option<String>, String, Option<String>) {
     (None, rest, narrator)
 }
 
+/// A language label at the end of a folder name, "Дюна [EN]" or "Dune (eng)": the name
+/// without it and the label. A narrator in brackets stays: the label is a known spelling or
+/// two or three Latin letters.
+fn split_language(name: &str) -> (String, Option<String>) {
+    let name = name.trim();
+    let Some(close) = name.chars().last().filter(|c| matches!(c, ']' | ')')) else {
+        return (name.to_owned(), None);
+    };
+    let open = if close == ']' { '[' } else { '(' };
+    let Some(start) = name.rfind(open) else {
+        return (name.to_owned(), None);
+    };
+    let inner = name[start + 1..name.len() - 1].trim();
+    let label = languages::alias(inner).is_some()
+        || ((2..=3).contains(&inner.len()) && inner.bytes().all(|b| b.is_ascii_alphabetic()));
+    if label {
+        (name[..start].trim().to_owned(), Some(inner.to_owned()))
+    } else {
+        (name.to_owned(), None)
+    }
+}
+
 fn stem(name: &str) -> String {
     let file = name.rsplit(['/', '\\']).next().unwrap_or(name);
     file.rsplit_once('.').map_or(file, |(s, _)| s).to_owned()
@@ -549,7 +592,8 @@ fn propose(upload_name: &str, mut audio: Vec<(FileRow, media::AudioInfo)>) -> Dr
         audio.sort_by(|(a, _), (b, _)| natural(&a.name, &b.name));
     }
 
-    let (folder_author, folder_title, folder_narrator) = parse_folder(&stem(upload_name));
+    let (folder, folder_language) = split_language(&stem(upload_name));
+    let (folder_author, folder_title, folder_narrator) = parse_folder(&folder);
     let first = audio.first().map(|(_, i)| i.clone()).unwrap_or_default();
     let single = audio.len() == 1;
     let title = first
@@ -587,15 +631,11 @@ fn propose(upload_name: &str, mut audio: Vec<(FileRow, media::AudioInfo)>) -> Dr
             draft.genres.push(genre.clone());
         }
     }
-    let tagged = audio
+    // As the files say it; `resolve_language` maps it to the admin's list.
+    draft.language = audio
         .iter()
-        .find_map(|(_, i)| i.language.as_deref().and_then(languages::normalize));
-    let guessed = || {
-        languages::guess(
-            std::iter::once(draft.title.as_str()).chain(draft.authors.iter().map(String::as_str)),
-        )
-    };
-    draft.language = tagged.or_else(guessed).map(str::to_owned);
+        .find_map(|(_, i)| i.language.clone())
+        .or(folder_language);
     let mut offset = 0u64;
     for (file, info) in &audio {
         let end = offset + info.duration_ms;
@@ -701,6 +741,7 @@ pub(crate) async fn analyze(state: &AppState, tenant_id: &str, id: &str) -> anyh
     }
     let embedded = largest_cover(audio.iter().filter_map(|(_, i)| i.cover.as_ref()));
     let mut draft = propose(&name, audio);
+    draft.language = resolve_language(&state.db, tenant_id, &draft).await?;
     draft.category_ids = categories::match_genres(&state.db, tenant_id, &draft.genres).await?;
 
     // A picture next to the audio wins over the embedded one: it is usually larger.
@@ -777,6 +818,7 @@ pub async fn save(
     edits: &BookEdits,
 ) -> Result<String> {
     let edits = edits.validated()?;
+    languages::check(&state.db, tenant_id, edits.language.as_deref()).await?;
     let upload = get(&state.db, tenant_id, id).await?;
     let Some(draft) = upload.draft.filter(|_| upload.status == "ready") else {
         return Err(BerthError::Conflict("upload_not_ready".into()));
@@ -1031,6 +1073,19 @@ mod tests {
         assert_eq!(
             parse_folder("Джеймс Дэшнер — Код лихорадки"),
             (Some("Джеймс Дэшнер".into()), "Код лихорадки".into(), None)
+        );
+        assert_eq!(
+            split_language("Frank Herbert - Dune [EN]"),
+            ("Frank Herbert - Dune".into(), Some("EN".into()))
+        );
+        assert_eq!(
+            split_language("Дюна (eng)"),
+            ("Дюна".into(), Some("eng".into()))
+        );
+        assert_eq!(
+            split_language("Дюна [Юрий Красиков]"),
+            ("Дюна [Юрий Красиков]".into(), None),
+            "a narrator, not a language"
         );
     }
 

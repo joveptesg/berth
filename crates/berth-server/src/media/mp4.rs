@@ -1,5 +1,6 @@
-//! Chapters of MP4 / M4B files, which `symphonia` does not read: the Nero `chpl` list in
-//! `moov/udta` and the `QuickTime` chapter track (a text track referenced by `tref/chap`).
+//! What `symphonia` does not read from MP4 / M4B files: chapters (the Nero `chpl` list in
+//! `moov/udta` and the `QuickTime` chapter track, a text track referenced by `tref/chap`) and
+//! the language of the audio track (`mdhd`).
 #![expect(
     clippy::trivially_copy_pass_by_ref,
     reason = "atom types are byte-string literals"
@@ -28,6 +29,38 @@ pub(crate) fn chapters<R: Read + Seek>(file: &mut R) -> anyhow::Result<Vec<Chapt
         .map(nero_chapters)
         .transpose()?
         .unwrap_or_default())
+}
+
+/// The ISO 639-2 language of the first audio track (`eng`, `rus`); `None` when it is not
+/// set (`und`).
+pub(crate) fn track_language<R: Read + Seek>(file: &mut R) -> anyhow::Result<Option<String>> {
+    let Some(moov) = read_moov(file)? else {
+        return Ok(None);
+    };
+    for (_, trak) in atoms(&moov).filter(|(k, _)| *k == b"trak") {
+        let Some(mdia) = child(trak, b"mdia") else {
+            continue;
+        };
+        if child(mdia, b"hdlr").and_then(|h| h.get(8..12)) != Some(b"soun".as_slice()) {
+            continue;
+        }
+        let Some(mdhd) = child(mdia, b"mdhd") else {
+            continue;
+        };
+        let at = if mdhd.first() == Some(&1) { 32 } else { 20 };
+        let Some(packed) = mdhd.get(at..at + 2) else {
+            continue;
+        };
+        let packed = u16::from_be_bytes([packed[0], packed[1]]);
+        let code: String = [10u16, 5, 0]
+            .iter()
+            .filter_map(|shift| char::from_u32(u32::from(((packed >> shift) & 0x1f) + 0x60)))
+            .collect();
+        if code.chars().all(|c| c.is_ascii_lowercase()) && code != "und" {
+            return Ok(Some(code));
+        }
+    }
+    Ok(None)
 }
 
 fn read_moov<R: Read + Seek>(file: &mut R) -> anyhow::Result<Option<Vec<u8>>> {

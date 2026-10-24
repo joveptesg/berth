@@ -1,7 +1,7 @@
 {# Book metadata fields, shared by /book/{id} and the upload cards.
    f: title, authors, narrators (lists or "A, B" text), series, series_no, rating,
    category_ids (a list or "id,id" text), language; categories: the sections to pick from;
-   languages: the language codes to pick from. #}
+   languages: the languages (code, name) to pick from. #}
 {% macro names(value) -%}
 {%- if value is string %}{{ value }}{% elif value %}{{ value | join(", ") }}{% endif -%}
 {%- endmacro %}
@@ -46,8 +46,8 @@
       <label for="{{ uid }}-language" class="field-label">{{ t('book.language_label') }}</label>
       <select id="{{ uid }}-language" name="language" class="input select">
         <option value="">{{ t('book.language_none') }}</option>
-        {% for code in languages %}
-        <option value="{{ code }}" {% if f.language == code %}selected{% endif %}>{{ t('lang.' ~ code) }}</option>
+        {% for l in languages %}
+        <option value="{{ l.code }}" {% if f.language == l.code %}selected{% endif %}>{{ l.name }}</option>
         {% endfor %}
       </select>
     </div>

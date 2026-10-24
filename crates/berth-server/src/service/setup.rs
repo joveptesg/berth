@@ -126,6 +126,9 @@ pub async fn create_owner(
         .await
         .context("insert policy")?;
     storage::insert_first(&mut tx, &state.secret, &tenant_id, &first_storage).await?;
+    super::languages::seed(&mut tx, &tenant_id)
+        .await
+        .context("seed languages")?;
     books::default_library(&mut tx, &tenant_id)
         .await
         .context("create library")?;
