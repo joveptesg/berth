@@ -39,6 +39,33 @@ docker compose logs berth         # the one-time setup link is in the log
 > [!IMPORTANT]
 > Keep a copy of `secret.key` apart from the backups: storage keys in the database cannot be read without it.
 
+### Image tags
+
+| Tag | Follows |
+|---|---|
+| `1.0.1` | exactly this version, never changes |
+| `1.0` | fixes of 1.0 |
+| `1` | all 1.x releases (used in `docker-compose.yml`) |
+| `latest` | the newest release, including major versions |
+
+To stay on one version, set it in `docker-compose.yml`, e.g. `image: ghcr.io/joveptesg/berth:1.0.1`.
+All versions are listed in [Releases](https://github.com/joveptesg/berth/releases).
+
+### Without Compose
+
+For plain Docker or a NAS that asks for an image name (Synology, Unraid, CasaOS):
+
+```sh
+docker run -d --name berth --restart unless-stopped \
+  -p 8080:8080 -v "$PWD/data:/data" ghcr.io/joveptesg/berth:1
+docker logs berth                 # the one-time setup link is in the log
+```
+
+In a NAS interface: image `ghcr.io/joveptesg/berth:1`, port `8080`, a folder mounted at `/data`.
+
+To update, run `docker pull ghcr.io/joveptesg/berth:1`, remove the container with `docker rm -f berth`
+and start it again with the same `docker run` command; the data stays in `./data`.
+
 ### Updating and rolling back
 
 ```sh

@@ -39,6 +39,33 @@ docker compose logs berth         # одноразовая ссылка для �
 > [!IMPORTANT]
 > Храните копию `secret.key` отдельно от резервных копий: без него ключи хранилищ в базе не прочитать.
 
+### Теги образа
+
+| Тег | Что получаете |
+|---|---|
+| `1.0.1` | ровно эту версию, тег не меняется |
+| `1.0` | исправления версии 1.0 |
+| `1` | все релизы 1.x (стоит в `docker-compose.yml`) |
+| `latest` | самый новый релиз, включая мажорные версии |
+
+Чтобы остаться на одной версии, укажите её в `docker-compose.yml`, например `image: ghcr.io/joveptesg/berth:1.0.1`.
+Все версии — в [Releases](https://github.com/joveptesg/berth/releases).
+
+### Без Compose
+
+Для обычного Docker или NAS, который просит имя образа (Synology, Unraid, CasaOS):
+
+```sh
+docker run -d --name berth --restart unless-stopped \
+  -p 8080:8080 -v "$PWD/data:/data" ghcr.io/joveptesg/berth:1
+docker logs berth                 # одноразовая ссылка для настройки — в логе
+```
+
+В интерфейсе NAS: образ `ghcr.io/joveptesg/berth:1`, порт `8080`, папка, подключённая к `/data`.
+
+Чтобы обновиться, выполните `docker pull ghcr.io/joveptesg/berth:1`, удалите контейнер командой
+`docker rm -f berth` и запустите его той же командой `docker run`; данные останутся в `./data`.
+
 ### Обновление и откат
 
 ```sh
