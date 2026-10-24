@@ -7,6 +7,8 @@ common:
   saved: Saved
   optional: optional
   version: Version %{version}
+  show_password: Show password
+  hide_password: Hide password
 
 nav:
   dashboard: Dashboard
@@ -38,6 +40,7 @@ setup:
   name_hint: Shown in the app when someone connects.
   password_label: Password
   confirm_label: Repeat password
+  password_match: The passwords match.
   password_hint: At least %{min} characters. Reset it later with berth admin reset-password on the server.
   submit: Finish setup
   locked: Set in berth.toml or environment

@@ -5,6 +5,8 @@ common:
   saved: Сохранено
   optional: необязательно
   version: Версия %{version}
+  show_password: Показать пароль
+  hide_password: Скрыть пароль
 
 nav:
   dashboard: Обзор
@@ -36,6 +38,7 @@ setup:
   name_hint: Его увидят в приложении при подключении.
   password_label: Пароль
   confirm_label: Повторите пароль
+  password_match: Пароли совпадают.
   password_hint: Не короче %{min} символов. Сбросить можно командой berth admin reset-password на сервере.
   submit: Завершить настройку
   locked: Задано в berth.toml или переменной окружения

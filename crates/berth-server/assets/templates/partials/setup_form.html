@@ -28,14 +28,15 @@
 
   <div class="flex flex-col gap-3">
     {{ step(3, t('setup.step_password')) }}
-    <div class="flex flex-col gap-3 pl-10">
+    <div class="flex flex-col gap-3 pl-10" {{ ui.password_match() }}>
       <div>
         <label for="password" class="field-label">{{ t('setup.password_label') }}</label>
-        <input id="password" name="password" type="password" required minlength="10" autocomplete="new-password" class="input">
+        {{ ui.password("password", "password", "new-password", 'required minlength="10" x-model="pw"') }}
       </div>
       <div>
         <label for="confirm" class="field-label">{{ t('setup.confirm_label') }}</label>
-        <input id="confirm" name="confirm" type="password" required minlength="10" autocomplete="new-password" class="input">
+        {{ ui.password("confirm", "confirm", "new-password", 'required minlength="10" x-model="cf"') }}
+        {{ ui.match_status() }}
         <p class="field-hint">{{ t('setup.password_hint', min=10) }}</p>
       </div>
     </div>
