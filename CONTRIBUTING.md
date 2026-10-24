@@ -44,3 +44,31 @@ cd crates/berth-server
 - Migrations live in `crates/berth-server/migrations` and must run on both SQLite and Postgres: no arrays (use join tables), no `AUTOINCREMENT`, no `BLOB`; ids are UUIDv7 `TEXT`, timestamps are epoch milliseconds `BIGINT`.
 - Every tenant-owned table has `tenant_id NOT NULL`; composite indexes start with `tenant_id`.
 - Schema changes follow expand/contract: a release must work with the schema of the previous release (N-1). Never edit a released migration.
+
+## Releases
+
+Every push to `main` is a release. Raise the patch version by one (`1.0.0` → `1.0.1`) in the same push; bump the minor or major version only when that is decided explicitly.
+
+1. Set the new version in `Cargo.toml` (`[workspace.package] version`) and in the internal dependencies `version = "…"` in `crates/berth-cli/Cargo.toml` and `crates/berth-server/Cargo.toml`.
+2. Update `Cargo.lock` and the API snapshot (its `info.version` follows the crate version), then run the checks:
+
+   ```sh
+   cargo build
+   BERTH_UPDATE_SNAPSHOT=1 cargo test --test openapi_snapshot
+   cargo fmt --check && cargo clippy --all-targets -- -D warnings && cargo test
+   ```
+
+3. Commit the bump as `chore(release): X.Y.Z`, tag it and push both:
+
+   ```sh
+   git commit -s -am "chore(release): X.Y.Z"
+   git tag vX.Y.Z
+   git push origin main vX.Y.Z
+   ```
+
+The `v*` tag starts `.github/workflows/release.yml`:
+
+- builds the image for amd64 and arm64 and publishes `ghcr.io/joveptesg/berth` with the tags `X.Y.Z`, `X.Y`, `X` and `latest`;
+- creates the GitHub release "Berth X.Y.Z": the subjects of the commits since the previous tag (without the `chore(release)` commit), the install instructions from `.github/release-notes.md` and a link to the full diff.
+
+Commit subjects become the release notes, so write them for the people who install Berth.

@@ -90,14 +90,29 @@ jobs:
       contents: write
     steps:
       - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
       - env:
           GH_TOKEN: ${{ github.token }}
           TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
         run: |
           if gh release view "$TAG" > /dev/null 2>&1; then
             echo "Release $TAG already exists"
             exit 0
           fi
-          sed "s/VERSION/${TAG#v}/" .github/release-notes.md > notes.md
-          gh release create "$TAG" --verify-tag --title "Berth ${TAG#v}" \
-            --notes-file notes.md --generate-notes
+          prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          {
+            echo "## Changes"
+            echo
+            # Commits pushed straight to main: list them, without the version bump itself.
+            git log --no-merges --format='- %s (%h)' ${prev:+"$prev.."}"$TAG" \
+              | grep -v '^- chore(release):' || true
+            echo
+            sed "s/VERSION/${TAG#v}/" .github/release-notes.md
+            if [ -n "$prev" ]; then
+              echo
+              echo "**Full changelog:** https://github.com/$REPO/compare/$prev...$TAG"
+            fi
+          } > notes.md
+          gh release create "$TAG" --verify-tag --title "Berth ${TAG#v}" --notes-file notes.md
