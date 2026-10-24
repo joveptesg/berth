@@ -83,7 +83,9 @@ pub async fn login(db: &SqlitePool, password: &str, user_agent: &str) -> Result<
         return Err(BerthError::Validation("password_wrong".into()));
     }
     let mut conn = db.acquire().await.context("acquire")?;
-    Ok(create_session(&mut conn, &tenant_id, &user_id, user_agent).await?)
+    let token = create_session(&mut conn, &tenant_id, &user_id, user_agent).await?;
+    tracing::info!(browser = %browser_name(user_agent), "admin signed in");
+    Ok(token)
 }
 
 /// Registers the browser as a web device with the `admin` scope and opens a session.
@@ -161,6 +163,7 @@ pub async fn logout(db: &SqlitePool, token: &str) -> anyhow::Result<()> {
         let mut tx = db.begin().await?;
         delete_web_device(&mut tx, &device_id).await?;
         tx.commit().await?;
+        tracing::info!(device_id, "admin signed out");
     }
     Ok(())
 }
@@ -197,6 +200,7 @@ pub async fn change_password(
     let mut tx = db.begin().await.context("begin")?;
     set_password(&mut tx, &session.user_id, &hash, Some(&session.device_id)).await?;
     tx.commit().await.context("commit")?;
+    tracing::info!("admin password changed");
     Ok(())
 }
 
@@ -217,6 +221,7 @@ pub async fn reset_password(db: &SqlitePool, password: &str, confirm: &str) -> R
     let mut tx = db.begin().await.context("begin")?;
     set_password(&mut tx, &owner, &hash, None).await?;
     tx.commit().await.context("commit")?;
+    tracing::info!("admin password reset from the console");
     Ok(())
 }
 

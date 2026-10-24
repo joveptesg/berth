@@ -123,6 +123,7 @@ pub async fn create(
     .execute(db)
     .await
     .context("insert pairing token")?;
+    tracing::info!(user = %user_id, "pairing code issued");
     Ok(PairingCode {
         code,
         id,
@@ -218,12 +219,13 @@ pub async fn pair(
                 .fetch_optional(db)
                 .await
                 .context("load pairing token")?;
-        return Err(match row {
+        let err = match row {
             Some((_, Some(_))) => AuthError::PairingTokenUsed,
             Some((expires_at, None)) if expires_at <= now_ms => AuthError::PairingTokenExpired,
             _ => AuthError::PairingTokenInvalid,
-        }
-        .into());
+        };
+        tracing::warn!(reason = ?err, platform, "pairing refused");
+        return Err(err.into());
     };
 
     let paired = create_device(
@@ -241,6 +243,7 @@ pub async fn pair(
         .await
         .context("link device")?;
     tx.commit().await.context("commit pairing")?;
+    tracing::info!(device = %paired.device_id, name = ?device_name, platform, user = %user_id, "device paired");
     Ok(paired)
 }
 
@@ -269,9 +272,11 @@ pub async fn login(
     .await
     .context("load login")?;
     let Some((tenant_id, user_id, hash)) = user else {
+        tracing::warn!(login = ?login.trim(), "listener sign-in failed");
         return Err(AuthError::LoginFailed.into());
     };
     if !auth::verify_password(hash, password.to_owned()).await? {
+        tracing::warn!(login = ?login.trim(), "listener sign-in failed");
         return Err(AuthError::LoginFailed.into());
     }
     let mut tx = db.begin().await.context("begin")?;
@@ -284,6 +289,7 @@ pub async fn login(
     )
     .await?;
     tx.commit().await.context("commit login")?;
+    tracing::info!(device = %paired.device_id, name = ?device_name, platform, user = %user_id, "device signed in with a login");
     Ok(paired)
 }
 

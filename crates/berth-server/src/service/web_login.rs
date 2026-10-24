@@ -170,6 +170,7 @@ pub async fn approve(db: &SqlitePool, device: &DeviceAuth, code: &str, now: i64)
     if updated == 0 {
         return Err(BerthError::Validation("web_login_used".into()));
     }
+    tracing::info!(device = %device.device_id, "browser sign-in approved by phone");
     Ok(())
 }
 
@@ -217,6 +218,7 @@ pub async fn claim(
         };
         let token = create_session(&mut tx, &tenant_id, &user_id, user_agent).await?;
         tx.commit().await.context("commit")?;
+        tracing::info!(browser = %browser_name(user_agent), approved_by = %device_id, "admin signed in with phone");
         return Ok(Status::SignedIn(token));
     }
     tx.rollback().await.context("rollback")?;

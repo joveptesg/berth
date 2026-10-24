@@ -5,7 +5,7 @@
 
 use axum::{
     Extension, Form,
-    extract::{Query, State},
+    extract::{ConnectInfo, Query, State},
     http::{HeaderMap, header},
     response::{Html, IntoResponse, Redirect, Response},
 };
@@ -230,12 +230,16 @@ pub(crate) async fn login_page(State(state): State<AppState>, headers: HeaderMap
 
 pub(crate) async fn login_submit(
     State(state): State<AppState>,
+    ConnectInfo(peer): ConnectInfo<std::net::SocketAddr>,
     headers: HeaderMap,
     Form(form): Form<LoginForm>,
 ) -> Page {
     match auth::login(&state.db, &form.password, user_agent(&headers)).await {
         Ok(token) => Ok(signed_in(&headers, &token)),
         Err(err) => {
+            if matches!(&err, BerthError::Validation(code) if code == "password_wrong") {
+                tracing::warn!(ip = %peer.ip(), "admin sign-in failed: wrong password");
+            }
             let error = form_error(err)?;
             render_form(
                 &state,

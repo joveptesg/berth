@@ -115,6 +115,12 @@ Uncomment `build: .` in `docker-compose.yml` inside a clone of this repository a
   first, so a restore can be undone the same way.
 - From the console (server stopped): `berth admin restore <file>`.
 
+### Logs
+
+The log records setup, sign-ins (failed ones with the address), phones paired, users,
+access and settings changes, uploads and books. Passwords and tokens never go there. Every HTTP
+request is logged too with `RUST_LOG=info,tower_http=debug` in the container environment.
+
 ## Repository layout
 
 | Path | What it is |

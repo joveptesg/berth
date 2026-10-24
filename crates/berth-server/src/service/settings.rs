@@ -54,6 +54,11 @@ pub async fn update(state: &AppState, input: &ServerSettingsInput<'_>) -> Result
     let wan_url = parse_url(input.wan_url, "wan_url_invalid")?;
     let locked = locked(state);
 
+    let changed = format!(
+        "name={name:?} lan_url={:?} wan_url={:?}",
+        lan_url.as_ref().map(Url::as_str),
+        wan_url.as_ref().map(Url::as_str)
+    );
     let mut tx = state.db.begin().await.context("begin")?;
     let values = [
         ("name", locked.name, Some(Value::String(name))),
@@ -77,6 +82,7 @@ pub async fn update(state: &AppState, input: &ServerSettingsInput<'_>) -> Result
     }
     tx.commit().await.context("commit settings")?;
     reload(state).await?;
+    tracing::info!(%changed, "settings changed");
     Ok(())
 }
 

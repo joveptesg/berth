@@ -119,6 +119,7 @@ pub async fn create_listener(db: &SqlitePool, tenant_id: &str, name: &str) -> Re
         .await
         .context("insert policy")?;
     tx.commit().await.context("commit user")?;
+    tracing::info!(user = %id, name = ?name, "user created");
     Ok(id)
 }
 
@@ -205,6 +206,7 @@ pub async fn set_login(
             }
             _ => BerthError::Internal(anyhow::Error::new(e).context("save login")),
         })?;
+    tracing::info!(user = %user_id, login = ?login, password_changed = !password.is_empty(), "app login set");
     Ok(())
 }
 
@@ -222,6 +224,7 @@ pub async fn clear_login(db: &SqlitePool, tenant_id: &str, user_id: &str) -> Res
     .execute(db)
     .await
     .context("clear login")?;
+    tracing::info!(user = %user_id, "app login turned off");
     Ok(())
 }
 
@@ -282,6 +285,8 @@ pub async fn set_access(
     .await
     .context("save access")?;
     tx.commit().await.context("commit access")?;
+    let selected = books.map(<[String]>::len);
+    tracing::info!(user = %user_id, ?selected, "access changed (None = whole library)");
     Ok(())
 }
 

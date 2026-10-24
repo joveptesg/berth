@@ -138,5 +138,6 @@ pub async fn create_owner(
 
     state.setup.consume();
     settings::reload(state).await?;
+    tracing::info!(tenant = %tenant_id, "server set up");
     Ok(Owner { tenant_id, user_id })
 }
