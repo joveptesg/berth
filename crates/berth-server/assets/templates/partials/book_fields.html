@@ -1,10 +1,11 @@
 {# Book metadata fields, shared by /book/{id} and the upload cards.
-   f: title, authors, narrators (lists or "A, B" text), series, series_no, rating. #}
+   f: title, authors, narrators (lists or "A, B" text), series, series_no, rating,
+   category_ids (a list or "id,id" text); categories: the sections to pick from. #}
 {% macro names(value) -%}
 {%- if value is string %}{{ value }}{% elif value %}{{ value | join(", ") }}{% endif -%}
 {%- endmacro %}
 
-{% macro fields(f, uid, ratings) -%}
+{% macro fields(f, uid, ratings, categories=[]) -%}
 <div class="flex flex-col gap-4">
   <div>
     <label for="{{ uid }}-title" class="field-label">{{ t('book.title_label') }}</label>
@@ -40,5 +41,19 @@
       </select>
     </div>
   </div>
+  {% if categories %}
+  {% set picked = f.category_ids if f.category_ids is string else (f.category_ids or []) | join(",") %}
+  <fieldset x-data='{ picked: {{ picked | tojson }}.split(",").filter(Boolean) }'>
+    <legend class="field-label">{{ t('book.categories_label') }}</legend>
+    <input type="hidden" name="category_ids" :value="picked.join(',')" value="{{ picked }}">
+    <div class="flex flex-wrap gap-2">
+      {% for c in categories %}
+      <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+        <input type="checkbox" value="{{ c.id }}" x-model="picked" {% if c.id in picked %}checked{% endif %} class="sr-only">{{ c.name }}
+      </label>
+      {% endfor %}
+    </div>
+  </fieldset>
+  {% endif %}
 </div>
 {%- endmacro %}

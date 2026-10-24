@@ -165,6 +165,8 @@ pub struct Book {
     pub authors: Vec<String>,
     /// Narrators in order.
     pub narrators: Vec<String>,
+    /// Sections (`SyncPage.categories`) in their order.
+    pub category_ids: Vec<String>,
     /// Series name.
     pub series: Option<String>,
     /// Number in the series.
@@ -197,14 +199,19 @@ struct BookRow {
 }
 
 impl BookRow {
-    fn into_book(self, people: &mut HashMap<String, (Vec<String>, Vec<String>)>) -> Book {
-        let (authors, narrators) = people.remove(&self.id).unwrap_or_default();
+    fn into_book(self, links: &mut HashMap<String, Links>) -> Book {
+        let Links {
+            authors,
+            narrators,
+            categories,
+        } = links.remove(&self.id).unwrap_or_default();
         Book {
             id: self.id,
             library_id: self.library_id,
             title: self.title,
             authors,
             narrators,
+            category_ids: categories,
             series: self.series,
             series_no: self.series_no,
             rating: self.rating,
@@ -216,13 +223,21 @@ impl BookRow {
     }
 }
 
-/// People of the tenant's books with revision in `(from, to]`, by book.
-async fn people(
+/// What a book refers to besides its own row.
+#[derive(Default)]
+struct Links {
+    authors: Vec<String>,
+    narrators: Vec<String>,
+    categories: Vec<String>,
+}
+
+/// People and sections of the tenant's books with revision in `(from, to]`, by book.
+async fn links(
     db: &SqlitePool,
     tenant_id: &str,
     from: i64,
     to: i64,
-) -> sqlx::Result<HashMap<String, (Vec<String>, Vec<String>)>> {
+) -> sqlx::Result<HashMap<String, Links>> {
     let rows: Vec<(String, String, String)> = sqlx::query_as(
         "SELECT p.book_id, p.role, p.person FROM book_people p
          JOIN books b ON b.id = p.book_id
@@ -234,14 +249,29 @@ async fn people(
     .bind(to)
     .fetch_all(db)
     .await?;
-    let mut out: HashMap<String, (Vec<String>, Vec<String>)> = HashMap::new();
+    let mut out: HashMap<String, Links> = HashMap::new();
     for (book, role, person) in rows {
         let entry = out.entry(book).or_default();
         if role == "author" {
-            entry.0.push(person);
+            entry.authors.push(person);
         } else {
-            entry.1.push(person);
+            entry.narrators.push(person);
         }
+    }
+    let rows: Vec<(String, String)> = sqlx::query_as(
+        "SELECT bc.book_id, bc.category_id FROM book_categories bc
+         JOIN books b ON b.id = bc.book_id
+         JOIN categories c ON c.id = bc.category_id
+         WHERE bc.tenant_id = $1 AND b.revision > $2 AND b.revision <= $3
+         ORDER BY bc.book_id, c.position, c.name",
+    )
+    .bind(tenant_id)
+    .bind(from)
+    .bind(to)
+    .fetch_all(db)
+    .await?;
+    for (book, category) in rows {
+        out.entry(book).or_default().categories.push(category);
     }
     Ok(out)
 }
@@ -255,6 +285,8 @@ pub struct BookQuery {
     pub author: String,
     /// Exact series.
     pub series: String,
+    /// Section id.
+    pub category: String,
     /// Rating, or empty.
     pub rating: Option<i64>,
 }
@@ -281,6 +313,8 @@ pub async fn list(
                  WHERE p.book_id = b.id AND p.role = 'author' AND p.person = $4))
            AND ($5 = '' OR series = $5)
            AND ($6 IS NULL OR rating = $6)
+           AND ($7 = '' OR EXISTS (SELECT 1 FROM book_categories bc
+                 WHERE bc.book_id = b.id AND bc.category_id = $7))
          ORDER BY CASE WHEN series IS NULL THEN title ELSE series END, series_no, title",
     )
     .bind(tenant_id)
@@ -289,13 +323,14 @@ pub async fn list(
     .bind(query.author.trim())
     .bind(query.series.trim())
     .bind(query.rating)
+    .bind(query.category.trim())
     .fetch_all(db)
     .await?;
-    let mut people = people(db, tenant_id, 0, i64::MAX).await?;
+    let mut links = links(db, tenant_id, 0, i64::MAX).await?;
     Ok(rows
         .into_iter()
         .filter(|r| policy.allows(&r.id))
-        .map(|r| r.into_book(&mut people))
+        .map(|r| r.into_book(&mut links))
         .collect())
 }
 
@@ -371,9 +406,9 @@ pub async fn get(
         return Err(BerthError::NotFound);
     }
     let book = row(db, tenant_id, id).await?;
-    let mut people = people(db, tenant_id, book.revision - 1, book.revision)
+    let mut links = links(db, tenant_id, book.revision - 1, book.revision)
         .await
-        .context("people")?;
+        .context("links")?;
     let files = files_of(db, tenant_id, id).await.context("files")?;
     let chapters = chapters_of(db, tenant_id, id).await.context("chapters")?;
     let storage: Option<String> = sqlx::query_scalar(
@@ -388,7 +423,7 @@ pub async fn get(
     .await
     .context("storage")?;
     Ok(BookDetail {
-        book: book.into_book(&mut people),
+        book: book.into_book(&mut links),
         files,
         chapters,
         storage,
@@ -437,6 +472,8 @@ pub struct BookEdits {
     pub series_no: Option<f64>,
     /// Age rating.
     pub rating: Option<i64>,
+    /// Sections; ids that do not exist are dropped on save.
+    pub category_ids: Vec<String>,
 }
 
 impl BookEdits {
@@ -472,6 +509,7 @@ impl BookEdits {
             series_no: self.series_no.filter(|_| !series.is_empty()),
             series,
             rating: self.rating,
+            category_ids: names(&self.category_ids),
         })
     }
 
@@ -538,6 +576,22 @@ pub(crate) async fn write_edits(
             .execute(&mut *conn)
             .await?;
         }
+    }
+    sqlx::query("DELETE FROM book_categories WHERE tenant_id = $1 AND book_id = $2")
+        .bind(tenant_id)
+        .bind(book_id)
+        .execute(&mut *conn)
+        .await?;
+    for category in &edits.category_ids {
+        sqlx::query(
+            "INSERT INTO book_categories (tenant_id, book_id, category_id)
+             SELECT $1, $2, id FROM categories WHERE tenant_id = $1 AND id = $3",
+        )
+        .bind(tenant_id)
+        .bind(book_id)
+        .bind(category)
+        .execute(&mut *conn)
+        .await?;
     }
     Ok(())
 }
@@ -665,6 +719,8 @@ pub struct SyncPage {
     pub books: Vec<SyncBook>,
     /// Ids of books removed or no longer visible.
     pub removed: Vec<String>,
+    /// All sections in their order; the list replaces the one the device has.
+    pub categories: Vec<super::categories::Category>,
     /// The server's addresses as the admin set them, home network first: a paired phone
     /// learns new ones here and switches between them without pairing again. Empty when
     /// none are set.
@@ -716,7 +772,7 @@ pub async fn sync(
                 .await?
         }
     };
-    let mut people = people(db, tenant_id, from, to).await?;
+    let mut links = links(db, tenant_id, from, to).await?;
     let mut files: HashMap<String, Vec<BookFile>> = HashMap::new();
     let file_rows: Vec<(String, i64, String, i64, i64, i64)> = sqlx::query_as(
         "SELECT f.book_id, f.idx, f.blob_hash, bl.size, f.offset_ms, f.duration_ms FROM book_files f
@@ -768,7 +824,7 @@ pub async fn sync(
         }
         let id = row.id.clone();
         books.push(SyncBook {
-            book: row.into_book(&mut people),
+            book: row.into_book(&mut links),
             files: files.remove(&id).unwrap_or_default(),
             chapters: chapters.remove(&id).unwrap_or_default(),
         });
@@ -779,6 +835,7 @@ pub async fn sync(
         has_more,
         books,
         removed,
+        categories: super::categories::list(db, tenant_id).await?,
         // The API layer fills it from the settings.
         server_urls: Vec::new(),
     })

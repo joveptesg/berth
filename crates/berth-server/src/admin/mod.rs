@@ -3,6 +3,7 @@
 //! HTMX form posts get back only the fragment they replace; pages never fetch JSON.
 
 mod access;
+mod categories;
 mod csrf;
 mod i18n;
 mod library;
@@ -102,6 +103,13 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         .route("/storage/{id}/verify", post(storage::verify))
         .route("/storage/{id}/default", post(storage::make_default))
         .route("/storage/{id}/delete", post(storage::delete))
+        .route(
+            "/categories",
+            get(categories::page).post(categories::create),
+        )
+        .route("/categories/{id}", post(categories::update))
+        .route("/categories/{id}/delete", post(categories::delete))
+        .route("/categories/{id}/{direction}", post(categories::shift))
         .route("/library", get(library::default_library))
         .route("/library/{id}", get(library::library))
         .route("/book/{id}", get(library::book).post(library::book_save))

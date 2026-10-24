@@ -26,6 +26,7 @@ use crate::{
     error::ApiError,
     service::{
         books::RATINGS,
+        categories,
         ingest::{self, Created, NewFile, Upload},
         storage,
     },
@@ -49,11 +50,13 @@ pub(crate) async fn page(
             .is_ok_and(|store| store.supports_presigned()),
         None => false,
     };
+    let categories = categories::list(&state.db, tenant_id).await?;
     render(
         &state,
         "upload.html",
         context! {
             uploads => serde(uploads), presigned, ratings => RATINGS.to_vec(),
+            categories => serde(categories),
             ..shell(&state, "upload")
         },
     )
@@ -108,11 +111,21 @@ pub(crate) async fn put_file(
     Ok(StatusCode::NO_CONTENT)
 }
 
-fn card(state: &AppState, upload: &Upload, form: Option<Value>, error: Option<String>) -> Page {
+async fn card(
+    state: &AppState,
+    tenant_id: &str,
+    upload: &Upload,
+    form: Option<Value>,
+    error: Option<String>,
+) -> Page {
+    let categories = categories::list(&state.db, tenant_id).await?;
     render(
         state,
         "partials/upload_card.html",
-        context! { upload => serde(upload), form, error, ratings => RATINGS.to_vec() },
+        context! {
+            upload => serde(upload), form, error, ratings => RATINGS.to_vec(),
+            categories => serde(categories),
+        },
     )
 }
 
@@ -128,7 +141,7 @@ pub(crate) async fn complete(
         Err(err) => return Err(err.into()),
     };
     let upload = ingest::get(&state.db, tenant_id, &id).await?;
-    card(&state, &upload, None, error)
+    card(&state, tenant_id, &upload, None, error).await
 }
 
 pub(crate) async fn status(
@@ -136,8 +149,9 @@ pub(crate) async fn status(
     Extension(session): Extension<AdminSession>,
     Path(id): Path<String>,
 ) -> Page {
-    let upload = ingest::get(&state.db, &session.0.tenant_id, &id).await?;
-    card(&state, &upload, None, None)
+    let tenant_id = &session.0.tenant_id;
+    let upload = ingest::get(&state.db, tenant_id, &id).await?;
+    card(&state, tenant_id, &upload, None, None).await
 }
 
 pub(crate) async fn save(
@@ -155,13 +169,13 @@ pub(crate) async fn save(
     };
     let upload = ingest::get(&state.db, tenant_id, &id).await?;
     match result {
-        Ok(()) => card(&state, &upload, None, None),
+        Ok(()) => card(&state, tenant_id, &upload, None, None).await,
         Err(err) => {
             let error = match err {
                 BerthError::Conflict(code) => code,
                 err => form_error(err)?,
             };
-            card(&state, &upload, Some(serde(&form)), Some(error))
+            card(&state, tenant_id, &upload, Some(serde(&form)), Some(error)).await
         }
     }
 }

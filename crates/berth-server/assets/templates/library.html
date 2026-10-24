@@ -21,15 +21,21 @@
     <input id="book-search" type="search" name="q" value="{{ query.q }}" placeholder="{{ t('library.search') }}" autocomplete="off" class="input pl-11">
   </label>
   <div class="grid grid-cols-2 gap-3 sm:flex sm:flex-wrap sm:items-center">
-    <select name="author" aria-label="{{ t('library.author') }}" class="input select sm:w-52">
+    <select name="author" aria-label="{{ t('library.author') }}" class="input select sm:w-44">
       <option value="">{{ t('library.any_author') }}</option>
       {% for a in authors %}<option value="{{ a }}" {% if query.author == a %}selected{% endif %}>{{ a }}</option>{% endfor %}
     </select>
-    <select name="series" aria-label="{{ t('library.series') }}" class="input select sm:w-52">
+    {% if categories %}
+    <select name="category" aria-label="{{ t('library.category') }}" class="input select sm:w-44">
+      <option value="">{{ t('library.any_category') }}</option>
+      {% for c in categories %}<option value="{{ c.id }}" {% if query.category == c.id %}selected{% endif %}>{{ c.name }}</option>{% endfor %}
+    </select>
+    {% endif %}
+    <select name="series" aria-label="{{ t('library.series') }}" class="input select sm:w-44">
       <option value="">{{ t('library.any_series') }}</option>
       {% for s in series %}<option value="{{ s }}" {% if query.series == s %}selected{% endif %}>{{ s }}</option>{% endfor %}
     </select>
-    <select name="rating" aria-label="{{ t('library.rating') }}" class="input select sm:w-48">
+    <select name="rating" aria-label="{{ t('library.rating') }}" class="input select sm:w-44">
       <option value="">{{ t('library.any_rating') }}</option>
       {% for r in ratings %}<option value="{{ r }}" {% if query.rating == r ~ '' %}selected{% endif %}>{{ r }}+</option>{% endfor %}
     </select>

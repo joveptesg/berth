@@ -1,0 +1,11 @@
+{% extends "base.html" %}
+{% import "partials/ui.html" as ui %}
+{% block title %}{{ t('categories.title') }}{% endblock %}
+{% block content %}
+<header class="max-w-[60ch]">
+  <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('categories.title') }}</h1>
+  <p class="mt-1 text-[16px] text-text-2">{{ t('categories.subtitle') }}</p>
+</header>
+
+{% include "partials/category_list.html" %}
+{% endblock %}

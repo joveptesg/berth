@@ -6,6 +6,7 @@
 pub mod auth;
 pub mod blobs;
 pub mod books;
+pub mod categories;
 pub mod delivery;
 pub mod devices;
 pub mod ingest;

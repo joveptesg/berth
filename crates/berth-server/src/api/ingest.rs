@@ -179,6 +179,8 @@ pub(crate) struct SaveBook {
     series_no: Option<f64>,
     /// Age rating: 0, 6, 12, 16 or 18.
     rating: Option<i64>,
+    /// Section ids; omitted, the sections the proposal matched.
+    category_ids: Option<Vec<String>>,
 }
 
 /// The created book.
@@ -211,6 +213,14 @@ pub(crate) async fn save_upload(
     JsonBody(req): JsonBody<SaveBook>,
 ) -> Result<(StatusCode, Json<SavedBook>), ApiError> {
     may_upload(&device)?;
+    let category_ids = match req.category_ids {
+        Some(ids) => ids,
+        None => ingest::get(&state.db, &device.tenant_id, &id)
+            .await?
+            .draft
+            .map(|d| d.category_ids)
+            .unwrap_or_default(),
+    };
     let edits = BookEdits {
         title: req.title,
         authors: req.authors,
@@ -218,6 +228,7 @@ pub(crate) async fn save_upload(
         series: req.series,
         series_no: req.series_no,
         rating: req.rating,
+        category_ids,
     };
     let book_id = ingest::save(&state, &device.tenant_id, &id, &edits).await?;
     Ok((StatusCode::CREATED, Json(SavedBook { book_id })))

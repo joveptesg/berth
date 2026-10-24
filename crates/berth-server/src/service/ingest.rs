@@ -23,7 +23,7 @@ use tokio::io::AsyncWriteExt;
 use super::{
     blobs,
     books::{self, BookEdits},
-    storage as profiles,
+    categories, storage as profiles,
 };
 use crate::{
     AppState,
@@ -447,6 +447,12 @@ pub struct Draft {
     pub chapters: Vec<DraftChapter>,
     /// Cover blob.
     pub cover_hash: Option<String>,
+    /// Genres from the file tags.
+    #[serde(default)]
+    pub genres: Vec<String>,
+    /// Sections the genres match; the admin changes them before saving.
+    #[serde(default)]
+    pub category_ids: Vec<String>,
 }
 
 /// Natural order: "2.mp3" before "10.mp3".
@@ -573,6 +579,11 @@ fn propose(upload_name: &str, mut audio: Vec<(FileRow, media::AudioInfo)>) -> Dr
         narrators: narrator.map(|n| books::split_names(&n)).unwrap_or_default(),
         ..Draft::default()
     };
+    for genre in audio.iter().flat_map(|(_, i)| &i.genres) {
+        if !draft.genres.contains(genre) {
+            draft.genres.push(genre.clone());
+        }
+    }
     let mut offset = 0u64;
     for (file, info) in &audio {
         let end = offset + info.duration_ms;
@@ -678,6 +689,7 @@ pub(crate) async fn analyze(state: &AppState, tenant_id: &str, id: &str) -> anyh
     }
     let embedded = largest_cover(audio.iter().filter_map(|(_, i)| i.cover.as_ref()));
     let mut draft = propose(&name, audio);
+    draft.category_ids = categories::match_genres(&state.db, tenant_id, &draft.genres).await?;
 
     // A picture next to the audio wins over the embedded one: it is usually larger.
     images.sort_by_key(|(f, _)| {

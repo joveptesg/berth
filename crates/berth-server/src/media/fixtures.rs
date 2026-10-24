@@ -19,6 +19,8 @@ pub struct Mp3<'a> {
     pub narrator: Option<&'a str>,
     /// `TRCK`.
     pub track: Option<u32>,
+    /// `TCON`.
+    pub genre: Option<&'a str>,
     /// `CHAP` frames: (title, start ms, end ms).
     pub chapters: &'a [(&'a str, u32, u32)],
     /// An `APIC` front cover (a 1×1 PNG).
@@ -66,6 +68,7 @@ pub fn mp3(spec: &Mp3<'_>) -> Vec<u8> {
         (b"TALB", spec.album),
         (b"TPE1", spec.artist),
         (b"TCOM", spec.narrator),
+        (b"TCON", spec.genre),
     ] {
         if let Some(value) = value {
             frames.extend(text_frame(id, value));
@@ -112,6 +115,8 @@ pub struct M4b<'a> {
     pub title: &'a str,
     /// `©ART`.
     pub artist: &'a str,
+    /// `©gen`.
+    pub genre: Option<&'a str>,
     /// Nero chapters: (start ms, title).
     pub chapters: &'a [(u64, &'a str)],
 }
@@ -261,11 +266,14 @@ pub fn m4b(spec: &M4b<'_>) -> Vec<u8> {
         meta_hdlr.extend_from_slice(b"mdir");
         meta_hdlr.extend_from_slice(b"appl");
         meta_hdlr.extend_from_slice(&[0; 9]);
-        let ilst = [
+        let mut ilst = [
             ilst_text(b"\xa9nam", spec.title),
             ilst_text(b"\xa9ART", spec.artist),
         ]
         .concat();
+        if let Some(genre) = spec.genre {
+            ilst.extend(ilst_text(b"\xa9gen", genre));
+        }
         let meta = full(
             0,
             &[atom(b"hdlr", &meta_hdlr), atom(b"ilst", &ilst)].concat(),

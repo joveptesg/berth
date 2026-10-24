@@ -1213,6 +1213,7 @@ fn chapter_mp3(title: &str, track: u32, seconds: u32) -> Vec<u8> {
         artist: Some("Айзек Азимов"),
         narrator: None,
         track: Some(track),
+        genre: Some("Sci-Fi"),
         chapters: &[],
         cover: false,
     })
@@ -1226,8 +1227,47 @@ fn chapter_mp3(title: &str, track: u32, seconds: u32) -> Vec<u8> {
 async fn upload_analyse_save_and_sync() {
     let dir = tempfile::tempdir().unwrap();
     let state = start(dir.path()).await;
-    set_up(&state).await;
+    let session = set_up(&state).await;
     let token = admin_token(&state).await;
+
+    // Sections: the file genre "Sci-Fi" is an alias of the first one.
+    for (name, aliases) in [
+        ("Фантастика", "Sci-Fi, научная фантастика"),
+        ("Детские", ""),
+    ] {
+        let added = send(
+            &state,
+            post(
+                "/categories",
+                Some(&session),
+                &[("name", name), ("aliases", aliases)],
+            ),
+        )
+        .await;
+        assert_eq!(added.status, StatusCode::OK, "{}", added.body);
+        assert!(added.body.contains(name));
+    }
+    let duplicate = send(
+        &state,
+        post("/categories", Some(&session), &[("name", "фантастика")]),
+    )
+    .await;
+    assert!(duplicate.body.contains("alert-error"), "{}", duplicate.body);
+    let order = |body: &str| body.find("Фантастика").unwrap() < body.find("Детские").unwrap();
+    let listed = send(&state, bearer_get("/v1/sync", &token)).await.json();
+    let children = listed["categories"][1]["id"].as_str().unwrap().to_owned();
+    let moved = send(
+        &state,
+        post(&format!("/categories/{children}/up"), Some(&session), &[]),
+    )
+    .await;
+    assert!(!order(&moved.body), "Детские moved up");
+    let moved = send(
+        &state,
+        post(&format!("/categories/{children}/down"), Some(&session), &[]),
+    )
+    .await;
+    assert!(order(&moved.body));
 
     // A folder: two chapters out of order by name, and a cover next to them.
     let second = chapter_mp3("Вторая", 2, 2);
@@ -1328,6 +1368,8 @@ async fn upload_analyse_save_and_sync() {
     assert_eq!(draft["files"][0]["name"], "a.mp3", "track order");
     assert_eq!(draft["chapters"][1]["title"], "Вторая");
     assert!(draft["cover_hash"].is_string());
+    assert_eq!(draft["genres"], serde_json::json!(["Sci-Fi"]));
+    assert_eq!(draft["category_ids"].as_array().unwrap().len(), 1);
 
     let saved = send(
         &state,
@@ -1370,6 +1412,35 @@ async fn upload_analyse_save_and_sync() {
     );
     assert_eq!(book["chapters"].as_array().unwrap().len(), 2);
     assert_eq!(book["duration_ms"], book["chapters"][1]["end_ms"]);
+    let sections = page["categories"].as_array().unwrap();
+    assert_eq!(sections.len(), 2);
+    assert_eq!(sections[0]["name"], "Фантастика");
+    let fantasy = sections[0]["id"].as_str().unwrap().to_owned();
+    let children = sections[1]["id"].as_str().unwrap().to_owned();
+    assert_eq!(
+        book["category_ids"],
+        serde_json::json!([fantasy]),
+        "matched by alias"
+    );
+
+    // The library filters by section.
+    let library = book["library_id"].as_str().unwrap().to_owned();
+    let listed = |category: &str| {
+        send(
+            &state,
+            get(
+                &format!("/library/{library}?category={category}"),
+                Some(&session),
+            ),
+        )
+    };
+    assert!(listed(&fantasy).await.body.contains("/book/"));
+    assert!(
+        !listed(&children)
+            .await
+            .body
+            .contains(&format!("/book/{book_id}"))
+    );
     let cursor = page["cursor"].as_str().unwrap().to_owned();
     let quiet = send(
         &state,
@@ -1384,6 +1455,26 @@ async fn upload_analyse_save_and_sync() {
         ),
         (serde_json::json!(false), 0)
     );
+
+    // A removed section leaves the book, and phones get the book again without it.
+    let removed = send(
+        &state,
+        post(
+            &format!("/categories/{fantasy}/delete"),
+            Some(&session),
+            &[],
+        ),
+    )
+    .await;
+    assert_eq!(removed.status, StatusCode::OK, "{}", removed.body);
+    let after = send(
+        &state,
+        bearer_get(&format!("/v1/sync?cursor={cursor}"), &token),
+    )
+    .await
+    .json();
+    assert_eq!(after["books"][0]["category_ids"], serde_json::json!([]));
+    assert_eq!(after["categories"].as_array().unwrap().len(), 1);
 
     // The cover is served with caching headers.
     let cover = send(
@@ -1721,6 +1812,7 @@ async fn admin_uploads_and_edits_books() {
         seconds: 90,
         title: "Основание",
         artist: "Айзек Азимов",
+        genre: None,
         chapters: &[(0, "Психоисторики"), (30_000, "Энциклопедисты")],
     });
     let new = serde_json::json!({ "name": "Основание.m4b", "files": [{ "name": "Основание.m4b", "size": m4b.len() }] });

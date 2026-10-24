@@ -19,7 +19,10 @@ use crate::{
     AppState,
     api::library::serve_image,
     error::ApiError,
-    service::books::{self, BookEdits, BookQuery, PolicyFilter, RATINGS},
+    service::{
+        books::{self, BookEdits, BookQuery, PolicyFilter, RATINGS},
+        categories,
+    },
 };
 
 fn serde(value: impl Serialize) -> Value {
@@ -46,6 +49,8 @@ pub(crate) struct LibraryQuery {
     #[serde(default)]
     rating: String,
     #[serde(default)]
+    category: String,
+    #[serde(default)]
     view: String,
 }
 
@@ -61,16 +66,20 @@ pub(crate) async fn library(
         search: query.q.clone(),
         author: query.author.clone(),
         series: query.series.clone(),
+        category: query.category.clone(),
         rating: query.rating.parse().ok(),
     };
     let list = books::list(&state.db, tenant_id, &PolicyFilter::admin(), &id, &filter).await?;
     let (authors, series) = books::facets(&state.db, tenant_id, &id).await?;
+    let categories = categories::list(&state.db, tenant_id).await?;
     let filtered = !(query.q.is_empty()
         && query.author.is_empty()
         && query.series.is_empty()
+        && query.category.is_empty()
         && query.rating.is_empty());
     let ctx = context! {
         library_id => id, books => serde(&list), authors, series, ratings => RATINGS.to_vec(),
+        categories => serde(categories),
         query => serde(&query), filtered, list_view => query.view == "list",
         ..shell(&state, "library")
     };
@@ -92,8 +101,10 @@ async fn book_ctx(
     saved: bool,
 ) -> Result<Value, ApiError> {
     let detail = books::get(&state.db, tenant_id, &PolicyFilter::admin(), id).await?;
+    let categories = categories::list(&state.db, tenant_id).await?;
     Ok(context! {
         book => serde(&detail), form, error, saved, ratings => RATINGS.to_vec(),
+        categories => serde(categories),
         ..shell(state, "library")
     })
 }
@@ -122,6 +133,9 @@ pub(crate) struct BookForm {
     pub(super) series_no: String,
     #[serde(default)]
     pub(super) rating: String,
+    /// Section ids, comma-separated.
+    #[serde(default)]
+    pub(super) category_ids: String,
 }
 
 impl BookForm {
@@ -142,6 +156,7 @@ impl BookForm {
             series: self.series.clone(),
             series_no,
             rating: self.rating.parse().ok(),
+            category_ids: books::split_names(&self.category_ids),
         })
     }
 }

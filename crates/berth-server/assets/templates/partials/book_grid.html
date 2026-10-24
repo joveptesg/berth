@@ -21,6 +21,7 @@
           <span class="block truncate text-[16px] font-semibold">{{ b.title }}</span>
           <span class="block truncate text-[14px] text-text-3">{{ b.authors | join(", ") or t('library.unknown_author') }}{% if b.series %} · {{ b.series }}{% if b.series_no is not none %} #{{ b.series_no | num }}{% endif %}{% endif %}</span>
         </span>
+        {% for c in categories or [] %}{% if c.id in b.category_ids %}<span class="chip hidden bg-accent-soft text-accent-fg md:inline-flex">{{ c.name }}</span>{% endif %}{% endfor %}
         {% if b.rating is not none %}<span class="chip bg-surface-2 text-text-2">{{ b.rating }}+</span>{% endif %}
         <span class="mono hidden text-[13px] text-text-3 sm:block">{{ b.duration_ms | clock }}</span>
       </a>

@@ -1674,6 +1674,7 @@
           "title",
           "authors",
           "narrators",
+          "category_ids",
           "duration_ms",
           "revision",
           "created_at"
@@ -1685,6 +1686,13 @@
               "type": "string"
             },
             "description": "Authors in order."
+          },
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sections (`SyncPage.categories`) in their order."
           },
           "cover_hash": {
             "type": [
@@ -1786,6 +1794,30 @@
             "type": "integer",
             "format": "int64",
             "description": "Bytes."
+          }
+        }
+      },
+      "Category": {
+        "type": "object",
+        "description": "A section as devices sync it.",
+        "required": [
+          "id",
+          "name",
+          "position"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "description": "Id."
+          },
+          "name": {
+            "type": "string",
+            "description": "Name."
+          },
+          "position": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Place in the list, from 0."
           }
         }
       },
@@ -1934,6 +1966,13 @@
             },
             "description": "Authors."
           },
+          "category_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Sections the genres match; the admin changes them before saving."
+          },
           "chapters": {
             "type": "array",
             "items": {
@@ -1960,6 +1999,13 @@
               "$ref": "#/components/schemas/DraftFile"
             },
             "description": "Files in play order."
+          },
+          "genres": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Genres from the file tags."
           },
           "narrators": {
             "type": "array",
@@ -2485,6 +2531,16 @@
             },
             "description": "Authors in order."
           },
+          "category_ids": {
+            "type": [
+              "array",
+              "null"
+            ],
+            "items": {
+              "type": "string"
+            },
+            "description": "Section ids; omitted, the sections the proposal matched."
+          },
           "narrators": {
             "type": "array",
             "items": {
@@ -2827,6 +2883,7 @@
           "has_more",
           "books",
           "removed",
+          "categories",
           "server_urls"
         ],
         "properties": {
@@ -2836,6 +2893,13 @@
               "$ref": "#/components/schemas/SyncBook"
             },
             "description": "New and changed books."
+          },
+          "categories": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Category"
+            },
+            "description": "All sections in their order; the list replaces the one the device has."
           },
           "cursor": {
             "type": "string",

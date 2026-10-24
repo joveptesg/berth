@@ -26,6 +26,7 @@ nav:
   language: Language
   library: Library
   upload: Upload
+  categories: Sections
 
 setup:
   title: Set up the server
@@ -229,6 +230,24 @@ storage:
   delete_confirm: Delete %{name}? Only the profile is removed; the files stay where they are.
   footnote: The check writes, reads back and deletes a small test file.
 
+categories:
+  title: Sections
+  subtitle: Shelves of the library on the phones, such as Children, Psychology or Science fiction. A book may be in several.
+  new_title: New section
+  name_label: Name
+  aliases_label: Genres from files
+  aliases_placeholder: Sci-Fi, Science fiction
+  aliases_hint: An uploaded book whose file genre matches the name or one of these goes to the section by itself. Separate them with commas.
+  add: Add section
+  edit: Edit
+  save: Save
+  delete: Delete
+  delete_confirm: Delete the section «%{name}»? Its books stay in the library.
+  up: Move up
+  down: Move down
+  books: "Books: %{count}"
+  empty: No sections yet. Phones show all books in one list.
+
 library:
   title: Library
   subtitle: Every book on this server. Phones see the same list after a sync.
@@ -240,6 +259,8 @@ library:
   any_author: Any author
   any_series: Any series
   any_rating: Any age
+  category: Section
+  any_category: Any section
   view: View
   view_grid: Grid
   view_list: List
@@ -252,6 +273,7 @@ library:
 
 book:
   title_label: Title
+  categories_label: Sections
   authors_label: Authors
   narrators_label: Narrators
   names_hint: "Several names: separate them with commas."
@@ -298,6 +320,9 @@ upload:
   save_hint: Phones get the book on their next sync.
 
 errors:
+  category_name_required: Enter the section name.
+  category_name_too_long: "The name is too long: 64 characters at most."
+  category_name_taken: There is a section with this name already.
   web_login_invalid: No such code. Check it on the sign-in page.
   web_login_expired: The code expired. Get a new one on the sign-in page.
   web_login_used: This code was already used.
