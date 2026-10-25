@@ -1903,6 +1903,97 @@ async fn admin_upload_reports_files_that_did_not_get_through() {
     .await;
     let again = send(&state, get(&format!("/upload/{id}"), Some(&session))).await;
     assert!(again.body.contains("CORS"), "{}", again.body);
+
+    // Files that never arrived cannot be analysed again.
+    assert!(!again.body.contains("/retry"), "{}", again.body);
+    let retry = send(
+        &state,
+        post(&format!("/upload/{id}/retry"), Some(&session), &[]),
+    )
+    .await;
+    assert!(
+        retry.body.contains("errors.upload_not_retryable")
+            || retry.body.contains("Upload the folder again"),
+        "{}",
+        retry.body
+    );
+}
+
+#[tokio::test]
+async fn a_failed_analysis_runs_again_on_the_stored_files() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let m4b = fixtures::m4b(&fixtures::M4b {
+        seconds: 60,
+        title: "Основание",
+        artist: "Айзек Азимов",
+        genre: None,
+        language: None,
+        track_language: None,
+        chapters: &[],
+    });
+    let new = serde_json::json!({ "name": "Основание.m4b", "files": [{ "name": "a.m4b", "size": m4b.len() }] });
+    let created = send(
+        &state,
+        browser(
+            "POST",
+            "/upload/new",
+            &session,
+            "application/json",
+            new.to_string().into_bytes(),
+        ),
+    )
+    .await;
+    let id = created.json()["id"].as_str().unwrap().to_owned();
+    send(
+        &state,
+        browser(
+            "PUT",
+            &format!("/upload/{id}/files/0"),
+            &session,
+            "application/octet-stream",
+            m4b,
+        ),
+    )
+    .await;
+    send(
+        &state,
+        post(&format!("/upload/{id}/complete"), Some(&session), &[]),
+    )
+    .await;
+    // The analysis gave up, as on a storage timeout.
+    sqlx::query("DELETE FROM jobs")
+        .execute(&state.db)
+        .await
+        .unwrap();
+    sqlx::query(
+        "UPDATE uploads SET status = 'failed', error = 'operation timed out' WHERE id = $1",
+    )
+    .bind(&id)
+    .execute(&state.db)
+    .await
+    .unwrap();
+    let failed = send(&state, get(&format!("/upload/{id}"), Some(&session))).await;
+    assert!(
+        failed.body.contains(&format!("/upload/{id}/retry")),
+        "{}",
+        failed.body
+    );
+
+    let card = send(
+        &state,
+        post(&format!("/upload/{id}/retry"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(card.status, StatusCode::OK, "{}", card.body);
+    berth_server::jobs::run_due(&state).await.unwrap();
+    let tenant_id = tenant(&state).await;
+    let upload = berth_server::service::ingest::get(&state.db, &tenant_id, &id)
+        .await
+        .unwrap();
+    assert_eq!(upload.status, "ready");
+    assert_eq!(upload.error, None);
 }
 
 #[tokio::test]

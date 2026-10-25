@@ -18,7 +18,7 @@ use async_trait::async_trait;
 use bytes::Bytes;
 use futures_util::{StreamExt, TryStreamExt, stream::BoxStream};
 use object_store::{
-    GetOptions, GetRange, ObjectStore, ObjectStoreExt, PutPayload, RetryConfig,
+    ClientOptions, GetOptions, GetRange, ObjectStore, ObjectStoreExt, PutPayload, RetryConfig,
     aws::AmazonS3Builder, buffered::BufWriter, local::LocalFileSystem, path::Path,
 };
 use presign::Presigner;
@@ -287,7 +287,13 @@ pub fn open(backend: &Backend, data_dir: &FsPath) -> anyhow::Result<ObjectBlobSt
             } else {
                 base.clone()
             };
+            // Blobs are large: limit stalls, not the whole transfer.
+            let client = ClientOptions::new()
+                .with_timeout_disabled()
+                .with_read_timeout(Duration::from_secs(30));
+            // Client options replace `allow_http` too: they go first.
             let store = AmazonS3Builder::new()
+                .with_client_options(client)
                 .with_bucket_name(&config.bucket)
                 .with_region(&config.region)
                 .with_endpoint(endpoint.as_str().trim_end_matches('/'))

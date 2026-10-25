@@ -203,6 +203,21 @@ pub(crate) async fn fail(
     card(&state, tenant_id, &upload, None, None).await
 }
 
+pub(crate) async fn retry(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    Path(id): Path<String>,
+) -> Page {
+    let tenant_id = &session.0.tenant_id;
+    let error = match ingest::retry(&state, tenant_id, &id).await {
+        Ok(()) => None,
+        Err(BerthError::Conflict(code)) => Some(code),
+        Err(err) => return Err(err.into()),
+    };
+    let upload = ingest::get(&state.db, tenant_id, &id).await?;
+    card(&state, tenant_id, &upload, None, error).await
+}
+
 pub(crate) async fn status(
     State(state): State<AppState>,
     Extension(session): Extension<AdminSession>,

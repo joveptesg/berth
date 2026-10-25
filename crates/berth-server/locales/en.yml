@@ -438,6 +438,7 @@ upload:
   status_failed: Berth could not read these files.
   discard: Remove from the queue
   discard_confirm: Remove %{name} from the queue?
+  retry: Try again
   save: Add to library
   save_hint: Phones get the book on their next sync.
 
@@ -542,6 +543,7 @@ errors:
   upload_saved: This book is already in the library.
   upload_bucket_unreachable: "The bucket did not accept the files. Check that its CORS allows the Berth address (method PUT, headers *) and that the storage address opens from the browser."
   upload_send_failed: The files did not reach the server. Details are in the server log. Upload the folder again.
+  upload_not_retryable: This upload cannot be retried. Upload the folder again.
 
 backup:
   section: Backup

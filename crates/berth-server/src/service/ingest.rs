@@ -881,6 +881,40 @@ pub async fn send_failed(
     Ok(())
 }
 
+/// Analyses a failed upload again; its files are already in the store.
+///
+/// # Errors
+/// `NotFound`, `Conflict("upload_not_retryable")` unless the upload failed with every file stored.
+pub async fn retry(state: &AppState, tenant_id: &str, id: &str) -> Result<()> {
+    let mut tx = state.db.begin().await.context("begin")?;
+    let moved = sqlx::query(
+        "UPDATE uploads SET status = 'analyzing', error = NULL, updated_at = $3
+         WHERE tenant_id = $1 AND id = $2 AND status = 'failed'
+           AND NOT EXISTS (SELECT 1 FROM upload_files WHERE upload_id = $2 AND NOT stored)",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(now_ms())
+    .execute(&mut *tx)
+    .await
+    .context("reopen upload")?;
+    if moved.rows_affected() == 0 {
+        get(&state.db, tenant_id, id).await?;
+        return Err(BerthError::Conflict("upload_not_retryable".into()));
+    }
+    jobs::enqueue(
+        &mut tx,
+        tenant_id,
+        jobs::INGEST,
+        &json!({ "upload_id": id }),
+    )
+    .await
+    .context("queue analysis")?;
+    tx.commit().await.context("commit")?;
+    state.wake_jobs();
+    Ok(())
+}
+
 /// Creates the book from the proposal and the admin's edits.
 ///
 /// # Errors

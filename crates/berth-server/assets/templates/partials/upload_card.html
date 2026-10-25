@@ -26,6 +26,11 @@
       <p class="mt-1 text-[13px] font-semibold text-danger">{{ t('upload.status_failed') }}</p>
       {% endif %}
       {% if upload.error and upload.error is not startingwith("upload_") %}<p class="mono mt-0.5 text-[12px] break-words text-text-3">{{ upload.error }}</p>{% endif %}
+      {# The files are stored: only the analysis is run again. #}
+      {% if upload.error is not startingwith("upload_") %}
+      <button type="button" hx-post="/upload/{{ upload.id }}/retry" hx-target="#upload-{{ upload.id }}" hx-swap="outerHTML"
+        class="mt-1 text-[13px] font-semibold text-accent-fg hover:underline">{{ t('upload.retry') }}</button>
+      {% endif %}
       {% endif %}
     </div>
     {% if upload.status == "analyzing" %}
