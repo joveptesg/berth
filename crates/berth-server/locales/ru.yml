@@ -3,6 +3,7 @@
 common:
   save: Сохранить
   saved: Сохранено
+  confirm: Подтвердить
   optional: необязательно
   version: Версия %{version}
   show_password: Показать пароль

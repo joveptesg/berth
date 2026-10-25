@@ -55,5 +55,31 @@
     document.addEventListener('htmx:afterSettle', function (e) { format(e.target); });
   })();
 </script>
+<template id="confirm-dialog">
+  <dialog class="m-auto w-[min(100%-32px,440px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
+    <form method="dialog">
+      <p data-question class="px-6 pt-6 pb-5 text-[16px] leading-snug"></p>
+      <div class="flex justify-end gap-2 border-t border-line bg-surface-2/40 px-6 py-3.5">
+        <button value="" class="btn btn-ghost min-h-11 px-4 sm:px-5">{{ t('users.cancel') }}</button>
+        <button value="ok" class="btn btn-danger min-h-11 px-4 sm:px-5">{{ t('common.confirm') }}</button>
+      </div>
+    </form>
+  </dialog>
+</template>
+<script>
+  // hx-confirm in the admin's own dialog instead of the browser's confirm().
+  document.addEventListener('htmx:confirm', function (e) {
+    if (!e.detail.question) return;
+    e.preventDefault();
+    var dialog = document.getElementById('confirm-dialog').content.firstElementChild.cloneNode(true);
+    dialog.querySelector('[data-question]').textContent = e.detail.question;
+    dialog.addEventListener('close', function () {
+      dialog.remove();
+      if (dialog.returnValue === 'ok') e.detail.issueRequest(true);
+    });
+    document.body.appendChild(dialog);
+    dialog.showModal();
+  });
+</script>
 <script src="/static/htmx.min.js?v={{ assets }}" defer></script>
 <script src="/static/alpine.min.js?v={{ assets }}" defer></script>

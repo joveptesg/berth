@@ -5,6 +5,7 @@
 common:
   save: Save
   saved: Saved
+  confirm: Confirm
   optional: optional
   version: Version %{version}
   show_password: Show password
