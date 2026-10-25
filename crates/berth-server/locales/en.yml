@@ -128,9 +128,11 @@ users:
   devices: "Devices: %{count}"
   connect_phone: Connect a phone
   cancel: Cancel
-  settings: Access
-  settings_title: "Access: %{name}"
-  settings_hint: App sign-in with a login and password, and the books the listener sees.
+  settings: Edit
+  settings_title: "%{name}"
+  settings_hint: Name, app sign-in with a login and password, and the books the listener sees.
+  delete: Delete listener
+  delete_confirm: "Delete listener “%{name}”? Their phones are disconnected at once."
   login_title: Sign-in with a login and password
   login_hint: For phones that cannot scan a QR code, such as App Store and Google Play review. In the app — "Sign in with a login and password".
   login_label: Login

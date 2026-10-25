@@ -21,10 +21,15 @@
         class="absolute top-4 right-4 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close") }}</button>
     </div>
 
-    <div class="flex flex-col gap-5 overflow-y-auto px-6 py-5">
+    <div class="relative flex flex-col gap-5 overflow-y-auto px-6 py-5">
       {% if s.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ s.error) }}</p>{% endif %}
 
-      <section class="flex flex-col gap-3">
+      <div class="sm:max-w-60">
+        <label for="user-edit-name" class="field-label">{{ t('users.name_label') }}</label>
+        <input id="user-edit-name" name="name" value="{{ s.name }}" required maxlength="64" autocomplete="off" class="input">
+      </div>
+
+      <section class="flex flex-col gap-3 border-t border-line pt-5">
         <label class="flex cursor-pointer items-start gap-3">
           <input type="checkbox" name="login_on" value="on" x-model="loginOn" {% if s.login_on %}checked{% endif %} class="mt-0.5 size-[18px] shrink-0 accent-accent">
           <span>

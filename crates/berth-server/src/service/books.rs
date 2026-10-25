@@ -224,6 +224,50 @@ async fn groups_view(
     Ok(Some((books, hidden.unwrap_or_default())))
 }
 
+/// The books a group's rule shows; `None` for the whole library.
+///
+/// # Errors
+/// Database failures.
+pub async fn group_view(
+    db: &SqlitePool,
+    tenant_id: &str,
+    group_id: &str,
+    access: &str,
+    languages: &str,
+) -> anyhow::Result<Option<HashSet<String>>> {
+    Ok(Rule::Group(group_id)
+        .view(db, tenant_id, access, languages)
+        .await?
+        .0)
+}
+
+/// Ids of the tenant's books that are not deleted.
+///
+/// # Errors
+/// Database failures.
+pub async fn alive_ids(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<HashSet<String>> {
+    Ok(
+        sqlx::query_scalar("SELECT id FROM books WHERE tenant_id = $1 AND deleted_at IS NULL")
+            .bind(tenant_id)
+            .fetch_all(db)
+            .await?
+            .into_iter()
+            .collect(),
+    )
+}
+
+/// How many of `alive` books `books` shows (`None` for all).
+#[must_use]
+pub fn seen_count<S: std::hash::BuildHasher, T: std::hash::BuildHasher>(
+    books: Option<&HashSet<String, S>>,
+    alive: &HashSet<String, T>,
+) -> i64 {
+    let n = books.map_or(alive.len(), |books| {
+        books.iter().filter(|id| alive.contains(*id)).count()
+    });
+    i64::try_from(n).unwrap_or(i64::MAX)
+}
+
 /// `books` (`None` for all) narrowed to `fit`.
 fn narrow(books: Option<HashSet<String>>, fit: &HashSet<String>) -> HashSet<String> {
     match books {

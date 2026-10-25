@@ -82,10 +82,15 @@
         <div class="flex w-full gap-2 sm:w-auto">
           {% if user.role == "member" %}
           <button type="button" hx-get="/users/{{ user.id }}/settings" hx-target="#user-dialog" hx-swap="innerHTML"
-            class="btn btn-ghost min-h-11 flex-1 px-4 text-[15px] sm:flex-none">{{ ui.icon("key", "size-[18px]") }}{{ t('users.settings') }}</button>
+            class="btn btn-ghost min-h-11 flex-1 px-4 text-[15px] sm:flex-none">{{ ui.icon("edit", "size-[18px]") }}{{ t('users.settings') }}</button>
           {% endif %}
           <a href="/users?connect={{ user.id }}" hx-post="/users/{{ user.id }}/connect" hx-target="#pairing-{{ user.id }}" hx-swap="innerHTML"
             class="btn btn-ghost min-h-11 flex-1 px-4 text-[15px] sm:flex-none">{{ ui.icon("qr", "size-[18px]") }}{{ t('users.connect_phone') }}</a>
+          {% if user.role == "member" %}
+          <button type="button" hx-post="/users/{{ user.id }}/delete" hx-target="#users-section" hx-swap="outerHTML"
+            hx-confirm="{{ t('users.delete_confirm', name=user.name) }}" title="{{ t('users.delete') }}" aria-label="{{ t('users.delete') }}"
+            class="grid size-11 shrink-0 place-items-center rounded-[12px] text-danger hover:bg-danger/10">{{ ui.icon("trash", "size-[18px]") }}</button>
+          {% endif %}
         </div>
       </div>
       {% set open = pairing and pairing.user_id == user.id %}

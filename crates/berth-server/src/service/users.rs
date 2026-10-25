@@ -36,7 +36,7 @@ pub struct User {
     pub login: Option<String>,
     /// `all` or `selected`.
     pub book_access: String,
-    /// Books picked for a `selected` user.
+    /// Books the user sees on the phone (not deleted).
     pub books: i64,
     /// Languages the user sees; empty for all.
     pub languages: Vec<String>,
@@ -63,7 +63,6 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
         i64,
         Option<String>,
         String,
-        i64,
         String,
         Option<String>,
         String,
@@ -73,10 +72,7 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
                 (SELECT COUNT(*) FROM devices d WHERE d.user_id = u.id AND d.revoked_at IS NULL
                  AND NOT (d.platform = 'web' AND EXISTS (
                      SELECT 1 FROM device_scopes s WHERE s.device_id = d.id AND s.scope = 'admin'))),
-                u.login, COALESCE(p.book_access, 'all'),
-                (SELECT COUNT(*) FROM user_books ub JOIN books b ON b.id = ub.book_id
-                 WHERE ub.user_id = u.id AND b.deleted_at IS NULL),
-                COALESCE(p.languages, ''), p.birth_date, COALESCE(p.unrated_behavior, 'allowed')
+                u.login, COALESCE(p.book_access, 'all'), COALESCE(p.languages, ''), p.birth_date, COALESCE(p.unrated_behavior, 'allowed')
          FROM users u
          LEFT JOIN access_policies p ON p.tenant_id = u.tenant_id AND p.user_id = u.id
          WHERE u.tenant_id = $1 AND u.deleted_at IS NULL
@@ -93,36 +89,42 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
     .fetch_all(db)
     .await?;
     let now = now_ms();
-    Ok(rows
-        .into_iter()
-        .map(|row| {
-            let (id, name, role, created_at, devices, login, book_access, books, languages) = (
-                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8,
-            );
-            let (birth_date, unrated) = (row.9, row.10);
-            User {
-                groups: groups
-                    .iter()
-                    .filter(|(u, _)| *u == id)
-                    .map(|(_, g)| g.clone())
-                    .collect(),
-                ceiling: birth_date
-                    .as_deref()
-                    .and_then(|b| super::books::rating_ceiling(b, now)),
-                unrated_allowed: unrated == "allowed",
-                birth_date,
-                id,
-                name,
-                role,
-                devices,
-                created_at,
-                login,
-                book_access,
-                books,
-                languages: super::languages::split(&languages),
-            }
-        })
-        .collect())
+    let alive = super::books::alive_ids(db, tenant_id).await?;
+    let mut users = Vec::with_capacity(rows.len());
+    for row in rows {
+        let (id, name, role, created_at, devices, login, book_access, languages) =
+            (row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7);
+        let (birth_date, unrated) = (row.8, row.9);
+        // What the phone gets: picked books, sections, languages, groups, age.
+        let books = if role == "owner" {
+            i64::try_from(alive.len()).unwrap_or(i64::MAX)
+        } else {
+            let filter = super::books::PolicyFilter::for_user(db, tenant_id, &id).await?;
+            super::books::seen_count(filter.books.as_ref(), &alive)
+        };
+        users.push(User {
+            groups: groups
+                .iter()
+                .filter(|(u, _)| *u == id)
+                .map(|(_, g)| g.clone())
+                .collect(),
+            ceiling: birth_date
+                .as_deref()
+                .and_then(|b| super::books::rating_ceiling(b, now)),
+            unrated_allowed: unrated == "allowed",
+            birth_date,
+            id,
+            name,
+            role,
+            devices,
+            created_at,
+            login,
+            book_access,
+            books,
+            languages: super::languages::split(&languages),
+        });
+    }
+    Ok(users)
 }
 
 /// Creates a listener (role `member`) with the default, unrestricted access policy.
@@ -130,13 +132,7 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
 /// # Errors
 /// `Validation` with `user_name_required` or `user_name_too_long`.
 pub async fn create_listener(db: &SqlitePool, tenant_id: &str, name: &str) -> Result<String> {
-    let name = name.trim();
-    if name.is_empty() {
-        return Err(BerthError::Validation("user_name_required".into()));
-    }
-    if name.chars().count() > MAX_NAME_LEN {
-        return Err(BerthError::Validation("user_name_too_long".into()));
-    }
+    let name = valid_name(name)?;
     let id = uuid::Uuid::now_v7().to_string();
     let mut tx = db.begin().await.context("begin")?;
     sqlx::query(
@@ -158,6 +154,84 @@ pub async fn create_listener(db: &SqlitePool, tenant_id: &str, name: &str) -> Re
     tx.commit().await.context("commit user")?;
     tracing::info!(user = %id, name = ?name, "user created");
     Ok(id)
+}
+
+/// `name` trimmed, if it fits.
+fn valid_name(name: &str) -> Result<&str> {
+    let name = name.trim();
+    if name.is_empty() {
+        return Err(BerthError::Validation("user_name_required".into()));
+    }
+    if name.chars().count() > MAX_NAME_LEN {
+        return Err(BerthError::Validation("user_name_too_long".into()));
+    }
+    Ok(name)
+}
+
+/// Renames a listener.
+///
+/// # Errors
+/// `NotFound`; `Validation` with `user_name_required`, `user_name_too_long` or
+/// `login_admin` (not a listener).
+pub async fn rename(db: &SqlitePool, tenant_id: &str, user_id: &str, name: &str) -> Result<()> {
+    let name = valid_name(name)?;
+    listener(db, tenant_id, user_id).await?;
+    sqlx::query("UPDATE users SET name = $3 WHERE tenant_id = $1 AND id = $2")
+        .bind(tenant_id)
+        .bind(user_id)
+        .bind(name)
+        .execute(db)
+        .await
+        .context("rename user")?;
+    Ok(())
+}
+
+/// Deletes a listener: their phones are disconnected at once, their login is freed and they
+/// leave their groups and sections.
+///
+/// # Errors
+/// `NotFound`, also for the owner.
+pub async fn delete(db: &SqlitePool, tenant_id: &str, user_id: &str) -> Result<()> {
+    if listener(db, tenant_id, user_id).await.is_err() {
+        return Err(BerthError::NotFound);
+    }
+    let now = now_ms();
+    let mut tx = db.begin().await.context("begin")?;
+    sqlx::query(
+        "UPDATE users SET deleted_at = $3, login = NULL, password_hash = NULL
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .context("delete user")?;
+    sqlx::query(
+        "UPDATE devices SET revoked_at = COALESCE(revoked_at, $3) WHERE tenant_id = $1 AND user_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .bind(now)
+    .execute(&mut *tx)
+    .await
+    .context("revoke devices")?;
+    for sql in [
+        "DELETE FROM refresh_tokens WHERE device_id IN (SELECT id FROM devices WHERE user_id = $1)",
+        "DELETE FROM web_sessions WHERE device_id IN (SELECT id FROM devices WHERE user_id = $1)",
+        "DELETE FROM group_members WHERE user_id = $1",
+        "DELETE FROM user_categories WHERE user_id = $1",
+        "DELETE FROM user_books WHERE user_id = $1",
+    ] {
+        sqlx::query(sql)
+            .bind(user_id)
+            .execute(&mut *tx)
+            .await
+            .context("clear user")?;
+    }
+    tx.commit().await.context("commit delete user")?;
+    tracing::info!(user = %user_id, "user deleted");
+    Ok(())
 }
 
 /// Whether some listener can sign in with a password (`server-info` offers it then).

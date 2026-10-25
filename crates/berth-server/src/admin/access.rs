@@ -185,6 +185,9 @@ pub(crate) async fn users_create(
 /// A listener's login for apps and the books they see.
 #[derive(Deserialize)]
 pub(crate) struct UserSettingsForm {
+    /// Absent keeps the name.
+    #[serde(default)]
+    name: Option<String>,
     /// Checkbox: `on` when apps may sign in with the login.
     #[serde(default)]
     login_on: Option<String>,
@@ -285,6 +288,7 @@ async fn settings_ctx(
             unrated_on,
             ceiling,
             ratings => books::RATINGS.to_vec(),
+            name => form.and_then(|f| f.name.clone()).unwrap_or_else(|| user.name.clone()),
             access => form.map_or(user.book_access.clone(), |f| f.access.clone()),
             login_on => form.map_or(user.login.is_some(), |f| f.login_on.is_some()),
             login => form.map_or(user.login.clone().unwrap_or_default(), |f| f.login.clone()),
@@ -322,6 +326,9 @@ pub(crate) async fn user_settings_save(
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
     let saved = async {
+        if let Some(name) = &form.name {
+            users::rename(&state.db, tenant_id, &user_id, name).await?;
+        }
         if form.login_on.is_some() {
             users::set_login(&state.db, tenant_id, &user_id, &form.login, &form.password).await?;
         } else {
@@ -359,6 +366,21 @@ pub(crate) async fn user_settings_save(
         "partials/users_section.html",
         ctx,
     )
+}
+
+/// Deletes a listener after the admin confirms it.
+pub(crate) async fn user_delete(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    headers: HeaderMap,
+    Path(user_id): Path<String>,
+) -> Page {
+    users::delete(&state.db, &session.0.tenant_id, &user_id).await?;
+    if !super::is_htmx(&headers) {
+        return Ok(redirect(&headers, "/users"));
+    }
+    let ctx = users_ctx(&state, &headers, &session, None, "people").await?;
+    render(&state, "partials/users_section.html", ctx)
 }
 
 // ── Groups ───────────────────────────────────────────────

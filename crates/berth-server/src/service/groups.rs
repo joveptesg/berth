@@ -21,7 +21,7 @@ pub struct Group {
     pub name: String,
     /// `all` or `selected`.
     pub book_access: String,
-    /// Books picked for a `selected` group.
+    /// Books the group sees: picked ones, those of the sections given, in its languages.
     pub books: i64,
     /// Languages the group sees; empty for all.
     pub languages: Vec<String>,
@@ -51,16 +51,19 @@ pub struct GroupInput {
 /// # Errors
 /// Database failures.
 pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<Group>> {
-    let rows: Vec<(String, String, String, i64, String)> = sqlx::query_as(
-        "SELECT g.id, g.name, g.book_access,
-                (SELECT COUNT(*) FROM group_books gb JOIN books b ON b.id = gb.book_id
-                 WHERE gb.group_id = g.id AND b.deleted_at IS NULL),
-                g.languages
+    let rows: Vec<(String, String, String, String)> = sqlx::query_as(
+        "SELECT g.id, g.name, g.book_access, g.languages
          FROM user_groups g WHERE g.tenant_id = $1 ORDER BY g.position, g.name",
     )
     .bind(tenant_id)
     .fetch_all(db)
     .await?;
+    let alive = super::books::alive_ids(db, tenant_id).await?;
+    let mut seen = Vec::with_capacity(rows.len());
+    for (id, _, access, languages) in &rows {
+        let books = super::books::group_view(db, tenant_id, id, access, languages).await?;
+        seen.push(super::books::seen_count(books.as_ref(), &alive));
+    }
     let given: Vec<(String, String)> =
         sqlx::query_as("SELECT group_id, category_id FROM group_categories WHERE tenant_id = $1")
             .bind(tenant_id)
@@ -82,7 +85,8 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<Group>
     };
     Ok(rows
         .into_iter()
-        .map(|(id, name, book_access, books, languages)| Group {
+        .zip(seen)
+        .map(|((id, name, book_access, languages), books)| Group {
             categories: of(&given, &id),
             members: of(&members, &id),
             languages: super::languages::split(&languages),

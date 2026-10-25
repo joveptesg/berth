@@ -4041,3 +4041,146 @@ async fn groups_and_age_ratings() {
         .unwrap();
     assert_eq!(members, 0);
 }
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: a listener's book count, rename and deletion"
+)]
+async fn listener_count_rename_delete() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let admin = admin_token(&state).await;
+    let tenant_id = tenant(&state).await;
+    let first = add_book(&state, &admin, "Первая").await;
+    let second = add_book(&state, &admin, "Вторая").await;
+    add_book(&state, &admin, "Третья").await;
+    let added = send(
+        &state,
+        post("/categories", Some(&session), &[("name", "Демо")]),
+    )
+    .await;
+    assert!(!added.body.contains("alert-error"), "{}", added.body);
+    let demo: String = sqlx::query_scalar("SELECT id FROM categories WHERE name = 'Демо'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    for book in [&first, &second] {
+        sqlx::query(
+            "INSERT INTO book_categories (tenant_id, book_id, category_id) VALUES ($1, $2, $3)",
+        )
+        .bind(&tenant_id)
+        .bind(book)
+        .bind(&demo)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+    send(
+        &state,
+        post("/users", Some(&session), &[("name", "Ревьюер")]),
+    )
+    .await;
+    let user: String = sqlx::query_scalar("SELECT id FROM users WHERE name = 'Ревьюер'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let settings = format!("/users/{user}/settings");
+
+    // Only a section given: the chip counts its books.
+    let saved = send(
+        &state,
+        post(
+            &settings,
+            Some(&session),
+            &[
+                ("login_on", "on"),
+                ("login", "review"),
+                ("password", "review"),
+                ("access", "selected"),
+                ("categories", &demo),
+            ],
+        ),
+    )
+    .await;
+    assert!(!saved.body.contains("role=\"alert\""), "{}", saved.body);
+    let page = send(&state, get("/users", Some(&session))).await;
+    assert!(
+        page.body.contains("Книг: 2") || page.body.contains("Books: 2"),
+        "{}",
+        page.body
+    );
+
+    // Renamed; an empty name comes back with the error.
+    let empty = send(
+        &state,
+        post(
+            &settings,
+            Some(&session),
+            &[("name", " "), ("access", "all")],
+        ),
+    )
+    .await;
+    assert!(empty.body.contains("role=\"alert\""), "{}", empty.body);
+    let renamed = send(
+        &state,
+        post(
+            &settings,
+            Some(&session),
+            &[
+                ("name", "Модерация"),
+                ("login_on", "on"),
+                ("login", "review"),
+                ("access", "all"),
+            ],
+        ),
+    )
+    .await;
+    assert!(!renamed.body.contains("role=\"alert\""), "{}", renamed.body);
+    assert!(renamed.body.contains("Модерация"), "{}", renamed.body);
+
+    // Deleted: gone from the list, the phone is cut off, the login is free again.
+    let signed = send(&state, app_login("review", "review")).await.json();
+    let token = signed["access_token"].as_str().unwrap().to_owned();
+    let owner: String = sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let not_listener = send(
+        &state,
+        post(&format!("/users/{owner}/delete"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(not_listener.status, StatusCode::NOT_FOUND);
+    let gone = send(
+        &state,
+        post(&format!("/users/{user}/delete"), Some(&session), &[]),
+    )
+    .await;
+    assert!(!gone.body.contains("Модерация"), "{}", gone.body);
+    assert_ne!(
+        send(&state, bearer_get("/v1/sync", &token)).await.status,
+        StatusCode::OK
+    );
+    send(&state, post("/users", Some(&session), &[("name", "Новый")])).await;
+    let fresh: String = sqlx::query_scalar("SELECT id FROM users WHERE name = 'Новый'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let reused = send(
+        &state,
+        post(
+            &format!("/users/{fresh}/settings"),
+            Some(&session),
+            &[
+                ("login_on", "on"),
+                ("login", "review"),
+                ("password", "review"),
+                ("access", "all"),
+            ],
+        ),
+    )
+    .await;
+    assert!(!reused.body.contains("role=\"alert\""), "{}", reused.body);
+}
