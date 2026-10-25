@@ -8,6 +8,7 @@ pub mod blobs;
 pub mod books;
 pub mod categories;
 pub mod delivery;
+pub mod demo;
 pub mod devices;
 pub mod ingest;
 pub mod languages;

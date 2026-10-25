@@ -104,6 +104,30 @@ pub async fn create(
     name: &str,
     files: &[NewFile],
 ) -> Result<Created> {
+    create_with(state, tenant_id, name, files, false).await
+}
+
+/// [`create`] for files the server itself puts with [`put_file`]: every target is the
+/// server, also on a store that takes presigned uploads (the demo library does this).
+///
+/// # Errors
+/// As [`create`], but never `upload_hash_required`.
+pub(crate) async fn create_from_server(
+    state: &AppState,
+    tenant_id: &str,
+    name: &str,
+    files: &[NewFile],
+) -> Result<Created> {
+    create_with(state, tenant_id, name, files, true).await
+}
+
+async fn create_with(
+    state: &AppState,
+    tenant_id: &str,
+    name: &str,
+    files: &[NewFile],
+    from_server: bool,
+) -> Result<Created> {
     let invalid = |code: &str| BerthError::Validation(code.into());
     if files.is_empty() {
         return Err(invalid("upload_empty"));
@@ -132,7 +156,7 @@ pub async fn create(
         .await?
         .context("no default storage")?;
     let store = profiles::open(state, tenant_id, &storage_id).await?;
-    let presigned = store.supports_presigned();
+    let presigned = !from_server && store.supports_presigned();
     let library_id = books::default_library_id(&state.db, tenant_id).await?;
 
     let id = uuid::Uuid::now_v7().to_string();

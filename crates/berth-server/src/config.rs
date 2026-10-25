@@ -34,6 +34,8 @@ pub struct Config {
     /// Browser origins allowed to call the JSON API (CORS), e.g. a web build of the app.
     /// Debug builds also allow any `localhost` origin.
     pub cors_origins: Vec<String>,
+    /// Where the demo library downloads its recordings: archive.org, or a stand-in in tests.
+    pub demo_source: Url,
 }
 
 impl Default for Config {
@@ -46,6 +48,7 @@ impl Default for Config {
             lan_url: None,
             wan_url: None,
             cors_origins: Vec::new(),
+            demo_source: Url::parse("https://archive.org").expect("valid URL"),
         }
     }
 }

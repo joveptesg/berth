@@ -1,0 +1,130 @@
+{% import "partials/ui.html" as ui %}
+{# The demo library: what to load, who sees it, and how the books stand. `demo`: active, busy,
+   slots (picked), sets (slots by set), full, closed, open_to, listeners, reviewer (on, name,
+   login, saved), error, saved, books, catalog, sizes (slot: [short, full] MB), counts,
+   locale_names, section, ready. #}
+{% set d = demo %}
+<section id="demo" class="flex flex-col gap-6"
+  x-data='{ slots: {{ d.slots | tojson }}, sets: {{ d.sets | tojson }}, length: {{ ("full" if d.full else "short") | tojson }}, closed: {{ "true" if d.closed else "false" }}, openTo: {{ d.open_to | tojson }}, reviewer: {{ "true" if d.reviewer.on else "false" }}, sizes: {{ d.sizes | tojson }},
+    picked(set) { return this.sets[set].filter(s => this.slots.includes(s)).length },
+    toggle(set) { const all = this.picked(set) === this.sets[set].length; this.slots = all ? this.slots.filter(s => !this.sets[set].includes(s)) : [...new Set([...this.slots, ...this.sets[set]])] },
+    get megabytes() { return this.slots.reduce((sum, s) => sum + (this.sizes[s] ? this.sizes[s][this.length === "full" ? 1 : 0] : 0), 0) } }'>
+  <div class="max-w-[68ch]">
+    <p class="text-[15px] text-text-2">{{ t('demo.intro') }}</p>
+    <p class="mt-2 text-[13px] text-text-3">{{ t('demo.rights') }}</p>
+  </div>
+
+  <form method="post" action="/settings/demo" hx-post="/settings/demo" hx-target="#demo" hx-swap="outerHTML"
+    hx-disabled-elt="find button[type=submit]" class="card flex flex-col gap-6">
+    {% if d.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ d.error) }}</p>{% endif %}
+    {% if d.saved %}<p class="alert-ok" role="status">{{ t('demo.applied') }}</p>{% endif %}
+
+    <section class="flex flex-col gap-3">
+      <h3 class="text-[15px] font-semibold">{{ t('demo.sets_title') }}</h3>
+      <input type="hidden" name="slots" :value="slots.join(',')" value="{{ d.slots | join(',') }}">
+      {# A set chip picks or drops all its books; partly picked, it says how many. #}
+      <div class="flex flex-wrap gap-2">
+        {% for code in ["ru", "en"] %}
+        <button type="button" @click='toggle({{ code | tojson }})'
+          :aria-pressed='picked({{ code | tojson }}) > 0'
+          :class='picked({{ code | tojson }}) > 0 ? "border-accent bg-accent-soft text-accent-fg" : "border-line text-text-2 hover:bg-surface-2"'
+          class="inline-flex min-h-10 cursor-pointer items-center gap-2 rounded-full border px-4 text-[14.5px] font-semibold transition-colors">
+          <span class="mono text-[12px] tracking-[0.06em] uppercase opacity-70">{{ code }}</span>{{ d.locale_names[code] }}
+          <span class="text-[12.5px] font-medium opacity-80" x-text='"· " + picked({{ code | tojson }}) + " / " + sets[{{ code | tojson }}].length'>· {{ d.counts[code] }}</span>
+        </button>
+        {% endfor %}
+      </div>
+      <details class="group rounded-[14px] border border-line">
+        <summary class="cursor-pointer list-none px-4 py-3 text-[14px] font-semibold text-accent-fg">
+          {{ t('demo.which_books') }} <span class="font-medium text-text-3" x-text='"· " + slots.length'></span>
+        </summary>
+        <ul class="divide-y divide-line border-t border-line">
+          {% for b in d.catalog %}
+          <li>
+            <label class="flex cursor-pointer items-center gap-3 px-4 py-2.5 hover:bg-surface-2">
+              <input type="checkbox" value="{{ b.slot }}" x-model="slots" {% if b.slot in d.slots %}checked{% endif %} class="size-[18px] shrink-0 accent-accent">
+              <span class="mono w-6 shrink-0 text-[11.5px] font-bold text-text-3 uppercase">{{ b.locale }}</span>
+              <span class="min-w-0 flex-1">
+                <span class="block truncate text-[14.5px] font-semibold">{{ b.title }}</span>
+                <span class="block truncate text-[13px] text-text-3">{{ b.authors | join(", ") }}{% if b.series %} · {{ b.series }} #{{ b.series_no | num }}{% endif %}</span>
+              </span>
+              <span class="mono shrink-0 text-[12.5px] text-text-3">{{ t('demo.hours', hours=b.hours) }}</span>
+            </label>
+          </li>
+          {% endfor %}
+        </ul>
+      </details>
+    </section>
+
+    <section class="flex flex-col gap-3">
+      <h3 class="text-[15px] font-semibold">{{ t('demo.length_title') }}</h3>
+      <div class="inline-flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 sm:w-auto sm:self-start">
+        {% for value in ["short", "full"] %}
+        <label class="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-[11px] px-4 text-[14px] font-semibold whitespace-nowrap text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)]">
+          <input type="radio" name="length" value="{{ value }}" x-model="length" {% if (value == "full") == d.full %}checked{% endif %} class="sr-only">{{ t('demo.length_' ~ value) }}
+        </label>
+        {% endfor %}
+      </div>
+      <p class="text-[13px] text-text-3">
+        {{ t('demo.size_prefix') }} <span class="mono font-semibold text-text-2" x-text="megabytes >= 1000 ? (megabytes / 1000).toFixed(1) + ' {{ t('demo.gb') }}' : megabytes + ' {{ t('demo.mb') }}'"></span>
+        · {{ t('demo.length_hint') }}
+      </p>
+    </section>
+
+    <section class="flex flex-col gap-3 border-t border-line pt-5">
+      <label class="flex cursor-pointer items-start gap-3">
+        <input type="checkbox" name="closed" value="on" x-model="closed" {% if d.closed %}checked{% endif %} class="mt-0.5 size-[18px] shrink-0 accent-accent">
+        <span>
+          <span class="flex items-center gap-1.5 text-[15px] font-semibold">{{ ui.icon("lock", "size-4") }}{{ t('demo.closed_label') }}</span>
+          <span class="block text-[13px] leading-snug text-text-3">{{ t('demo.closed_hint') }}</span>
+        </span>
+      </label>
+      <input type="hidden" name="users" :value="openTo.join(',')" value="{{ d.open_to | join(',') }}">
+      {% if d.listeners %}
+      <div class="flex flex-col gap-2" x-show="closed" {% if not d.closed %}style="display: none"{% endif %}>
+        <p class="text-[13.5px] font-semibold text-text-2">{{ t('categories.users_label') }}</p>
+        <div class="flex flex-wrap gap-2">
+          {% for u in d.listeners %}
+          <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+            <input type="checkbox" value="{{ u.id }}" x-model="openTo" {% if u.id in d.open_to %}checked{% endif %} class="sr-only">{{ u.name }}
+          </label>
+          {% endfor %}
+        </div>
+      </div>
+      {% endif %}
+    </section>
+
+    <section class="flex flex-col gap-3 border-t border-line pt-5">
+      <label class="flex cursor-pointer items-start gap-3">
+        <input type="checkbox" name="reviewer" value="on" x-model="reviewer" {% if d.reviewer.on %}checked{% endif %} class="mt-0.5 size-[18px] shrink-0 accent-accent">
+        <span>
+          <span class="block text-[15px] font-semibold">{{ t('demo.reviewer_label') }}</span>
+          <span class="block text-[13px] leading-snug text-text-3">{{ t('demo.reviewer_hint') }}</span>
+        </span>
+      </label>
+      <div x-show="reviewer" {% if not d.reviewer.on %}style="display: none"{% endif %} class="grid grid-cols-1 gap-3 sm:grid-cols-3">
+        <div>
+          <label for="demo-reviewer-name" class="field-label">{{ t('demo.reviewer_name') }}</label>
+          <input id="demo-reviewer-name" name="reviewer_name" value="{{ d.reviewer.name }}" :required="reviewer" maxlength="64" autocomplete="off" placeholder="{{ t('demo.reviewer_name_placeholder') }}" class="input">
+        </div>
+        <div>
+          <label for="demo-reviewer-login" class="field-label">{{ t('users.login_label') }}</label>
+          <input id="demo-reviewer-login" name="reviewer_login" value="{{ d.reviewer.login }}" :required="reviewer" maxlength="64" autocomplete="off" autocapitalize="none" spellcheck="false" class="input mono">
+        </div>
+        <div>
+          <label for="demo-reviewer-password" class="field-label">{{ t('users.password_label') }}</label>
+          <input id="demo-reviewer-password" name="reviewer_password" type="text" autocomplete="off" spellcheck="false"
+            {% if not d.reviewer.saved %}:required="reviewer"{% endif %} placeholder="{{ t('users.password_keep') if d.reviewer.saved else '' }}" class="input mono">
+        </div>
+        <p class="field-hint -mt-1 sm:col-span-3">{{ t('demo.reviewer_access') }}</p>
+      </div>
+    </section>
+
+    <div class="flex flex-wrap items-center gap-3 border-t border-line pt-5">
+      <button type="submit" class="btn btn-primary">{{ ui.icon("download", "size-[18px]") }}{{ t('demo.apply') if d.active else t('demo.load') }}</button>
+      <p class="text-[13px] text-text-3">{{ t('demo.queue_hint') }}</p>
+    </div>
+  </form>
+
+  {% include "partials/demo_books.html" %}
+</section>

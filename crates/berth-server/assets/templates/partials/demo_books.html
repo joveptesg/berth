@@ -1,0 +1,32 @@
+{% import "partials/ui.html" as ui %}
+{# How the demo books stand; polls itself while some are loading. `demo`: as in settings_demo. #}
+{% set d = demo %}
+<section id="demo-books" class="flex flex-col gap-3"
+  {% if d.busy %}hx-get="/settings/demo/status" hx-trigger="every 3s" hx-target="this" hx-swap="outerHTML"{% endif %}>
+  {% if d.active %}
+  <div class="flex flex-wrap items-end justify-between gap-3">
+    <div>
+      <h3 class="text-[18px] font-bold">{{ t('demo.state_title') }}</h3>
+      <p class="mt-0.5 text-[13.5px] text-text-3">
+        {{ t('demo.ready_count', ready=d.ready, count=d.books | length) }}{% if d.section %} · {{ t('demo.in_section', name=d.section) }}{% endif %}
+      </p>
+    </div>
+    <button type="button" hx-post="/settings/demo/remove" hx-target="#demo" hx-swap="outerHTML"
+      hx-confirm="{{ t('demo.remove_confirm') }}" class="btn btn-danger min-h-10 px-4 text-[14px]">{{ ui.icon("trash", "size-[18px]") }}{{ t('demo.remove') }}</button>
+  </div>
+  <ul class="card divide-y divide-line p-0 sm:p-0">
+    {% for b in d.books %}
+    <li class="flex items-center gap-3 px-5 py-3 sm:px-6">
+      <span class="mono w-7 shrink-0 text-[11.5px] font-bold text-text-3 uppercase">{{ b.locale }}</span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate text-[15px] font-semibold">{{ b.title }}</p>
+        {% if b.error %}<p class="truncate text-[12.5px] text-danger" title="{{ b.error }}">{{ b.error }}</p>
+        {% else %}<p class="truncate text-[13px] text-text-3">{{ b.authors | join(", ") }} · {{ t('demo.length_' ~ ("full" if b.full else "short")) }}</p>{% endif %}
+      </div>
+      {% if b.status == "ready" %}{% set tone = "bg-ok/12 text-ok" %}{% elif b.status == "failed" %}{% set tone = "bg-danger/10 text-danger" %}{% elif b.status == "downloading" %}{% set tone = "bg-accent-soft text-accent-fg" %}{% else %}{% set tone = "bg-surface-2 text-text-2" %}{% endif %}
+      <span class="chip shrink-0 {{ tone }}">{% if b.status == "downloading" %}<span class="mr-1.5 inline-block size-2 animate-pulse rounded-full bg-current"></span>{% endif %}{{ t('demo.status_' ~ ("retrying" if b.status == "queued" and b.error else b.status)) }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+</section>

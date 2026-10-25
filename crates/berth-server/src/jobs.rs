@@ -9,7 +9,11 @@ use anyhow::Context;
 use serde_json::Value;
 use sqlx::SqliteConnection;
 
-use crate::{AppState, db::now_ms, service::ingest};
+use crate::{
+    AppState,
+    db::now_ms,
+    service::{demo, ingest},
+};
 
 /// Lease of a claimed job: longer than any job runs.
 const LEASE_MS: i64 = 30 * 60 * 1000;
@@ -20,6 +24,8 @@ const POLL: Duration = Duration::from_secs(5);
 
 /// Analyses an upload: `{"upload_id": ...}`.
 pub(crate) const INGEST: &str = "ingest_pipeline";
+/// Loads a book of the demo library: `{"slot": ..., "full": ...}`.
+pub(crate) const DEMO_BOOK: &str = "demo_book";
 
 /// Adds a job, due now; call [`AppState::wake_jobs`] after the transaction commits.
 pub(crate) async fn enqueue(
@@ -123,11 +129,15 @@ async fn run(state: &AppState, tenant_id: &str, kind: &str, payload: &Value) -> 
             let upload = payload["upload_id"].as_str().context("upload_id")?;
             ingest::analyze(state, tenant_id, upload).await
         }
+        DEMO_BOOK => demo::run_job(state, tenant_id, payload).await,
         _ => anyhow::bail!("unknown job kind {kind}"),
     }
 }
 
 async fn gave_up(state: &AppState, tenant_id: &str, kind: &str, payload: &Value, error: &str) {
+    if kind == DEMO_BOOK {
+        demo::give_up(&state.db, tenant_id, payload, error).await;
+    }
     if kind == INGEST
         && let Some(upload) = payload["upload_id"].as_str()
         && let Err(err) = ingest::fail(&state.db, tenant_id, upload, error).await

@@ -5,6 +5,7 @@
 mod access;
 mod categories;
 mod csrf;
+mod demo;
 mod i18n;
 mod languages;
 mod library;
@@ -87,6 +88,9 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             get(languages::edit_dialog),
         )
         .route("/settings/languages/{code}/delete", post(languages::delete))
+        .route("/settings/demo", get(demo::page).post(demo::apply))
+        .route("/settings/demo/status", get(demo::status))
+        .route("/settings/demo/remove", post(demo::remove))
         .route("/settings/backup", get(pages::settings_backup_page))
         .route("/settings/restore", get(pages::settings_restore_page))
         .route("/settings/backup/download", get(pages::backup_download))

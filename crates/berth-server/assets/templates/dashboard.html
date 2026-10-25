@@ -16,7 +16,10 @@
       <h2 class="text-[22px] font-bold">{{ t('dashboard.empty_title') }}</h2>
       <p class="mt-1.5 max-w-[52ch] text-[16px] text-text-2">{{ t('dashboard.empty_body') }}</p>
     </div>
-    <a href="/upload" class="btn btn-primary relative">{{ ui.icon("upload", "size-[18px]") }}{{ t('dashboard.upload') }}</a>
+    <div class="relative flex flex-wrap gap-2">
+      <a href="/upload" class="btn btn-primary">{{ ui.icon("upload", "size-[18px]") }}{{ t('dashboard.upload') }}</a>
+      <a href="/settings/demo" class="btn btn-ghost">{{ ui.icon("books", "size-[18px]") }}{{ t('dashboard.demo') }}</a>
+    </div>
   </div>
 </section>
 {% endif %}

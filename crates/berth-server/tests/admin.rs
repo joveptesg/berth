@@ -3120,3 +3120,258 @@ async fn closed_and_given_sections_and_the_languages_tab() {
     let page = send(&state, bearer_get("/v1/sync", &admin)).await.json();
     assert_eq!(page["languages"][0]["name"], "Русский");
 }
+
+// ── Demo library ─────────────────────────────────────────
+
+/// A stand-in for archive.org: every item has seven short MP3s and a public-domain license,
+/// except `chelovek_2103_librivox`, which is under CC BY.
+async fn fake_archive() -> String {
+    use axum::{Json, Router, extract::Path as UrlPath, routing::get as route_get};
+    fn mp3() -> Vec<u8> {
+        fixtures::mp3(&fixtures::Mp3 {
+            seconds: 1,
+            title: Some("Глава"),
+            album: Some("Книга"),
+            artist: Some("Автор"),
+            narrator: Some("Чтец LibriVox"),
+            track: None,
+            genre: None,
+            language: None,
+            chapters: &[],
+            cover: false,
+        })
+    }
+    let app = Router::new()
+        .route(
+            "/metadata/{item}",
+            route_get(|UrlPath(item): UrlPath<String>| async move {
+                let license = if item == "chelovek_2103_librivox" {
+                    "https://creativecommons.org/licenses/by/4.0/"
+                } else {
+                    "http://creativecommons.org/publicdomain/mark/1.0/"
+                };
+                let size = mp3().len().to_string();
+                let files: Vec<serde_json::Value> = (1..=7)
+                    .map(|i| {
+                        serde_json::json!({ "name": format!("{item}_{i:02}_64kb.mp3"), "format": "64Kbps MP3", "size": size })
+                    })
+                    .chain([serde_json::json!({ "name": "x.ogg", "format": "Ogg Vorbis" })])
+                    .collect();
+                Json(serde_json::json!({ "metadata": { "licenseurl": license }, "files": files }))
+            }),
+        )
+        .route(
+            "/download/{item}/{name}",
+            route_get(|| async { mp3() }),
+        );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{addr}")
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: load, review listener, whole books, remove"
+)]
+async fn the_demo_library_loads_changes_and_goes() {
+    let dir = tempfile::tempdir().unwrap();
+    let source = fake_archive().await;
+    let config = dir.path().join("berth.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "data_dir = '{}'\ndemo_source = '{source}'\n",
+            dir.path().join("data").display()
+        ),
+    )
+    .unwrap();
+    let state = berth_server::bootstrap(Some(&config)).await.unwrap();
+    let session = set_up(&state).await;
+    let admin = admin_token(&state).await;
+
+    // A listener of the family, who must not see a closed demo.
+    send(
+        &state,
+        post("/users", Some(&session), &[("name", "Reader")]),
+    )
+    .await;
+    let reader: String = sqlx::query_scalar("SELECT id FROM users WHERE name = 'Reader'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    send(
+        &state,
+        post(
+            &format!("/users/{reader}/settings"),
+            Some(&session),
+            &[
+                ("login_on", "on"),
+                ("login", "reader"),
+                ("password", "reader"),
+                ("access", "all"),
+            ],
+        ),
+    )
+    .await;
+
+    let tab = send(&state, get("/settings/demo", Some(&session))).await;
+    assert!(tab.body.contains("Белые ночи"), "{}", tab.body);
+    let missing = send(
+        &state,
+        post(
+            "/settings/demo",
+            Some(&session),
+            &[("slots", ""), ("length", "short")],
+        ),
+    )
+    .await;
+    assert!(missing.body.contains("alert-error"), "{}", missing.body);
+    // One book picked alone first, then the whole Russian set.
+    send(
+        &state,
+        post(
+            "/settings/demo",
+            Some(&session),
+            &[("slots", "ru-01"), ("length", "short")],
+        ),
+    )
+    .await;
+    berth_server::jobs::run_due(&state).await.unwrap();
+    let picked: Vec<String> = sqlx::query_scalar("SELECT slot FROM demo_books")
+        .fetch_all(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(picked, ["ru-01"], "one book picked, one loaded");
+    let russian: Vec<String> = berth_server::service::demo::catalog()
+        .into_iter()
+        .filter(|b| b.locale == "ru")
+        .map(|b| b.slot)
+        .collect();
+    let russian = russian.join(",");
+    let applied = send(
+        &state,
+        post(
+            "/settings/demo",
+            Some(&session),
+            &[
+                ("slots", &russian),
+                ("length", "short"),
+                ("closed", "on"),
+                ("reviewer", "on"),
+                ("reviewer_name", "Модерация"),
+                ("reviewer_login", "review"),
+                ("reviewer_password", "review"),
+            ],
+        ),
+    )
+    .await;
+    assert!(!applied.body.contains("alert-error"), "{}", applied.body);
+    berth_server::jobs::run_due(&state).await.unwrap();
+
+    let statuses: Vec<(String, String)> =
+        sqlx::query_as("SELECT slot, status FROM demo_books ORDER BY slot")
+            .fetch_all(&state.db)
+            .await
+            .unwrap();
+    assert_eq!(statuses.len(), 9, "the Russian set");
+    assert_eq!(
+        statuses.iter().filter(|(_, s)| s == "ready").count(),
+        8,
+        "{statuses:?}"
+    );
+    assert!(
+        statuses.contains(&("ru-09".into(), "failed".into())),
+        "not public domain"
+    );
+
+    let ids = |page: &serde_json::Value| -> Vec<String> {
+        page["books"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["id"].as_str().unwrap().to_owned())
+            .collect()
+    };
+    let token = |login: &'static str, password: &'static str| {
+        let state = &state;
+        async move {
+            send(state, app_login(login, password)).await.json()["access_token"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    let review = token("review", "review").await;
+    let page = send(&state, bearer_get("/v1/sync", &review)).await.json();
+    assert_eq!(ids(&page).len(), 8);
+    assert_eq!(page["categories"][0]["name"], "Demo");
+    let book = page["books"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["title"] == "Белые ночи")
+        .unwrap()
+        .clone();
+    assert_eq!(book["files"].as_array().unwrap().len(), 3, "first chapters");
+    assert_eq!(book["language"], "ru");
+    let reader_token = token("reader", "reader").await;
+    let page = send(&state, bearer_get("/v1/sync", &reader_token))
+        .await
+        .json();
+    assert!(ids(&page).is_empty(), "closed to the family");
+    let page = send(&state, bearer_get("/v1/sync", &admin)).await.json();
+    assert_eq!(ids(&page).len(), 8, "the owner sees it");
+
+    // Whole books replace the short ones; the review password stays when left empty.
+    send(
+        &state,
+        post(
+            "/settings/demo",
+            Some(&session),
+            &[
+                ("slots", &russian),
+                ("length", "full"),
+                ("closed", "on"),
+                ("reviewer", "on"),
+                ("reviewer_name", "Модерация"),
+                ("reviewer_login", "review"),
+                ("reviewer_password", ""),
+            ],
+        ),
+    )
+    .await;
+    berth_server::jobs::run_due(&state).await.unwrap();
+    let page = send(&state, bearer_get("/v1/sync", &review)).await.json();
+    assert_eq!(ids(&page).len(), 8, "replaced, not doubled");
+    let whole = page["books"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["title"] == "Белые ночи")
+        .unwrap()
+        .clone();
+    assert_eq!(whole["files"].as_array().unwrap().len(), 7);
+    assert_ne!(whole["id"], book["id"]);
+    let tab = send(&state, get("/settings/demo", Some(&session))).await;
+    assert!(tab.body.contains("Модерация"), "{}", tab.body);
+
+    // Removed: no demo books, no section, no review login.
+    let removed = send(&state, post("/settings/demo/remove", Some(&session), &[])).await;
+    assert!(!removed.body.contains("alert-error"), "{}", removed.body);
+    let books: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM books WHERE deleted_at IS NULL")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(books, 0);
+    let sections: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM categories")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(sections, 0);
+    assert_eq!(
+        send(&state, app_login("review", "review")).await.problem(),
+        "login_failed"
+    );
+}

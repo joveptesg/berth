@@ -1,0 +1,292 @@
+{
+  "books": [
+    {
+      "slot": "en-01",
+      "locale": "en",
+      "archive": "studyinscarlet_0811_librivox",
+      "chapters": 3,
+      "title": "A Study in Scarlet",
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "series": "Sherlock Holmes",
+      "series_no": 1,
+      "files": 14,
+      "hours": 4.2,
+      "mb_short": 28,
+      "mb_full": 122
+    },
+    {
+      "slot": "en-02",
+      "locale": "en",
+      "archive": "sign_of_four_librivox",
+      "chapters": 3,
+      "title": "The Sign of the Four",
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "series": "Sherlock Holmes",
+      "series_no": 2,
+      "files": 12,
+      "hours": 4.3,
+      "mb_short": 21,
+      "mb_full": 124
+    },
+    {
+      "slot": "en-03",
+      "locale": "en",
+      "archive": "adventures_holmes",
+      "chapters": 2,
+      "title": "The Adventures of Sherlock Holmes",
+      "authors": [
+        "Arthur Conan Doyle"
+      ],
+      "series": "Sherlock Holmes",
+      "series_no": 3,
+      "files": 12,
+      "hours": 10.3,
+      "mb_short": 60,
+      "mb_full": 297
+    },
+    {
+      "slot": "en-04",
+      "locale": "en",
+      "archive": "pride_and_prejudice_librivox",
+      "chapters": 4,
+      "title": "Pride and Prejudice",
+      "authors": [
+        "Jane Austen"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 37,
+      "hours": 13.1,
+      "mb_short": 27,
+      "mb_full": 378
+    },
+    {
+      "slot": "en-05",
+      "locale": "en",
+      "archive": "timemachine_sjm_librivox",
+      "chapters": 3,
+      "title": "The Time Machine",
+      "authors": [
+        "H. G. Wells"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 12,
+      "hours": 3.7,
+      "mb_short": 24,
+      "mb_full": 106
+    },
+    {
+      "slot": "en-06",
+      "locale": "en",
+      "archive": "treasure_island_ap_librivox",
+      "chapters": 3,
+      "title": "Treasure Island",
+      "authors": [
+        "Robert Louis Stevenson"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 17,
+      "hours": 7.5,
+      "mb_short": 40,
+      "mb_full": 220
+    },
+    {
+      "slot": "en-07",
+      "locale": "en",
+      "archive": "wind_in_the_willows_collab_librivox",
+      "chapters": 2,
+      "title": "The Wind in the Willows",
+      "authors": [
+        "Kenneth Grahame"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 12,
+      "hours": 6.5,
+      "mb_short": 27,
+      "mb_full": 187
+    },
+    {
+      "slot": "en-08",
+      "locale": "en",
+      "archive": "alices_adventures_1003",
+      "chapters": 3,
+      "title": "Alice's Adventures in Wonderland",
+      "authors": [
+        "Lewis Carroll"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 12,
+      "hours": 2.8,
+      "mb_short": 18,
+      "mb_full": 80
+    },
+    {
+      "slot": "en-09",
+      "locale": "en",
+      "archive": "frankenstein_shelley",
+      "chapters": 3,
+      "title": "Frankenstein",
+      "authors": [
+        "Mary Shelley"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 22,
+      "hours": 8.3,
+      "mb_short": 31,
+      "mb_full": 239
+    },
+    {
+      "slot": "ru-01",
+      "locale": "ru",
+      "archive": "white_nights_librivox",
+      "chapters": 3,
+      "title": "Белые ночи",
+      "authors": [
+        "Фёдор Достоевский"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 7,
+      "hours": 2,
+      "mb_short": 28,
+      "mb_full": 57
+    },
+    {
+      "slot": "ru-02",
+      "locale": "ru",
+      "archive": "notes_underground_russian",
+      "chapters": 4,
+      "title": "Записки из подполья",
+      "authors": [
+        "Фёдор Достоевский"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 18,
+      "hours": 4.4,
+      "mb_short": 26,
+      "mb_full": 127
+    },
+    {
+      "slot": "ru-03",
+      "locale": "ru",
+      "archive": "childhood_russian_librivox",
+      "chapters": 6,
+      "title": "Детство",
+      "authors": [
+        "Лев Толстой"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 28,
+      "hours": 3.5,
+      "mb_short": 24,
+      "mb_full": 101
+    },
+    {
+      "slot": "ru-04",
+      "locale": "ru",
+      "archive": "belkintales_1406_librivox",
+      "chapters": 3,
+      "title": "Повести Белкина",
+      "authors": [
+        "Александр Пушкин"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 6,
+      "hours": 2.4,
+      "mb_short": 31,
+      "mb_full": 69
+    },
+    {
+      "slot": "ru-05",
+      "locale": "ru",
+      "archive": "dubrovsky_1411_librivox",
+      "chapters": 3,
+      "title": "Дубровский",
+      "authors": [
+        "Александр Пушкин"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 6,
+      "hours": 2.3,
+      "mb_short": 29,
+      "mb_full": 66
+    },
+    {
+      "slot": "ru-06",
+      "locale": "ru",
+      "archive": "eugene_onegin_1801_librivox",
+      "chapters": 3,
+      "title": "Евгений Онегин",
+      "authors": [
+        "Александр Пушкин"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 8,
+      "hours": 2.8,
+      "mb_short": 31,
+      "mb_full": 82
+    },
+    {
+      "slot": "ru-07",
+      "locale": "ru",
+      "archive": "dvoryanskoegnezdo_1906_librivox",
+      "chapters": 4,
+      "title": "Дворянское гнездо",
+      "authors": [
+        "Иван Тургенев"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 25,
+      "hours": 6.6,
+      "mb_short": 24,
+      "mb_full": 190
+    },
+    {
+      "slot": "ru-08",
+      "locale": "ru",
+      "archive": "Poezdka_Polesye_librivox",
+      "chapters": 3,
+      "title": "Поездка в Полесье",
+      "authors": [
+        "Иван Тургенев"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 3,
+      "hours": 0.7,
+      "mb_short": 20,
+      "mb_full": 20
+    },
+    {
+      "slot": "ru-09",
+      "locale": "ru",
+      "archive": "chelovek_2103_librivox",
+      "chapters": 6,
+      "title": "Человек в футляре",
+      "authors": [
+        "Антон Чехов"
+      ],
+      "series": null,
+      "series_no": null,
+      "files": 6,
+      "hours": 0.7,
+      "mb_short": 20,
+      "mb_full": 20
+    }
+  ]
+}

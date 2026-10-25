@@ -60,6 +60,8 @@ login:
   phone_expired: The code expired. Get a new one.
 
 dashboard:
+  demo: "Demo library"
+  job_demo_book: "Demo book"
   title: Dashboard
   subtitle: Everything happening on %{name}
   empty_title: No libraries yet
@@ -249,6 +251,44 @@ languages:
   delete_blocked: "Books have this language: change it on them first."
   empty: "No languages: books stay without one."
 
+demo:
+  section: "Demo library"
+  section_name: "Demo"
+  intro: "A few audiobooks to try Berth with: classics in the original language, read by LibriVox volunteers. The server downloads them from archive.org and puts them into a section of their own; you can change the choice or remove them later."
+  rights: "The texts and the LibriVox recordings are in the public domain, the server checks the license of every recording before loading it; the covers are drawn by Berth."
+  sets_title: "Books"
+  books_count: "%{count} books"
+  length_title: "Length"
+  length_short: "First chapters"
+  length_full: "Whole books"
+  length_hint: "First chapters are enough to try the player and downloads."
+  size_prefix: "To download:"
+  mb: "MB"
+  gb: "GB"
+  which_books: "Pick books"
+  hours: "%{hours} h"
+  closed_label: "Closed section"
+  closed_hint: "Only you and the listeners you pick see the demo books. Without it they are in everyone's library."
+  reviewer_label: "A listener for store review"
+  reviewer_hint: "For the server App Store, Google Play and RuStore reviewers sign in to. Better left off on a home server."
+  reviewer_name: "Name"
+  reviewer_name_placeholder: "Store review"
+  reviewer_access: "They sign in to the app with this login and password and see only the demo books."
+  load: "Load the demo library"
+  apply: "Apply changes"
+  applied: "Saved. Books load in the background, one after another."
+  queue_hint: "Books load one by one; your own uploads wait meanwhile."
+  state_title: "Demo books"
+  ready_count: "Loaded %{ready} of %{count}"
+  in_section: "section «%{name}»"
+  remove: "Remove the demo library"
+  remove_confirm: "Remove the demo books and their section? The review listener can no longer sign in."
+  status_queued: "Queued"
+  status_downloading: "Loading"
+  status_retrying: "Will retry"
+  status_ready: "Loaded"
+  status_failed: "Failed"
+
 categories:
   open_to_nobody: "open to nobody"
   open_to: "open to %{names}"
@@ -353,6 +393,8 @@ upload:
   save_hint: Phones get the book on their next sync.
 
 errors:
+  demo_books_required: "Pick at least one book."
+  demo_reviewer_name_required: "Enter the name of the review listener."
   language_in_use: "Books have this language: change it on them first."
   language_name_too_long: "The name is too long: 40 characters at most."
   language_name_required: "Enter the name of the language."
