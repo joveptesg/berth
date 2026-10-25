@@ -36,6 +36,7 @@
   <div class="card">
     <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.version_card') }}</dt>
     <dd class="mono mt-1.5 text-[17px]">{{ version }}</dd>
+    {% if update %}<dd class="mt-1 flex items-center gap-1.5 text-[13px] font-semibold text-accent-fg"><span class="size-2 rounded-full bg-accent"></span>{{ t('update.available', version=update.version) }}</dd>{% endif %}
   </div>
 </dl>
 

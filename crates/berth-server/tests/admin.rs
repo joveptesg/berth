@@ -4184,3 +4184,72 @@ async fn listener_count_rename_delete() {
     .await;
     assert!(!reused.body.contains("role=\"alert\""), "{}", reused.body);
 }
+
+/// A stand-in for the GitHub release feed that answers with `tag`.
+async fn fake_release_feed(tag: &'static str) -> String {
+    let app = axum::Router::new().route(
+        "/latest",
+        axum::routing::get(move || async move {
+            axum::Json(serde_json::json!({
+                "tag_name": tag,
+                "html_url": format!("https://github.com/joveptesg/berth/releases/tag/{tag}"),
+            }))
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    format!("http://{addr}/latest")
+}
+
+async fn start_with_feed(dir: &Path, feed: &str) -> AppState {
+    let _ = tracing_subscriber::fmt().with_test_writer().try_init();
+    let config = dir.join("berth.toml");
+    std::fs::write(
+        &config,
+        format!(
+            "data_dir = '{}'\nrelease_source = '{feed}'\n",
+            dir.join("data").display()
+        ),
+    )
+    .unwrap();
+    berth_server::bootstrap(Some(&config)).await.unwrap()
+}
+
+#[tokio::test]
+async fn a_newer_release_is_marked_until_checking_is_off() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start_with_feed(dir.path(), &fake_release_feed("v99.0.0").await).await;
+    let session = set_up(&state).await;
+
+    berth_server::update_check::run(&state).await;
+    let page = send(&state, get("/", Some(&session))).await;
+    assert!(page.body.contains("99.0.0 available"), "{}", page.body);
+    assert!(page.body.contains("tag&#x2f;v99.0.0\""), "{}", page.body);
+    // A new major version: the image tag has to be changed by hand.
+    assert!(page.body.contains("berth:99."), "{}", page.body);
+
+    // The checkbox is left out of the form: checking is off and the mark goes.
+    send(
+        &state,
+        post("/settings", Some(&session), &[("name", "Family shelf")]),
+    )
+    .await;
+    assert!(!state.config.load().check_updates);
+    berth_server::update_check::run(&state).await;
+    let page = send(&state, get("/", Some(&session))).await;
+    assert!(!page.body.contains("99.0.0"), "{}", page.body);
+}
+
+#[tokio::test]
+async fn the_current_release_is_not_marked() {
+    let dir = tempfile::tempdir().unwrap();
+    let tag = concat!("v", env!("CARGO_PKG_VERSION"));
+    let state = start_with_feed(dir.path(), &fake_release_feed(tag).await).await;
+    let session = set_up(&state).await;
+
+    berth_server::update_check::run(&state).await;
+    assert!(state.latest_release.load().is_none());
+    let page = send(&state, get("/", Some(&session))).await;
+    assert!(!page.body.contains("update-popover"), "{}", page.body);
+}

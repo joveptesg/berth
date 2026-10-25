@@ -96,6 +96,8 @@ settings:
   lan_hint: например, http://192.168.0.4:8080
   wan_label: Адрес в интернете
   wan_hint: например, https://books.example.com
+  updates_label: Проверять обновления
+  updates_hint: Раз в 6 часов сервер смотрит последний релиз Berth на GitHub. О вашем сервере ничего не передаётся.
   password_section: Пароль администратора
   password_hint: После смены выйдут остальные ваши браузеры.
   current_label: Текущий пароль
@@ -625,3 +627,14 @@ remote_backup:
   secret_label: secret.key старого сервера (необязательно)
   secret_placeholder: 64 шестнадцатеричных символа
   secret_hint: С ним восстановятся ключи всех хранилищ и ИИ. Без него — только ключи этого бакета; ключи других хранилищ нужно будет ввести заново.
+
+update:
+  available: Доступна %{version}
+  title: Вышла версия %{version}
+  current: У вас %{version}.
+  major: Это новая мажорная версия. Тег образа сам на неё не перейдёт — смените его в docker-compose.yml на ghcr.io/joveptesg/berth:%{tag}.
+  how: "Чтобы обновиться, выполните на сервере в папке с docker-compose.yml:"
+  copy: Скопировать команду
+  copied: Скопировано
+  data_kept: Данные в ./data сохранятся; перед изменением базы сервер сам сделает резервную копию.
+  notes: Что нового

@@ -57,7 +57,8 @@
         <form method="post" action="/logout">
           <button type="submit" class="nav-link w-full">{{ ui.icon("logout") }}<span>{{ t('nav.logout') }}</span></button>
         </form>
-        <p class="mono px-3 text-[12px] text-text-3">berth {{ version }}</p>
+        {% if update %}{% include "partials/update_popover.html" %}
+        {% else %}<p class="mono px-3 text-[12px] text-text-3">berth {{ version }}</p>{% endif %}
       </div>
     </aside>
 

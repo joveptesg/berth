@@ -14,11 +14,12 @@ pub mod remote_backup;
 mod secret;
 pub mod service;
 pub mod storage;
+pub mod update_check;
 
 use std::{path::Path, sync::Arc};
 
 use anyhow::Context;
-use arc_swap::ArcSwap;
+use arc_swap::{ArcSwap, ArcSwapOption};
 use sqlx::SqlitePool;
 
 pub use api::{openapi, router};
@@ -45,6 +46,8 @@ pub struct AppState {
     pub setup: Arc<SetupCode>,
     /// Wakes the job worker when a job is queued.
     jobs: Arc<tokio::sync::Notify>,
+    /// A newer release found by [`update_check`].
+    pub latest_release: Arc<ArcSwapOption<update_check::Release>>,
     templates: Arc<minijinja::Environment<'static>>,
 }
 
@@ -109,6 +112,7 @@ pub async fn bootstrap(config_file: Option<&Path>) -> anyhow::Result<AppState> {
         secret: Arc::new(secret),
         setup: Arc::new(setup),
         jobs: Arc::new(tokio::sync::Notify::new()),
+        latest_release: Arc::new(ArcSwapOption::empty()),
         templates: Arc::new(admin::templates::environment()),
     })
 }

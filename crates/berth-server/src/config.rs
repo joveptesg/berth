@@ -36,6 +36,10 @@ pub struct Config {
     pub cors_origins: Vec<String>,
     /// Where the demo library downloads its recordings: archive.org, or a stand-in in tests.
     pub demo_source: Url,
+    /// Whether to look for a newer release every six hours (the admin shows a mark).
+    pub check_updates: bool,
+    /// The latest release on GitHub, or a stand-in in tests.
+    pub release_source: Url,
 }
 
 impl Default for Config {
@@ -49,6 +53,11 @@ impl Default for Config {
             wan_url: None,
             cors_origins: Vec::new(),
             demo_source: Url::parse("https://archive.org").expect("valid URL"),
+            check_updates: true,
+            release_source: Url::parse(
+                "https://api.github.com/repos/joveptesg/berth/releases/latest",
+            )
+            .expect("valid URL"),
         }
     }
 }

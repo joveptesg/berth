@@ -12,6 +12,13 @@
   {{ field("name", t('settings.name_label'), t('setup.name_hint')) }}
   {{ field("lan_url", t('settings.lan_label'), t('settings.lan_hint'), type="url", mono=true) }}
   {{ field("wan_url", t('settings.wan_label'), t('settings.wan_hint'), type="url", mono=true) }}
+  <label class="flex cursor-pointer items-start gap-3">
+    <input type="checkbox" name="check_updates" value="on" {% if settings.check_updates %}checked{% endif %} {% if locked.check_updates %}disabled{% endif %} class="mt-0.5 size-[18px] shrink-0 accent-accent">
+    <span>
+      <span class="block text-[15px] font-semibold">{{ t('settings.updates_label') }}</span>
+      <span class="block text-[13px] leading-snug text-text-3">{{ t('setup.locked') if locked.check_updates else t('settings.updates_hint') }}</span>
+    </span>
+  </label>
   <div class="flex flex-wrap items-center gap-3">
     <button type="submit" class="btn btn-primary">{{ t('common.save') }}</button>
     {% if saved %}<span class="alert-ok py-2" role="status">{{ t('common.saved') }}</span>{% endif %}

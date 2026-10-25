@@ -76,7 +76,10 @@ fn data_dir(state: &AppState) -> String {
 }
 
 pub(super) fn shell(state: &AppState, page: &str) -> Value {
-    context! { server_name => state.config.load().name.clone(), page }
+    context! {
+        server_name => state.config.load().name.clone(), page,
+        update => state.latest_release.load_full().map(|r| Value::from(minijinja::value::Serde(r))),
+    }
 }
 
 // ── Setup ────────────────────────────────────────────────
@@ -347,6 +350,8 @@ pub(crate) struct ServerForm {
     lan_url: String,
     #[serde(default)]
     wan_url: String,
+    /// Checkbox: present when on.
+    check_updates: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -363,6 +368,7 @@ fn current_settings(state: &AppState) -> Value {
         name => config.name.clone(),
         lan_url => url(&config.lan_url),
         wan_url => url(&config.wan_url),
+        check_updates => config.check_updates,
     }
 }
 
@@ -601,12 +607,16 @@ pub(crate) async fn settings_server(
         name: &form.name,
         lan_url: &form.lan_url,
         wan_url: &form.wan_url,
+        check_updates: form.check_updates.is_some(),
     };
     let (settings_ctx, error) = match settings::update(&state, &input).await {
         Ok(()) => (current_settings(&state), None),
         // Keep what the admin typed so the mistake can be fixed.
         Err(err) => (
-            context! { name => form.name, lan_url => form.lan_url, wan_url => form.wan_url },
+            context! {
+                name => form.name, lan_url => form.lan_url, wan_url => form.wan_url,
+                check_updates => form.check_updates.is_some(),
+            },
             Some(form_error(err)?),
         ),
     };

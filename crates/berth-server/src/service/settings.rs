@@ -20,10 +20,13 @@ pub struct ServerSettingsInput<'a> {
     pub lan_url: &'a str,
     /// Internet address.
     pub wan_url: &'a str,
+    /// Look for newer releases.
+    pub check_updates: bool,
 }
 
 /// Settings fixed by `berth.toml` or `BERTH_*` env: shown read-only, never written.
 #[derive(Debug, Default, Serialize)]
+#[expect(clippy::struct_excessive_bools, reason = "one flag per setting")]
 pub struct Locked {
     /// `name` is set outside the database.
     pub name: bool,
@@ -31,6 +34,8 @@ pub struct Locked {
     pub lan_url: bool,
     /// `wan_url` is set outside the database.
     pub wan_url: bool,
+    /// `check_updates` is set outside the database.
+    pub check_updates: bool,
 }
 
 /// Which settings are fixed by file or env.
@@ -41,6 +46,7 @@ pub fn locked(state: &AppState) -> Locked {
         name: external.contains("name"),
         lan_url: external.contains("lan_url"),
         wan_url: external.contains("wan_url"),
+        check_updates: external.contains("check_updates"),
     }
 }
 
@@ -55,9 +61,10 @@ pub async fn update(state: &AppState, input: &ServerSettingsInput<'_>) -> Result
     let locked = locked(state);
 
     let changed = format!(
-        "name={name:?} lan_url={:?} wan_url={:?}",
+        "name={name:?} lan_url={:?} wan_url={:?} check_updates={}",
         lan_url.as_ref().map(Url::as_str),
-        wan_url.as_ref().map(Url::as_str)
+        wan_url.as_ref().map(Url::as_str),
+        input.check_updates
     );
     let mut tx = state.db.begin().await.context("begin")?;
     let values = [
@@ -72,6 +79,11 @@ pub async fn update(state: &AppState, input: &ServerSettingsInput<'_>) -> Result
             locked.wan_url,
             wan_url.map(|u| Value::String(u.into())),
         ),
+        (
+            "check_updates",
+            locked.check_updates,
+            Some(Value::Bool(input.check_updates)),
+        ),
     ];
     for (key, is_locked, value) in values {
         if !is_locked {
@@ -82,6 +94,9 @@ pub async fn update(state: &AppState, input: &ServerSettingsInput<'_>) -> Result
     }
     tx.commit().await.context("commit settings")?;
     reload(state).await?;
+    // Show or drop the update mark now rather than at the next scheduled check.
+    let checker = state.clone();
+    tokio::spawn(async move { crate::update_check::run(&checker).await });
     tracing::info!(%changed, "settings changed");
     Ok(())
 }
