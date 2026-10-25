@@ -7,11 +7,22 @@
   <p class="mt-1 text-[16px] text-text-2">{{ t('upload.subtitle') }}</p>
 </header>
 
+{# Tabs are plain links, as in the settings. #}
+<nav class="mt-6 flex gap-1 border-b border-line" aria-label="{{ t('upload.title') }}">
+  {% for key, href, label in [("upload", "/upload", t('upload.tab_upload')), ("history", "/upload?view=history", t('upload.history'))] %}
+  <a href="{{ href }}" {% if view == key %}aria-current="page"{% endif %}
+    class="-mb-px border-b-2 border-transparent px-4 py-3 text-[15px] font-semibold whitespace-nowrap text-text-2 transition-colors hover:text-text aria-[current=page]:border-accent aria-[current=page]:text-text">{{ label }}</a>
+  {% endfor %}
+</nav>
+
+{% if view == "history" %}
+{% include "partials/upload_history.html" %}
+{% else %}
 {# upload.js reads the data attributes; texts for the script come from the page. #}
 <section id="dropzone" data-presigned="{{ 'true' if presigned else 'false' }}"
   data-text-hashing="{{ t('upload.hashing') }}" data-text-sending="{{ t('upload.sending') }}"
   data-text-failed="{{ t('upload.send_failed') }}" data-text-nothing="{{ t('upload.nothing') }}"
-  class="mt-8 flex flex-col items-center gap-4 rounded-card border-2 border-dashed border-line bg-surface px-6 py-10 text-center transition-colors data-[over=true]:border-accent data-[over=true]:bg-accent-soft">
+  class="mt-6 flex flex-col items-center gap-4 rounded-card border-2 border-dashed border-line bg-surface px-6 py-10 text-center transition-colors data-[over=true]:border-accent data-[over=true]:bg-accent-soft">
   <span class="grid size-14 place-items-center rounded-[18px] bg-accent-soft text-accent-fg">{{ ui.icon("upload", "size-7") }}</span>
   <div>
     <p class="text-[19px] font-bold">{{ t('upload.drop_title') }}</p>
@@ -39,4 +50,5 @@
   {% if not uploads %}<p id="queue-empty" class="card mt-3 text-[15px] text-text-2">{{ t('upload.queue_empty') }}</p>{% endif %}
 </section>
 <script src="/static/upload.js?v={{ assets }}" defer></script>
+{% endif %}
 {% endblock %}

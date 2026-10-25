@@ -1,0 +1,36 @@
+{% import "partials/ui.html" as ui %}
+{# Saved uploads, a page at a time: `uploads`, `total`, `page`, `pages`. Pages are plain links. #}
+<section class="mt-6">
+  <p class="text-[15px] text-text-2">{{ t('upload.history_hint') }}</p>
+  {% if uploads %}
+  <ul class="mt-4 flex flex-col gap-2">
+    {% for u in uploads %}
+    {% set d = u.draft %}
+    <li class="flex items-center gap-3 rounded-[16px] border border-line bg-surface px-3 py-2.5">
+      <span class="w-12 shrink-0">
+        {{ ui.cover(("/book/" ~ u.book_id ~ "/cover?v=" ~ u.book_cover[:12]) if u.book_id and u.book_cover, (d.title if d else u.name), "rounded-[8px] text-[14px]") }}
+      </span>
+      <div class="min-w-0 flex-1">
+        <p class="truncate text-[15px] font-semibold">{{ d.title if d else u.name }}</p>
+        <p class="truncate text-[13px] text-text-3">{{ t('upload.files', count=u.files) }} · {{ u.bytes | filesize }}{% if d %} · <span class="mono text-[12px]">{{ d.duration_ms | clock }}</span>{% endif %}</p>
+      </div>
+      <span class="hidden shrink-0 text-text-3 sm:block">{{ ui.time(u.created_at) }}</span>
+      {% if u.book_id %}<a href="/book/{{ u.book_id }}" class="shrink-0 text-[13px] font-semibold text-accent-fg hover:underline">{{ t('upload.open_book') }}</a>{% endif %}
+    </li>
+    {% endfor %}
+  </ul>
+  {% if pages > 1 %}
+  <nav class="mt-4 flex items-center justify-between gap-3" aria-label="{{ t('upload.history') }}">
+    {% if page > 1 %}
+    <a href="/upload?view=history&page={{ page - 1 }}" class="btn btn-ghost min-h-10 px-4 text-[15px]">{{ ui.icon("back", "size-[18px]") }}{{ t('upload.history_prev') }}</a>
+    {% else %}<span></span>{% endif %}
+    <span class="text-[14px] text-text-2">{{ t('upload.history_page', page=page, pages=pages) }} · {{ t('upload.history_total', count=total) }}</span>
+    {% if page < pages %}
+    <a href="/upload?view=history&page={{ page + 1 }}" class="btn btn-ghost min-h-10 px-4 text-[15px]">{{ t('upload.history_next') }}{{ ui.icon("arrow", "size-[18px]") }}</a>
+    {% else %}<span></span>{% endif %}
+  </nav>
+  {% endif %}
+  {% else %}
+  <p class="card mt-4 text-[15px] text-text-2">{{ t('upload.history_empty') }}</p>
+  {% endif %}
+</section>

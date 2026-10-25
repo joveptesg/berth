@@ -386,6 +386,14 @@ upload:
   formats: "mp3, m4b, m4a, aac, ogg, opus, flac, wav · covers: jpg, png, webp"
   queue: Queue
   queue_empty: Uploads appear here.
+  tab_upload: Upload
+  history: History
+  history_hint: Every book added through an upload. Saved ones stay in the queue for a day.
+  history_empty: No uploaded books yet.
+  history_prev: Back
+  history_next: Next
+  history_page: "Page %{page} of %{pages}"
+  history_total: "%{count} in all"
   files: "Files: %{count}"
   chapters: "Chapters: %{count}"
   status_uploading: Stored %{stored} of %{count} files

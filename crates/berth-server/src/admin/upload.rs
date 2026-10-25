@@ -37,12 +37,40 @@ fn serde(value: impl Serialize) -> Value {
     Value::from(minijinja::value::Serde(value))
 }
 
+#[derive(Deserialize, Default)]
+pub(crate) struct PageQuery {
+    /// `history` for the saved uploads, else the drop zone and the queue.
+    #[serde(default)]
+    view: String,
+    #[serde(default)]
+    page: Option<i64>,
+}
+
 pub(crate) async fn page(
     State(state): State<AppState>,
     Extension(session): Extension<AdminSession>,
+    axum::extract::Query(query): axum::extract::Query<PageQuery>,
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
-    let uploads = ingest::recent(&state.db, tenant_id, 30).await?;
+    if query.view == "history" {
+        let mut page = query.page.unwrap_or(1).max(1);
+        let (mut uploads, total) = ingest::history(&state.db, tenant_id, page).await?;
+        let pages = ((total + ingest::HISTORY_PAGE - 1) / ingest::HISTORY_PAGE).max(1);
+        // A page past the end (uploads went since) shows the last one.
+        if page > pages {
+            page = pages;
+            uploads = ingest::history(&state.db, tenant_id, page).await?.0;
+        }
+        return render(
+            &state,
+            "upload.html",
+            context! {
+                view => "history", uploads => serde(uploads), total, page, pages,
+                ..shell(&state, "upload")
+            },
+        );
+    }
+    let uploads = ingest::queue(&state.db, tenant_id).await?;
     // S3 takes the files straight from the browser, signed with their sha256.
     let presigned = match storage::default_id(&state.db, tenant_id).await? {
         Some(id) => storage::open(&state, tenant_id, &id)
@@ -55,7 +83,7 @@ pub(crate) async fn page(
         &state,
         "upload.html",
         context! {
-            uploads => serde(uploads), presigned, ratings => RATINGS.to_vec(),
+            view => "upload", uploads => serde(uploads), presigned, ratings => RATINGS.to_vec(),
             categories => serde(categories),
             languages => serde(languages::list(&state.db, tenant_id).await?),
             ..shell(&state, "upload")

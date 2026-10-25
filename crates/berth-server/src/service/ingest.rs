@@ -1066,25 +1066,84 @@ pub async fn get(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<Upload> {
     Ok(row.ok_or(BerthError::NotFound)?.into())
 }
 
-/// Latest uploads, newest first.
-///
-/// # Errors
-/// Database failures.
-pub async fn recent(db: &SqlitePool, tenant_id: &str, limit: i64) -> anyhow::Result<Vec<Upload>> {
-    let rows: Vec<UploadRow> = sqlx::query_as(
+/// Columns of [`UploadRow`]; the caller adds `WHERE` and the rest.
+macro_rules! upload_select {
+    () => {
         "SELECT u.id, u.name, u.status, u.draft, u.error, u.book_id, u.created_at,
             (SELECT COUNT(*) FROM upload_files f WHERE f.upload_id = u.id) AS files,
             (SELECT COUNT(*) FROM upload_files f WHERE f.upload_id = u.id AND f.stored) AS stored,
             (SELECT COALESCE(SUM(size), 0) FROM upload_files f WHERE f.upload_id = u.id) AS bytes,
             (SELECT b.cover_hash FROM books b
              WHERE b.tenant_id = u.tenant_id AND b.id = u.book_id AND b.deleted_at IS NULL) AS book_cover
-         FROM uploads u WHERE u.tenant_id = $1 ORDER BY u.created_at DESC LIMIT $2",
-    )
+         FROM uploads u "
+    };
+}
+
+/// How long a saved upload stays in the queue; then it is only in the history.
+pub const QUEUE_KEEPS_SAVED_MS: i64 = 24 * 60 * 60 * 1000;
+/// Uploads on a page of the history.
+pub const HISTORY_PAGE: i64 = 10;
+
+/// Latest uploads, newest first.
+///
+/// # Errors
+/// Database failures.
+pub async fn recent(db: &SqlitePool, tenant_id: &str, limit: i64) -> anyhow::Result<Vec<Upload>> {
+    let rows: Vec<UploadRow> = sqlx::query_as(concat!(
+        upload_select!(),
+        "WHERE u.tenant_id = $1 ORDER BY u.created_at DESC LIMIT $2"
+    ))
     .bind(tenant_id)
     .bind(limit)
     .fetch_all(db)
     .await?;
     Ok(rows.into_iter().map(Into::into).collect())
+}
+
+/// The queue: every upload not saved yet, and the ones saved in the last
+/// [`QUEUE_KEEPS_SAVED_MS`]; newest first.
+///
+/// # Errors
+/// Database failures.
+pub async fn queue(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<Upload>> {
+    let rows: Vec<UploadRow> = sqlx::query_as(concat!(
+        upload_select!(),
+        "WHERE u.tenant_id = $1 AND (u.status <> 'saved' OR u.updated_at > $2)
+         ORDER BY u.created_at DESC"
+    ))
+    .bind(tenant_id)
+    .bind(now_ms() - QUEUE_KEEPS_SAVED_MS)
+    .fetch_all(db)
+    .await?;
+    Ok(rows.into_iter().map(Into::into).collect())
+}
+
+/// Page `page` (from 1) of the saved uploads, newest first, and how many there are.
+///
+/// # Errors
+/// Database failures.
+pub async fn history(
+    db: &SqlitePool,
+    tenant_id: &str,
+    page: i64,
+) -> anyhow::Result<(Vec<Upload>, i64)> {
+    let total: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM uploads WHERE tenant_id = $1 AND status = 'saved'",
+    )
+    .bind(tenant_id)
+    .fetch_one(db)
+    .await?;
+    let rows: Vec<UploadRow> = sqlx::query_as(concat!(
+        upload_select!(),
+        "WHERE u.tenant_id = $1 AND u.status = 'saved'
+         ORDER BY u.created_at DESC LIMIT $2 OFFSET $3"
+    ))
+    .bind(tenant_id)
+    .bind(HISTORY_PAGE)
+    .bind((page.max(1) - 1) * HISTORY_PAGE)
+    .fetch_all(db)
+    .await?;
+    Ok((rows.into_iter().map(Into::into).collect(), total))
 }
 
 /// Drops an unsaved upload from the queue; stored bytes stay for deduplication.

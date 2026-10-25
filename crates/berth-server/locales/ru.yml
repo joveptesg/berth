@@ -384,6 +384,14 @@ upload:
   formats: "mp3, m4b, m4a, aac, ogg, opus, flac, wav · обложки: jpg, png, webp"
   queue: Очередь
   queue_empty: Здесь появятся загрузки.
+  tab_upload: Загрузка
+  history: История
+  history_hint: Все книги, добавленные через загрузку, — новые сверху. В очереди сохранённые видны сутки.
+  history_empty: Загруженных книг пока нет.
+  history_prev: Назад
+  history_next: Вперёд
+  history_page: "Стр. %{page} из %{pages}"
+  history_total: "всего %{count}"
   files: "Файлов: %{count}"
   chapters: "Глав: %{count}"
   status_uploading: Сохранено %{stored} из %{count} файлов

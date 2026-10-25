@@ -3634,3 +3634,56 @@ async fn books_have_a_description_and_the_ai_fills_empty_ones() {
         Some("Моё описание")
     );
 }
+
+#[tokio::test]
+async fn the_queue_keeps_saved_uploads_a_day_and_the_history_pages_them() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let book = upload_book(&state, &session, "Основание").await;
+    // Saved two days ago, plus eleven more saved uploads of that book.
+    let old = 1_000_000;
+    sqlx::query("UPDATE uploads SET updated_at = $1, created_at = $1")
+        .bind(old)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    for n in 0..11 {
+        sqlx::query(
+            "INSERT INTO uploads (id, tenant_id, library_id, storage_id, name, status, book_id,
+                created_at, updated_at)
+             SELECT $1, tenant_id, library_id, storage_id, $2, 'saved', book_id, $3, $3 FROM uploads LIMIT 1",
+        )
+        .bind(format!("old-{n}"))
+        .bind(format!("Старая {n}"))
+        .bind(old + n)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+
+    let queue = send(&state, get("/upload", Some(&session))).await;
+    assert!(
+        !queue.body.contains(&format!("/book/{book}")),
+        "out of the queue after a day"
+    );
+    assert!(queue.body.contains("view=history"), "the history tab");
+    let first = send(&state, get("/upload?view=history", Some(&session))).await;
+    assert!(
+        first.body.contains("Старая 10") && !first.body.contains("Основание"),
+        "newest first, ten a page: {}",
+        first.body
+    );
+    assert!(first.body.contains("page=2"), "{}", first.body);
+    let second = send(&state, get("/upload?view=history&page=2", Some(&session))).await;
+    assert!(
+        second.body.contains("Основание") && second.body.contains("Старая 0"),
+        "{}",
+        second.body
+    );
+    let past = send(&state, get("/upload?view=history&page=9", Some(&session))).await;
+    assert!(
+        past.body.contains("Основание"),
+        "past the end: the last page"
+    );
+}
