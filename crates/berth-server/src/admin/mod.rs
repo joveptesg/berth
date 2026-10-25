@@ -11,6 +11,7 @@ mod i18n;
 mod languages;
 mod library;
 mod pages;
+mod remote_backup;
 mod session;
 mod static_files;
 mod storage;
@@ -99,6 +100,19 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         .route("/settings/ai/stop", post(ai::stop))
         .route("/settings/backup", get(pages::settings_backup_page))
         .route("/settings/restore", get(pages::settings_restore_page))
+        .route(
+            "/settings/backup/remote",
+            get(remote_backup::page).post(remote_backup::save),
+        )
+        .route("/settings/backup/remote/now", post(remote_backup::now))
+        .route(
+            "/settings/restore/remote",
+            get(remote_backup::restore_page).post(remote_backup::restore),
+        )
+        .route(
+            "/settings/restore/remote/list",
+            post(remote_backup::restore_list),
+        )
         .route("/settings/backup/download", get(pages::backup_download))
         .route(
             "/settings/backup/secret-key",

@@ -370,6 +370,58 @@ impl ObjectBlobStore {
         ))
     }
 
+    /// Writes the file at `source` to `path`, outside the blob layout (database backups).
+    ///
+    /// # Errors
+    /// File or backend failures.
+    pub async fn put_file(&self, path: &str, source: &FsPath) -> anyhow::Result<()> {
+        let mut file = tokio::fs::File::open(source).await?;
+        let mut writer = BufWriter::new(self.store.clone(), Path::from(path));
+        tokio::io::copy(&mut file, &mut writer).await?;
+        writer.shutdown().await?;
+        Ok(())
+    }
+
+    /// Reads the object at `path` into the file `target`.
+    ///
+    /// # Errors
+    /// A missing object, file or backend failures.
+    pub async fn get_file(&self, path: &str, target: &FsPath) -> anyhow::Result<()> {
+        let mut stream = self.store.get(&Path::from(path)).await?.into_stream();
+        let mut file = tokio::fs::File::create(target).await?;
+        while let Some(chunk) = stream.next().await {
+            file.write_all(&chunk?).await?;
+        }
+        file.flush().await?;
+        Ok(())
+    }
+
+    /// Objects under `prefix`: path, size and when last written (epoch milliseconds).
+    ///
+    /// # Errors
+    /// Backend failures.
+    pub async fn list_files(&self, prefix: &str) -> object_store::Result<Vec<(String, u64, i64)>> {
+        self.store
+            .list(Some(&Path::from(prefix)))
+            .map_ok(|meta| {
+                (
+                    meta.location.to_string(),
+                    meta.size,
+                    meta.last_modified.timestamp_millis(),
+                )
+            })
+            .try_collect()
+            .await
+    }
+
+    /// Deletes the object at `path`.
+    ///
+    /// # Errors
+    /// Backend failures.
+    pub async fn delete_file(&self, path: &str) -> object_store::Result<()> {
+        self.store.delete(&Path::from(path)).await
+    }
+
     /// Writes, reads back and deletes a probe object under `prefix`.
     ///
     /// # Errors

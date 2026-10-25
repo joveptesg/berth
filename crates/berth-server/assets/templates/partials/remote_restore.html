@@ -1,0 +1,80 @@
+{% import "partials/ui.html" as ui %}
+{# Restoring from the copies in a bucket. `remote`: buckets (id, name, bucket), storage_id,
+   backups (key, server_id, created_at, size) once searched, list_error, error, server_id,
+   prefix. #}
+{% set r = remote %}
+<div id="remote-restore" class="card flex flex-col gap-4">
+  <div class="flex items-start gap-4">
+    <span class="hidden size-11 shrink-0 place-items-center rounded-[14px] bg-accent-soft text-accent-fg sm:grid" aria-hidden="true">{{ ui.icon("cloud") }}</span>
+    <div class="min-w-0">
+      <h2 class="text-[20px] font-bold tracking-[-0.01em]">{{ t('remote_backup.restore_title') }}</h2>
+      <p class="mt-1 text-[15px] text-text-2">{{ t('remote_backup.restore_hint') }}</p>
+    </div>
+  </div>
+  {% if r.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ r.error) }}</p>{% endif %}
+
+  {% if r.buckets %}
+  <form method="post" action="/settings/restore/remote" hx-target="#remote-restore" hx-swap="outerHTML" class="flex flex-col gap-4">
+    <div class="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <div class="min-w-0 sm:max-w-md sm:flex-1">
+        <label for="remote-restore-storage" class="field-label">{{ t('remote_backup.storage_label') }}</label>
+        <select id="remote-restore-storage" name="storage_id" class="input select">
+          {% for b in r.buckets %}
+          <option value="{{ b.id }}" {% if b.id == r.storage_id %}selected{% endif %}>{{ b.name }} · {{ b.bucket }}</option>
+          {% endfor %}
+        </select>
+      </div>
+      <button type="button" hx-post="/settings/restore/remote/list" hx-include="closest form" hx-target="#remote-restore" hx-swap="outerHTML"
+        hx-disabled-elt="this" class="btn btn-ghost shrink-0">{{ ui.icon("search", "size-[18px]") }}<span class="[.htmx-request_&]:hidden">{{ t('remote_backup.find') }}</span><span class="hidden [.htmx-request_&]:inline">{{ t('remote_backup.finding') }}</span></button>
+    </div>
+
+    {% if r.list_error %}
+    <p class="alert-error" role="alert">{{ t('remote_backup.list_failed') }} <span class="mono text-[12.5px] break-words">{{ r.list_error }}</span></p>
+    {% elif r.backups is not none %}
+    {% if r.backups %}
+    <div>
+      <label for="remote-old-secret" class="field-label">{{ t('remote_backup.secret_label') }}</label>
+      <input id="remote-old-secret" name="old_secret" autocomplete="off" spellcheck="false" maxlength="64" placeholder="{{ t('remote_backup.secret_placeholder') }}" class="input mono text-[13px]">
+      <p class="field-hint">{{ t('remote_backup.secret_hint') }}</p>
+    </div>
+    <div class="overflow-x-auto">
+      <table class="w-full text-left text-[15px]">
+        <thead>
+          <tr class="border-b border-line text-[13px] font-semibold tracking-[0.06em] text-text-3 uppercase">
+            <th class="w-full py-2.5 pr-4 font-semibold">{{ t('backup.col_date') }}</th>
+            <th class="py-2.5 pr-4 font-semibold">{{ t('remote_backup.col_server') }}</th>
+            <th class="py-2.5 pr-4 text-right font-semibold">{{ t('backup.col_size') }}</th>
+            <th class="py-2.5"><span class="sr-only">{{ t('backup.col_actions') }}</span></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in r.backups %}
+          <tr class="border-b border-line last:border-0">
+            <td class="py-2 pr-4 whitespace-nowrap">{{ ui.time(b.created_at) }}</td>
+            <td class="py-2 pr-4 whitespace-nowrap text-[13px] text-text-2">
+              {% if b.server_id == r.server_id %}<span class="chip bg-accent-soft text-accent-fg">{{ t('remote_backup.this_server') }}</span>
+              {% else %}<span class="mono" title="{{ b.server_id }}">{{ b.server_id[-8:] }}</span>{% endif %}
+            </td>
+            <td class="mono py-2 pr-4 text-right text-[13px] whitespace-nowrap text-text-2">{{ b.size | filesize }}</td>
+            <td class="py-1.5">
+              <div class="flex justify-end">
+                <button type="submit" name="key" value="{{ b.key }}" hx-post="/settings/restore/remote" hx-include="closest form"
+                  hx-vals='{"key": {{ b.key | tojson }}}' hx-confirm="{{ t('backup.restore_confirm') }}"
+                  title="{{ t('backup.restore_one') }}" aria-label="{{ t('backup.restore_one') }}"
+                  class="grid size-10 place-items-center rounded-[12px] text-danger hover:bg-danger/10">{{ ui.icon("restore", "size-5") }}</button>
+              </div>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+    {% else %}
+    <p class="text-[14px] text-text-2">{{ t('remote_backup.none_found', prefix=r.prefix) }}</p>
+    {% endif %}
+    {% endif %}
+  </form>
+  {% else %}
+  <p class="text-[14px] text-text-2">{{ t('remote_backup.restore_no_bucket') }} <a href="/storage" class="font-semibold text-accent-fg hover:underline">{{ t('remote_backup.to_storage') }}</a></p>
+  {% endif %}
+</div>

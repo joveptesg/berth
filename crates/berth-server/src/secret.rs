@@ -51,7 +51,7 @@ impl SecretKey {
         Self(key)
     }
 
-    fn from_hex(hex: &str) -> anyhow::Result<Self> {
+    pub(crate) fn from_hex(hex: &str) -> anyhow::Result<Self> {
         let mut key = [0; 32];
         hex::decode_to_slice(hex.trim(), &mut key)?;
         Ok(Self(key))

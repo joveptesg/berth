@@ -539,7 +539,7 @@ pub(crate) async fn backup_restore_upload(
 
 /// After a restore: settings come from the restored database; the page shows the outcome
 /// (the browser may have to sign in again: sessions are the backup's).
-async fn restored(
+pub(super) async fn restored(
     state: &AppState,
     headers: &HeaderMap,
     result: Result<(), backup::RestoreError>,

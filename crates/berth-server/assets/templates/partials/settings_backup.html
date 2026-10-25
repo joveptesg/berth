@@ -24,6 +24,8 @@
     </div>
   </div>
 
+  <div hx-get="/settings/backup/remote" hx-trigger="load" hx-swap="outerHTML"></div>
+
   <div class="card flex flex-col gap-4">
     <div>
       <h2 class="text-[20px] font-bold tracking-[-0.01em]">{{ t('backup.auto_title') }}</h2>

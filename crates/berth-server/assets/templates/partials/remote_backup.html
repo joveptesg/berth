@@ -1,0 +1,55 @@
+{% import "partials/ui.html" as ui %}
+{# Daily copies of the database in a bucket. `remote`: config (enabled, storage_id), last (at,
+   ok_at, error), buckets (id, name, bucket), prefix, keep_days, error, saved. #}
+{% set r = remote %}
+<div id="remote-backup" class="card flex flex-col gap-4">
+  <div class="flex items-start gap-4">
+    <span class="hidden size-11 shrink-0 place-items-center rounded-[14px] bg-accent-soft text-accent-fg sm:grid" aria-hidden="true">{{ ui.icon("cloud") }}</span>
+    <div class="min-w-0">
+      <h2 class="text-[20px] font-bold tracking-[-0.01em]">{{ t('remote_backup.title') }}</h2>
+      <p class="mt-1 text-[15px] text-text-2">{{ t('remote_backup.hint', days=r.keep_days) }} <span class="mono text-[13px] text-text-3">{{ r.prefix }}/</span></p>
+    </div>
+  </div>
+  {% if r.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ r.error) }}</p>{% endif %}
+  {% if r.saved %}<p class="alert-ok" role="status">{{ t('common.saved') }}</p>{% endif %}
+
+  {% if r.buckets %}
+  <form method="post" action="/settings/backup/remote" hx-post="/settings/backup/remote" hx-target="#remote-backup" hx-swap="outerHTML"
+    hx-disabled-elt="find button" class="flex flex-col gap-4">
+    <label class="flex cursor-pointer items-start gap-3">
+      <input type="checkbox" name="enabled" value="on" {% if r.config.enabled %}checked{% endif %} class="mt-0.5 size-[18px] shrink-0 accent-accent">
+      <span>
+        <span class="block text-[15px] font-semibold">{{ t('remote_backup.enabled') }}</span>
+        <span class="block text-[13px] leading-snug text-text-3">{{ t('remote_backup.enabled_hint', days=r.keep_days) }}</span>
+      </span>
+    </label>
+    <div class="max-w-md">
+      <label for="remote-storage" class="field-label">{{ t('remote_backup.storage_label') }}</label>
+      <select id="remote-storage" name="storage_id" class="input select">
+        {% for b in r.buckets %}
+        <option value="{{ b.id }}" {% if b.id == r.config.storage_id %}selected{% endif %}>{{ b.name }} · {{ b.bucket }}</option>
+        {% endfor %}
+      </select>
+    </div>
+    <div class="flex flex-wrap items-center gap-3">
+      <button type="submit" class="btn btn-primary">{{ t('common.save') }}</button>
+      {% if r.config.storage_id %}
+      <button type="button" hx-post="/settings/backup/remote/now" hx-target="#remote-backup" hx-swap="outerHTML" hx-disabled-elt="this"
+        class="btn btn-ghost">{{ ui.icon("upload", "size-[18px]") }}<span class="[.htmx-request_&]:hidden">{{ t('remote_backup.now') }}</span><span class="hidden [.htmx-request_&]:inline">{{ t('remote_backup.running') }}</span></button>
+      {% endif %}
+    </div>
+  </form>
+  {% if r.last.at %}
+  <p class="flex flex-wrap items-center gap-x-2 text-[14px]">
+    {% if r.last.error %}
+    <span class="font-semibold text-danger">{{ t('remote_backup.last_failed') }}</span>{{ ui.time(r.last.at) }}
+    <span class="mono block w-full text-[12.5px] break-words text-text-3">{{ r.last.error }}</span>
+    {% else %}
+    <span class="inline-flex items-center gap-1 font-semibold text-ok">{{ ui.icon("check", "size-4") }}{{ t('remote_backup.last_ok') }}</span>{{ ui.time(r.last.ok_at) }}
+    {% endif %}
+  </p>
+  {% endif %}
+  {% else %}
+  <p class="text-[14px] text-text-2">{{ t('remote_backup.no_bucket') }} <a href="/storage" class="font-semibold text-accent-fg hover:underline">{{ t('remote_backup.to_storage') }}</a></p>
+  {% endif %}
+</div>

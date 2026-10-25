@@ -1,6 +1,7 @@
 //! S3 storage against a real `MinIO` in Docker (testcontainers): blob I/O, the connection
 //! check and presigned URLs, including a presigned PUT that must reject foreign bytes
-//! (design doc §22.A5). Skipped with a message when `MinIO` cannot start (no Docker or no image).
+//! (design doc §22.A5), and database backups in a bucket restored on a new server. Skipped
+//! with a message when `MinIO` cannot start (no Docker or no image).
 
 use std::{
     path::Path,
@@ -165,4 +166,122 @@ async fn s3_store_on_minio() {
         accepted.text().await.unwrap()
     );
     assert!(s3.exists("t2", &hash).await.unwrap());
+}
+
+async fn server(dir: &Path) -> berth_server::AppState {
+    let config = dir.join("berth.toml");
+    std::fs::write(
+        &config,
+        format!("data_dir = '{}'\n", dir.join("data").display()),
+    )
+    .unwrap();
+    berth_server::bootstrap(Some(&config)).await.unwrap()
+}
+
+#[tokio::test]
+async fn database_backups_in_the_bucket_restore_on_a_new_server() {
+    use berth_server::{
+        remote_backup,
+        service::{ai, setup, storage as profiles},
+    };
+    let _ = rustls::crypto::ring::default_provider().install_default();
+    let container = match MinIO::default().start().await {
+        Ok(container) => container,
+        Err(err) => {
+            eprintln!("skipped: MinIO did not start: {err}");
+            return;
+        }
+    };
+    let port = container.get_host_port_ipv4(9000).await.unwrap();
+    let endpoint = format!("http://127.0.0.1:{port}");
+    create_bucket(&reqwest::Client::new(), &endpoint, "library").await;
+    let bucket = profiles::ProfileInput {
+        name: "MinIO".into(),
+        kind: "s3".into(),
+        endpoint,
+        bucket: "library".into(),
+        region: "us-east-1".into(),
+        path_style: true,
+        access_key_id: USER.into(),
+        secret_access_key: USER.into(),
+        ..profiles::ProfileInput::default()
+    };
+    let password = "harbour lights";
+
+    // The old server copies its database into the bucket once a day.
+    let old_dir = tempfile::tempdir().unwrap();
+    let old = server(old_dir.path()).await;
+    let owner = setup::create_owner(&old, "Old", password, password, &bucket, None)
+        .await
+        .unwrap();
+    let old_storage = profiles::default_id(&old.db, &owner.tenant_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let ai_settings = ai::AiInput {
+        base_url: "http://127.0.0.1:1/v1".into(),
+        model: "m".into(),
+        api_key: "sk-old".into(),
+        ..ai::AiInput::default()
+    };
+    ai::save(&old, &owner.tenant_id, &ai_settings)
+        .await
+        .unwrap();
+    remote_backup::save(&old, &owner.tenant_id, true, &old_storage)
+        .await
+        .unwrap();
+    remote_backup::run_due(&old).await.unwrap();
+    remote_backup::run_due(&old).await.unwrap();
+    let last = remote_backup::last(&old.db, &owner.tenant_id)
+        .await
+        .unwrap();
+    assert!(last.ok_at.is_some() && last.error.is_none(), "{last:?}");
+
+    // A new server connects the same bucket and finds one copy (the second run was not due).
+    let new_dir = tempfile::tempdir().unwrap();
+    let new = server(new_dir.path()).await;
+    let fresh = setup::create_owner(&new, "New", password, password, &bucket, None)
+        .await
+        .unwrap();
+    let new_storage = profiles::default_id(&new.db, &fresh.tenant_id)
+        .await
+        .unwrap()
+        .unwrap();
+    let copies = remote_backup::list(&new, &fresh.tenant_id, &new_storage)
+        .await
+        .unwrap();
+    assert_eq!(copies.len(), 1, "{copies:?}");
+    assert_eq!(copies[0].server_id, old.server_id.as_ref());
+
+    // Without the old secret.key: the library and this bucket's keys come back, the AI key
+    // cannot.
+    assert_eq!(
+        remote_backup::restore(&new, &fresh.tenant_id, &new_storage, &copies[0].key, "zz").await,
+        Err("restore_secret_invalid")
+    );
+    remote_backup::restore(&new, &fresh.tenant_id, &new_storage, &copies[0].key, "")
+        .await
+        .unwrap();
+    let tenants: Vec<String> = sqlx::query_scalar("SELECT id FROM tenants")
+        .fetch_all(&new.db)
+        .await
+        .unwrap();
+    assert_eq!(tenants, [owner.tenant_id.as_str()]);
+    let profile = profiles::verify(&new, &owner.tenant_id, &old_storage)
+        .await
+        .unwrap();
+    assert_eq!(profile.verify_error, None, "the bucket keys work again");
+    assert!(!ai::has_key(&new, &owner.tenant_id).await.unwrap());
+
+    // With it, every secret comes back.
+    remote_backup::restore(
+        &new,
+        &owner.tenant_id,
+        &old_storage,
+        &copies[0].key,
+        &hex::encode(old.secret.as_bytes()),
+    )
+    .await
+    .unwrap();
+    assert!(ai::has_key(&new, &owner.tenant_id).await.unwrap());
 }

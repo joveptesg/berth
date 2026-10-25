@@ -10,6 +10,7 @@ mod db;
 pub mod error;
 pub mod jobs;
 pub mod media;
+pub mod remote_backup;
 mod secret;
 pub mod service;
 pub mod storage;

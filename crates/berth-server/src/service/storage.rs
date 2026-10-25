@@ -597,6 +597,97 @@ pub(crate) async fn open(
     )
 }
 
+/// Settings and keys of an S3 profile.
+pub(crate) async fn s3_settings(
+    state: &AppState,
+    tenant_id: &str,
+    id: &str,
+) -> anyhow::Result<(S3Config, S3Keys)> {
+    match load_backend(state, tenant_id, id).await? {
+        Backend::S3(config, keys) => Ok((config, keys)),
+        Backend::Local(_) => anyhow::bail!("not an S3 profile"),
+    }
+}
+
+/// After a restore from another server, its secrets were encrypted with its `secret.key`.
+/// Each one this server cannot read is re-encrypted: decrypted with `old` (that server's key)
+/// when given, else an S3 profile of the same bucket as `source` (the bucket the backup came
+/// from) gets `source`'s keys. Profiles left without keys are marked `storage_keys_lost`;
+/// secret settings left unreadable (an AI key) are removed.
+///
+/// # Errors
+/// Database failures.
+pub(crate) async fn rekey_after_restore(
+    state: &AppState,
+    old: Option<&SecretKey>,
+    source: Option<(&S3Config, &S3Keys)>,
+) -> anyhow::Result<()> {
+    let current = &*state.secret;
+    let profiles: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT id, config, secrets_encrypted FROM storage_profiles WHERE secrets_encrypted IS NOT NULL",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    for (id, config, stored) in profiles {
+        if crypto::decrypt(current, &id, &stored).is_ok() {
+            continue;
+        }
+        let same_bucket = |(src, _): &(&S3Config, &S3Keys)| {
+            serde_json::from_str::<S3Config>(&config)
+                .is_ok_and(|c| c.endpoint == src.endpoint && c.bucket == src.bucket)
+        };
+        let plain = old
+            .and_then(|old| crypto::decrypt(old, &id, &stored).ok())
+            .or_else(|| {
+                source
+                    .filter(same_bucket)
+                    .and_then(|(_, keys)| serde_json::to_vec(keys).ok())
+            });
+        if let Some(plain) = plain {
+            sqlx::query("UPDATE storage_profiles SET secrets_encrypted = $2 WHERE id = $1")
+                .bind(&id)
+                .bind(crypto::encrypt(current, &id, &plain)?)
+                .execute(&state.db)
+                .await?;
+        } else {
+            tracing::warn!(profile = %id, "storage keys of the restored backup cannot be read");
+            sqlx::query(
+                "UPDATE storage_profiles SET verified_at = NULL, verify_error = 'storage_keys_lost'
+                 WHERE id = $1",
+            )
+            .bind(&id)
+            .execute(&state.db)
+            .await?;
+        }
+    }
+    let secrets: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT scope, key, value_encrypted FROM settings WHERE value_encrypted IS NOT NULL",
+    )
+    .fetch_all(&state.db)
+    .await?;
+    for (scope, key, stored) in secrets {
+        let record = format!("{scope}/{key}");
+        if crypto::decrypt(current, &record, &stored).is_ok() {
+            continue;
+        }
+        if let Some(plain) = old.and_then(|old| crypto::decrypt(old, &record, &stored).ok()) {
+            sqlx::query("UPDATE settings SET value_encrypted = $3 WHERE scope = $1 AND key = $2")
+                .bind(&scope)
+                .bind(&key)
+                .bind(crypto::encrypt(current, &record, &plain)?)
+                .execute(&state.db)
+                .await?;
+        } else {
+            sqlx::query("DELETE FROM settings WHERE scope = $1 AND key = $2")
+                .bind(&scope)
+                .bind(&key)
+                .execute(&state.db)
+                .await?;
+        }
+    }
+    Ok(())
+}
+
 /// The address of a blob under the profile's CDN, signed until `expires` (unix seconds) when
 /// the CDN signs links.
 pub(crate) async fn cdn_link(

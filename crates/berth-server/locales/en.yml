@@ -474,6 +474,10 @@ errors:
   ai_model_required: Enter a model.
   ai_prompt_too_long: The instruction is too long (4000 characters at most).
   ai_not_set_up: Save the AI connection first.
+  remote_backup_storage_invalid: Choose an S3 storage.
+  restore_secret_invalid: secret.key is 64 hexadecimal characters.
+  restore_download_failed: Could not download the backup from storage.
+  storage_keys_lost: The keys did not come back from the backup — enter them again.
   book_series_no_invalid: The number in the series must be a number, e.g. 2 or 2.5.
   cover_invalid: Choose a JPEG, PNG or WebP picture.
   cover_too_large: The picture is too large (10 MB at most).
@@ -554,3 +558,27 @@ ai:
   ai_filled: AI filled the empty fields. Check them and save.
   ai_unknown: AI does not know this book — fill it in yourself.
 
+remote_backup:
+  title: Automatic backup to storage
+  hint: "Once a day the server puts a copy of the database into the bucket, next to the audio files. A new server only needs the same bucket connected to restore the library from it. Copies are kept for %{days} days in the folder"
+  enabled: Back up every day
+  enabled_hint: "Copies of the last %{days} days are kept, the newest one always. Local automatic backups stay as they are."
+  storage_label: Storage
+  now: Back up now
+  running: Copying…
+  last_ok: "Last backup:"
+  last_failed: "Backup failed:"
+  no_bucket: This needs S3 storage (S3, R2, MinIO…) — a local folder sits on the same disk as the database.
+  to_storage: Connect storage
+  restore_title: Restore from storage
+  restore_hint: For a new server — first connect the same bucket under Storage, then find the backups in it and pick one.
+  restore_no_bucket: Connect the S3 storage that holds the backups.
+  find: Find backups
+  finding: Searching…
+  list_failed: "Could not read the bucket:"
+  none_found: "This bucket has no backups (folder %{prefix}/)."
+  col_server: Server
+  this_server: This server
+  secret_label: secret.key of the old server (optional)
+  secret_placeholder: 64 hexadecimal characters
+  secret_hint: With it the keys of every storage and of the AI come back. Without it only this bucket's keys do; other storages need their keys entered again.
