@@ -1420,7 +1420,7 @@
             }
           },
           "400": {
-            "description": "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid`, `book_language_invalid` or `invalid_body`",
+            "description": "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid`, `book_language_invalid`, `book_description_too_long`, `book_year_invalid` or `invalid_body`",
             "content": {
               "application/problem+json": {
                 "schema": {
@@ -1706,6 +1706,13 @@
             "format": "int64",
             "description": "When added."
           },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the book is about, a few sentences."
+          },
           "duration_ms": {
             "type": "integer",
             "format": "int64",
@@ -1764,6 +1771,14 @@
           "title": {
             "type": "string",
             "description": "Title."
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Year the work was first published."
           }
         }
       },
@@ -2043,6 +2058,14 @@
           "title": {
             "type": "string",
             "description": "Title."
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Year from the folder name, \"Title (1865)\"."
           }
         }
       },
@@ -2573,6 +2596,13 @@
             },
             "description": "Section ids; omitted, the sections the proposal matched."
           },
+          "description": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "What the book is about."
+          },
           "language": {
             "type": [
               "string",
@@ -2610,6 +2640,14 @@
           "title": {
             "type": "string",
             "description": "Title."
+          },
+          "year": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "format": "int64",
+            "description": "Year of first publication; omitted, the year of the proposal."
           }
         }
       },

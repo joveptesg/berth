@@ -355,6 +355,11 @@ book:
   series_no_label: No.
   rating_label: Age rating
   rating_none: Not set
+  year_label: Year
+  description_label: Description
+  about: About the book
+  about_empty: No description yet.
+  edit: Edit
   read_by: read by %{names}
   duration: Duration
   chapters: Chapters
@@ -463,6 +468,12 @@ errors:
   book_title_required: Enter a title.
   book_title_too_long: The title is too long (300 characters at most).
   book_rating_invalid: Choose an age rating from the list.
+  book_description_too_long: The description is too long (4000 characters at most).
+  book_year_invalid: The year is a number from 1 to 2100.
+  ai_url_invalid: The API address must start with http:// or https://.
+  ai_model_required: Enter a model.
+  ai_prompt_too_long: The instruction is too long (4000 characters at most).
+  ai_not_set_up: Save the AI connection first.
   book_series_no_invalid: The number in the series must be a number, e.g. 2 or 2.5.
   cover_invalid: Choose a JPEG, PNG or WebP picture.
   cover_too_large: The picture is too large (10 MB at most).
@@ -509,3 +520,37 @@ backup:
   col_date: Date
   col_size: Size
   col_actions: Actions
+
+ai:
+  section: AI
+  intro: "AI writes short descriptions of books and finds the year of first publication. Any service with an OpenAI-compatible API works: OpenAI, OpenRouter, DeepSeek or a local Ollama."
+  connection_title: Connection
+  connection_hint: API address, key and model. The key is stored encrypted.
+  base_url_label: API address
+  base_url_hint: "For example: https://api.openai.com/v1, https://openrouter.ai/api/v1, http://localhost:11434/v1 (Ollama)."
+  model_label: Model
+  key_label: API key
+  key_keep: Saved — leave empty to keep it
+  key_hint: A local model needs no key.
+  key_clear: Remove the saved key
+  prompt_label: Instruction for the AI
+  prompt_reset: Reset to default
+  prompt_hint: "{language} becomes the book's language (the interface language for a book without one). The server adds the book's data and the answer format itself."
+  check: Check connection
+  checking: Checking…
+  check_ok: The connection works.
+  check_failed: "Could not connect:"
+  run_title: Book descriptions
+  run_hint: AI fills only empty descriptions and years — what you wrote yourself stays. Phones get the descriptions on the next sync.
+  run_start: Fill descriptions
+  run_stop: Stop
+  run_missing: "Without a description or year: %{count}"
+  run_not_ready: Save the connection first.
+  run_progress: "Done %{done} of %{total} · filled %{filled} · not found %{missed}"
+  run_done: "Finished: done %{done}, filled %{filled}, not found %{missed}."
+  fill_book: Fill with AI
+  filling: AI is thinking…
+  fill_failed: "AI did not answer:"
+  ai_filled: AI filled the empty fields. Check them and save.
+  ai_unknown: AI does not know this book — fill it in yourself.
+

@@ -1,0 +1,66 @@
+{% import "partials/ui.html" as ui %}
+{# The AI connection and filling the library. `ai`: settings (base_url, model, prompt), error,
+   saved, check (ok, message), ready, has_key, default_prompt; `ai_run`: see ai_run.html. #}
+{% set a = ai %}
+<section id="ai-settings" class="flex flex-col gap-6">
+  <p class="max-w-[68ch] text-[15px] text-text-2">{{ t('ai.intro') }}</p>
+
+  <form method="post" action="/settings/ai" hx-post="/settings/ai" hx-target="#ai-settings" hx-swap="outerHTML"
+    hx-disabled-elt="find button[type=submit]" x-data='{ prompt: {{ a.settings.prompt | tojson }}, preset: {{ a.default_prompt | tojson }} }'
+    class="card flex flex-col gap-5">
+    <div>
+      <h2 class="text-[20px] font-bold">{{ t('ai.connection_title') }}</h2>
+      <p class="mt-1 text-[14px] text-text-2">{{ t('ai.connection_hint') }}</p>
+    </div>
+    {% if a.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ a.error) }}</p>{% endif %}
+    {% if a.saved %}<p class="alert-ok" role="status">{{ t('common.saved') }}</p>{% endif %}
+    {% if a.check %}
+    {% if a.check.ok %}<p class="alert-ok" role="status">{{ t('ai.check_ok') }}</p>
+    {% else %}<p class="alert-error" role="alert">{{ t('ai.check_failed') }} <span class="mono text-[12.5px] break-words">{{ a.check.message }}</span></p>{% endif %}
+    {% endif %}
+
+    <div class="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,16rem)]">
+      <div>
+        <label for="ai-base-url" class="field-label">{{ t('ai.base_url_label') }}</label>
+        <input id="ai-base-url" name="base_url" value="{{ a.settings.base_url }}" required inputmode="url" autocomplete="off" spellcheck="false"
+          placeholder="https://api.openai.com/v1" class="input mono">
+        <p class="field-hint">{{ t('ai.base_url_hint') }}</p>
+      </div>
+      <div>
+        <label for="ai-model" class="field-label">{{ t('ai.model_label') }}</label>
+        <input id="ai-model" name="model" value="{{ a.settings.model }}" required autocomplete="off" spellcheck="false"
+          placeholder="gpt-4o-mini" class="input mono">
+      </div>
+    </div>
+    <div>
+      <label for="ai-key" class="field-label">{{ t('ai.key_label') }}</label>
+      {{ ui.password("ai-key", "api_key", "off", 'placeholder="' ~ (t('ai.key_keep') if a.has_key else 'sk-…') ~ '" spellcheck="false"') }}
+      <p class="field-hint">{{ t('ai.key_hint') }}</p>
+      {% if a.has_key %}
+      <label class="mt-2 inline-flex cursor-pointer items-center gap-2 text-[14px] text-text-2">
+        <input type="checkbox" name="clear_key" value="on" class="size-4 accent-accent">{{ t('ai.key_clear') }}
+      </label>
+      {% endif %}
+    </div>
+    <div>
+      <div class="mb-1.5 flex items-baseline justify-between gap-3">
+        <label for="ai-prompt" class="field-label mb-0">{{ t('ai.prompt_label') }}</label>
+        <button type="button" @click="prompt = preset" x-show="prompt !== preset" x-cloak
+          class="text-[14px] font-semibold text-accent-fg hover:underline">{{ t('ai.prompt_reset') }}</button>
+      </div>
+      <textarea id="ai-prompt" name="prompt" rows="6" maxlength="4000" x-model="prompt" spellcheck="false"
+        class="input mono min-h-32 py-2.5 text-[13px] leading-relaxed">{{ a.settings.prompt }}</textarea>
+      <p class="field-hint">{{ t('ai.prompt_hint') }}</p>
+    </div>
+
+    <div class="flex flex-wrap items-center gap-3 border-t border-line pt-5">
+      <button type="submit" class="btn btn-primary">{{ t('common.save') }}</button>
+      {% if a.ready %}
+      <button type="button" hx-post="/settings/ai/check" hx-target="#ai-settings" hx-swap="outerHTML" hx-disabled-elt="this"
+        class="btn btn-ghost">{{ ui.icon("check", "size-[18px]") }}<span class="[.htmx-request_&]:hidden">{{ t('ai.check') }}</span><span class="hidden [.htmx-request_&]:inline">{{ t('ai.checking') }}</span></button>
+      {% endif %}
+    </div>
+  </form>
+
+  {% include "partials/ai_run.html" %}
+</section>

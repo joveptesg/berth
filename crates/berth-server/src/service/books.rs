@@ -16,6 +16,10 @@ use crate::{AppState, db::now_ms, media};
 /// Ratings of the 436-FZ scale.
 pub const RATINGS: [i64; 5] = [0, 6, 12, 16, 18];
 const MAX_TITLE_LEN: usize = 300;
+/// Longest description, in characters.
+pub const MAX_DESCRIPTION_LEN: usize = 4000;
+/// Years a book may carry: ancient works have small numbers, the future none.
+pub const YEARS: std::ops::RangeInclusive<i64> = 1..=2100;
 const MAX_COVER_BYTES: usize = 10 << 20;
 /// Books per sync page.
 pub const SYNC_PAGE: i64 = 200;
@@ -269,6 +273,10 @@ pub struct Book {
     pub rating: Option<i64>,
     /// Language, ISO 639-1; `None` when not known.
     pub language: Option<String>,
+    /// What the book is about, a few sentences.
+    pub description: Option<String>,
+    /// Year the work was first published.
+    pub year: Option<i64>,
     /// Playing time.
     pub duration_ms: i64,
     /// Cover blob.
@@ -288,6 +296,8 @@ struct BookRow {
     series_no: Option<f64>,
     rating: Option<i64>,
     language: Option<String>,
+    description: Option<String>,
+    year: Option<i64>,
     duration_ms: i64,
     cover_hash: Option<String>,
     revision: i64,
@@ -313,6 +323,8 @@ impl BookRow {
             series_no: self.series_no,
             rating: self.rating,
             language: self.language,
+            description: self.description,
+            year: self.year,
             duration_ms: self.duration_ms,
             cover_hash: self.cover_hash,
             revision: self.revision,
@@ -404,7 +416,7 @@ pub async fn list(
 ) -> anyhow::Result<Vec<Book>> {
     let search = format!("%{}%", query.search.trim().to_lowercase());
     let rows: Vec<BookRow> = sqlx::query_as(
-        "SELECT id, library_id, title, series, series_no, rating, language, duration_ms, cover_hash, revision,
+        "SELECT id, library_id, title, series, series_no, rating, language, description, year, duration_ms, cover_hash, revision,
                 created_at, deleted_at
          FROM books b
          WHERE tenant_id = $1 AND library_id = $2 AND deleted_at IS NULL
@@ -492,7 +504,7 @@ pub struct BookDetail {
 
 async fn row(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<BookRow> {
     sqlx::query_as(
-        "SELECT id, library_id, title, series, series_no, rating, language, duration_ms, cover_hash, revision,
+        "SELECT id, library_id, title, series, series_no, rating, language, description, year, duration_ms, cover_hash, revision,
                 created_at, deleted_at
          FROM books WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
     )
@@ -588,13 +600,18 @@ pub struct BookEdits {
     pub category_ids: Vec<String>,
     /// Language code; `None` when not known.
     pub language: Option<String>,
+    /// What the book is about; `None` or empty for none.
+    pub description: Option<String>,
+    /// Year of first publication.
+    pub year: Option<i64>,
 }
 
 impl BookEdits {
     /// Validated and trimmed.
     ///
     /// # Errors
-    /// `Validation` with `book_title_required`, `book_title_too_long` or `book_rating_invalid`.
+    /// `Validation` with `book_title_required`, `book_title_too_long`, `book_rating_invalid`,
+    /// `book_description_too_long` or `book_year_invalid`.
     pub fn validated(&self) -> Result<Self> {
         let title = self.title.trim();
         if title.is_empty() {
@@ -605,6 +622,17 @@ impl BookEdits {
         }
         if self.rating.is_some_and(|r| !RATINGS.contains(&r)) {
             return Err(BerthError::Validation("book_rating_invalid".into()));
+        }
+        let description = self
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|d| !d.is_empty());
+        if description.is_some_and(|d| d.chars().count() > MAX_DESCRIPTION_LEN) {
+            return Err(BerthError::Validation("book_description_too_long".into()));
+        }
+        if self.year.is_some_and(|y| !YEARS.contains(&y)) {
+            return Err(BerthError::Validation("book_year_invalid".into()));
         }
         let language = self
             .language
@@ -630,6 +658,8 @@ impl BookEdits {
             rating: self.rating,
             category_ids: names(&self.category_ids),
             language: language.map(str::to_owned),
+            description: description.map(str::to_owned),
+            year: self.year,
         })
     }
 
@@ -664,7 +694,7 @@ pub(crate) async fn write_edits(
 ) -> sqlx::Result<()> {
     sqlx::query(
         "UPDATE books SET title = $3, series = $4, series_no = $5, rating = $6, search_text = $7,
-            revision = $8, updated_at = $9, language = $10
+            revision = $8, updated_at = $9, language = $10, description = $11, year = $12
          WHERE tenant_id = $1 AND id = $2",
     )
     .bind(tenant_id)
@@ -677,6 +707,8 @@ pub(crate) async fn write_edits(
     .bind(revision)
     .bind(now_ms())
     .bind(&edits.language)
+    .bind(&edits.description)
+    .bind(edits.year)
     .execute(&mut *conn)
     .await?;
     sqlx::query("DELETE FROM book_people WHERE tenant_id = $1 AND book_id = $2")
@@ -734,6 +766,89 @@ pub async fn update(db: &SqlitePool, tenant_id: &str, id: &str, edits: &BookEdit
         .context("save book")?;
     tx.commit().await.context("commit book")?;
     Ok(())
+}
+
+/// Fills the description and year a book does not have yet; values already set stay.
+/// Returns whether anything changed.
+///
+/// # Errors
+/// Database failures.
+pub async fn fill_about(
+    db: &SqlitePool,
+    tenant_id: &str,
+    id: &str,
+    description: Option<&str>,
+    year: Option<i64>,
+) -> anyhow::Result<bool> {
+    let mut tx = db.begin().await.context("begin")?;
+    let current: Option<(Option<String>, Option<i64>)> = sqlx::query_as(
+        "SELECT description, year FROM books WHERE tenant_id = $1 AND id = $2 AND deleted_at IS NULL",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_optional(&mut *tx)
+    .await?;
+    let Some((has_description, has_year)) = current else {
+        return Ok(false);
+    };
+    let description = description.filter(|_| has_description.is_none());
+    let year = year.filter(|_| has_year.is_none());
+    if description.is_none() && year.is_none() {
+        return Ok(false);
+    }
+    let revision = next_revision(&mut tx, tenant_id)
+        .await
+        .context("revision")?;
+    sqlx::query(
+        "UPDATE books SET description = COALESCE(description, $3), year = COALESCE(year, $4),
+            revision = $5, updated_at = $6
+         WHERE tenant_id = $1 AND id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(description)
+    .bind(year)
+    .bind(revision)
+    .bind(now_ms())
+    .execute(&mut *tx)
+    .await
+    .context("fill book")?;
+    tx.commit().await.context("commit book")?;
+    Ok(true)
+}
+
+/// The next book after `after` (by id) that lacks a description or a year.
+///
+/// # Errors
+/// Database failures.
+pub async fn next_without_about(
+    db: &SqlitePool,
+    tenant_id: &str,
+    after: &str,
+) -> anyhow::Result<Option<String>> {
+    Ok(sqlx::query_scalar(
+        "SELECT id FROM books WHERE tenant_id = $1 AND deleted_at IS NULL
+           AND (description IS NULL OR year IS NULL) AND id > $2
+         ORDER BY id LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(after)
+    .fetch_optional(db)
+    .await?)
+}
+
+/// How many books lack a description or a year.
+///
+/// # Errors
+/// Database failures.
+pub async fn count_without_about(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<i64> {
+    Ok(sqlx::query_scalar(
+        "SELECT COUNT(*) FROM books WHERE tenant_id = $1 AND deleted_at IS NULL
+           AND (description IS NULL OR year IS NULL)",
+    )
+    .bind(tenant_id)
+    .fetch_one(db)
+    .await?)
 }
 
 /// Replaces the cover with an uploaded image (JPEG, PNG or WebP up to 10 MB).
@@ -874,7 +989,7 @@ pub async fn sync(
         _ => (0, true),
     };
     let rows: Vec<BookRow> = sqlx::query_as(
-        "SELECT id, library_id, title, series, series_no, rating, language, duration_ms, cover_hash, revision,
+        "SELECT id, library_id, title, series, series_no, rating, language, description, year, duration_ms, cover_hash, revision,
                 created_at, deleted_at
          FROM books WHERE tenant_id = $1 AND revision > $2
            AND ($3 = 0 OR deleted_at IS NULL)

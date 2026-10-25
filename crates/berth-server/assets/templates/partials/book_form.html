@@ -1,10 +1,18 @@
 {% import "partials/book_fields.html" as bf %}
+{% import "partials/ui.html" as ui %}
 {# Metadata of a book; after a rejected save it shows the typed values. #}
 <form id="book-form" method="post" action="/book/{{ book.id }}" hx-post="/book/{{ book.id }}" hx-target="this" hx-swap="outerHTML" class="card flex flex-col gap-5">
   {% if error %}<p class="alert-error" role="alert">{{ t('errors.' ~ error) }}</p>{% endif %}
   {{ bf.fields(form or book, "book", ratings, categories, languages) }}
+  {% if ai_error %}<p class="alert-error" role="alert">{{ t('ai.fill_failed') }} <span class="mono text-[12.5px] break-words">{{ ai_error }}</span></p>{% endif %}
+  {% if ai_notice %}<p class="{{ 'alert-ok' if ai_notice == 'ai_filled' else 'alert-error' }}" role="status">{{ t('ai.' ~ ai_notice) }}</p>{% endif %}
   <div class="flex flex-wrap items-center gap-3">
     <button type="submit" class="btn btn-primary">{{ t('common.save') }}</button>
+    {% if ai_ready %}
+    {# Fills only the empty description and year; nothing is saved until "Save". #}
+    <button type="button" hx-post="/book/{{ book.id }}/ai" hx-include="closest form" hx-target="#book-form" hx-swap="outerHTML"
+      hx-disabled-elt="this" class="btn btn-ghost">{{ ui.icon("sparkle", "size-[18px]") }}<span class="[.htmx-request_&]:hidden">{{ t('ai.fill_book') }}</span><span class="hidden [.htmx-request_&]:inline">{{ t('ai.filling') }}</span></button>
+    {% endif %}
     {% if saved %}<span class="alert-ok py-2" role="status">{{ t('common.saved') }}</span>{% endif %}
   </div>
 </form>

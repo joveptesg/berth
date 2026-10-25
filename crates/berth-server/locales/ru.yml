@@ -353,6 +353,11 @@ book:
   series_no_label: №
   rating_label: Возрастной рейтинг
   rating_none: Не указан
+  year_label: Год
+  description_label: Описание
+  about: О книге
+  about_empty: Описания пока нет.
+  edit: Редактировать
   read_by: читает %{names}
   duration: Длительность
   chapters: Главы
@@ -461,6 +466,12 @@ errors:
   book_title_required: Введите название.
   book_title_too_long: Слишком длинное название (не больше 300 символов).
   book_rating_invalid: Выберите возрастной рейтинг из списка.
+  book_description_too_long: Слишком длинное описание (не больше 4000 символов).
+  book_year_invalid: Год — число от 1 до 2100.
+  ai_url_invalid: Адрес API должен начинаться с http:// или https://.
+  ai_model_required: Укажите модель.
+  ai_prompt_too_long: Слишком длинная инструкция (не больше 4000 символов).
+  ai_not_set_up: Сначала сохраните подключение к ИИ.
   book_series_no_invalid: Номер в серии — число, например 2 или 2.5.
   cover_invalid: Выберите картинку JPEG, PNG или WebP.
   cover_too_large: Слишком большая картинка (не больше 10 МБ).
@@ -507,3 +518,37 @@ backup:
   col_date: Дата
   col_size: Размер
   col_actions: Действия
+
+ai:
+  section: ИИ
+  intro: "ИИ пишет краткие описания книг и находит год первой публикации. Подойдёт любой сервис с OpenAI-совместимым API: OpenAI, OpenRouter, DeepSeek или локальная Ollama."
+  connection_title: Подключение
+  connection_hint: Адрес API, ключ и модель. Ключ хранится зашифрованным.
+  base_url_label: Адрес API
+  base_url_hint: "Например: https://api.openai.com/v1, https://openrouter.ai/api/v1, http://localhost:11434/v1 (Ollama)."
+  model_label: Модель
+  key_label: API-ключ
+  key_keep: Сохранён — оставьте пустым, чтобы не менять
+  key_hint: Для локальной модели ключ не нужен.
+  key_clear: Удалить сохранённый ключ
+  prompt_label: Инструкция для ИИ
+  prompt_reset: Сбросить к базовой
+  prompt_hint: "{language} заменяется на язык книги (у книги без языка — на язык интерфейса). Данные книги и формат ответа сервер добавляет сам."
+  check: Проверить подключение
+  checking: Проверяем…
+  check_ok: Подключение работает.
+  check_failed: "Не удалось подключиться:"
+  run_title: Описания книг
+  run_hint: ИИ заполнит только пустые описания и годы — то, что вы написали сами, не меняется. Телефоны получат описания при следующем синке.
+  run_start: Заполнить описания
+  run_stop: Остановить
+  run_missing: "Без описания или года: %{count}"
+  run_not_ready: Сначала сохраните подключение.
+  run_progress: "Обработано %{done} из %{total} · заполнено %{filled} · не найдено %{missed}"
+  run_done: "Готово: обработано %{done}, заполнено %{filled}, не найдено %{missed}."
+  fill_book: Заполнить через ИИ
+  filling: ИИ думает…
+  fill_failed: "ИИ не ответил:"
+  ai_filled: ИИ заполнил пустые поля. Проверьте и сохраните.
+  ai_unknown: ИИ не знает эту книгу — заполните вручную.
+

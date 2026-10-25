@@ -3375,3 +3375,262 @@ async fn the_demo_library_loads_changes_and_goes() {
         "login_failed"
     );
 }
+
+/// Uploads a one-file book and saves it with `title`; its id.
+async fn upload_book(state: &AppState, session: &str, title: &str) -> String {
+    let m4b = fixtures::m4b(&fixtures::M4b {
+        seconds: 60,
+        title,
+        artist: "Айзек Азимов",
+        genre: None,
+        language: None,
+        track_language: None,
+        chapters: &[],
+    });
+    let new = serde_json::json!({ "name": format!("{title}.m4b"), "files": [{ "name": "a.m4b", "size": m4b.len() }] });
+    let created = send(
+        state,
+        browser(
+            "POST",
+            "/upload/new",
+            session,
+            "application/json",
+            new.to_string().into_bytes(),
+        ),
+    )
+    .await;
+    let id = created.json()["id"].as_str().unwrap().to_owned();
+    send(
+        state,
+        browser(
+            "PUT",
+            &format!("/upload/{id}/files/0"),
+            session,
+            "application/octet-stream",
+            m4b,
+        ),
+    )
+    .await;
+    send(
+        state,
+        post(&format!("/upload/{id}/complete"), Some(session), &[]),
+    )
+    .await;
+    berth_server::jobs::run_due(state).await.unwrap();
+    let saved = send(
+        state,
+        post(
+            &format!("/upload/{id}/save"),
+            Some(session),
+            &[("title", title), ("authors", "Айзек Азимов")],
+        ),
+    )
+    .await;
+    between(&saved.body, "href=\"/book/", "\"").to_owned()
+}
+
+/// A stand-in OpenAI-compatible API: knows "Основание", nothing else; its address.
+async fn mock_ai() -> String {
+    use axum::{Router, routing::post as route_post};
+    async fn complete(body: String) -> axum::Json<serde_json::Value> {
+        let request: serde_json::Value = serde_json::from_str(&body).unwrap();
+        let user = request["messages"][1]["content"].as_str().unwrap();
+        let answer = if user.contains("Основание") {
+            assert!(user.contains("Language: Russian"), "{user}");
+            serde_json::json!({ "description": "Сага о падении Галактической империи.", "year": 1951 })
+        } else {
+            serde_json::json!({ "description": null, "year": null })
+        };
+        axum::Json(
+            serde_json::json!({ "choices": [{ "message": { "content": answer.to_string() } }] }),
+        )
+    }
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        axum::serve(
+            listener,
+            Router::new().route("/v1/chat/completions", route_post(complete)),
+        )
+        .await
+        .unwrap();
+    });
+    format!("http://{addr}/v1")
+}
+
+async fn about_of(state: &AppState, id: &str) -> (Option<String>, Option<i64>) {
+    sqlx::query_as("SELECT description, year FROM books WHERE id = $1")
+        .bind(id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: the fields, the dialog, sync, then the AI"
+)]
+async fn books_have_a_description_and_the_ai_fills_empty_ones() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let book = upload_book(&state, &session, "Основание").await;
+    let other = upload_book(&state, &session, "Неизвестная книга").await;
+
+    // The admin writes them; a wrong year is refused.
+    let wrong = send(
+        &state,
+        post(
+            &format!("/book/{book}"),
+            Some(&session),
+            &[("title", "Основание"), ("year", "abc")],
+        ),
+    )
+    .await;
+    assert!(wrong.body.contains("role=\"alert\""), "{}", wrong.body);
+    let saved = send(
+        &state,
+        post(
+            &format!("/book/{book}"),
+            Some(&session),
+            &[
+                ("title", "Основание"),
+                ("authors", "Айзек Азимов"),
+                ("language", "ru"),
+                ("year", "1942"),
+                ("description", "Моё описание"),
+            ],
+        ),
+    )
+    .await;
+    assert!(saved.body.contains("Моё описание"), "{}", saved.body);
+    let library = send(&state, get("/library", Some(&session))).await;
+    let grid = send(&state, get(library.location().unwrap(), Some(&session))).await;
+    assert!(grid.body.contains(&format!("/book/{book}/about")));
+    assert!(
+        !grid.body.contains(&format!("/book/{other}/about")),
+        "no button without a description"
+    );
+    let about = send(&state, get(&format!("/book/{book}/about"), Some(&session))).await;
+    assert!(
+        about.body.contains("Моё описание") && about.body.contains("1942"),
+        "{}",
+        about.body
+    );
+
+    // Phones get both.
+    let tenant: String = sqlx::query_scalar("SELECT id FROM tenants")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let page = berth_server::service::books::sync(
+        &state.db,
+        &tenant,
+        &berth_server::service::books::PolicyFilter::admin(),
+        None,
+    )
+    .await
+    .unwrap();
+    let page = serde_json::to_value(&page).unwrap();
+    let synced = page["books"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|b| b["id"] == book.as_str())
+        .unwrap();
+    assert_eq!(
+        (synced["description"].as_str(), synced["year"].as_i64()),
+        (Some("Моё описание"), Some(1942))
+    );
+
+    // The AI fills what is empty and keeps the admin's text.
+    send(
+        &state,
+        post(
+            &format!("/book/{book}"),
+            Some(&session),
+            &[
+                ("title", "Основание"),
+                ("authors", "Айзек Азимов"),
+                ("language", "ru"),
+                ("description", "Моё описание"),
+            ],
+        ),
+    )
+    .await;
+    let not_ready = send(&state, post("/settings/ai/run", Some(&session), &[])).await;
+    assert!(
+        not_ready.body.contains("role=\"alert\""),
+        "{}",
+        not_ready.body
+    );
+    let url = mock_ai().await;
+    let configured = send(
+        &state,
+        post(
+            "/settings/ai",
+            Some(&session),
+            &[("base_url", &url), ("model", "test"), ("api_key", "sk-1")],
+        ),
+    )
+    .await;
+    assert!(
+        configured.body.contains("role=\"status\""),
+        "{}",
+        configured.body
+    );
+    let stored: String =
+        sqlx::query_scalar("SELECT value_encrypted FROM settings WHERE key = 'ai_key'")
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+    assert!(!stored.contains("sk-1"), "the key is stored encrypted");
+    let checked = send(&state, post("/settings/ai/check", Some(&session), &[])).await;
+    assert!(checked.body.contains("alert-ok"), "{}", checked.body);
+
+    let started = send(&state, post("/settings/ai/run", Some(&session), &[])).await;
+    assert!(
+        started.body.contains("/settings/ai/status"),
+        "{}",
+        started.body
+    );
+    berth_server::jobs::run_due(&state).await.unwrap();
+    assert_eq!(
+        about_of(&state, &book).await,
+        (Some("Моё описание".into()), Some(1951))
+    );
+    assert_eq!(about_of(&state, &other).await, (None, None));
+    let status = send(&state, get("/settings/ai/status", Some(&session))).await;
+    assert!(
+        !status.body.contains("hx-trigger") && status.body.contains("alert-ok"),
+        "the run is over: {}",
+        status.body
+    );
+
+    // The book page fills an empty description into the form, without saving.
+    let filled = send(
+        &state,
+        post(
+            &format!("/book/{book}/ai"),
+            Some(&session),
+            &[
+                ("title", "Основание"),
+                ("authors", "Айзек Азимов"),
+                ("language", "ru"),
+            ],
+        ),
+    )
+    .await;
+    assert!(
+        filled
+            .body
+            .contains("Сага о падении Галактической империи."),
+        "{}",
+        filled.body
+    );
+    assert_eq!(
+        about_of(&state, &book).await.0.as_deref(),
+        Some("Моё описание")
+    );
+}

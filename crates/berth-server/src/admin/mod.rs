@@ -3,6 +3,7 @@
 //! HTMX form posts get back only the fragment they replace; pages never fetch JSON.
 
 mod access;
+mod ai;
 mod categories;
 mod csrf;
 mod demo;
@@ -91,6 +92,11 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         .route("/settings/demo", get(demo::page).post(demo::apply))
         .route("/settings/demo/status", get(demo::status))
         .route("/settings/demo/remove", post(demo::remove))
+        .route("/settings/ai", get(ai::page).post(ai::save))
+        .route("/settings/ai/check", post(ai::check))
+        .route("/settings/ai/status", get(ai::status))
+        .route("/settings/ai/run", post(ai::start))
+        .route("/settings/ai/stop", post(ai::stop))
         .route("/settings/backup", get(pages::settings_backup_page))
         .route("/settings/restore", get(pages::settings_restore_page))
         .route("/settings/backup/download", get(pages::backup_download))
@@ -140,6 +146,8 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             get(library::book_cover)
                 .merge(post(library::book_cover_upload).layer(DefaultBodyLimit::max(COVER_LIMIT))),
         )
+        .route("/book/{id}/about", get(library::book_about))
+        .route("/book/{id}/ai", post(ai::fill_book))
         .route("/book/{id}/delete", post(library::book_delete))
         .route("/upload", get(upload::page))
         .route("/upload/new", post(upload::create))

@@ -3,6 +3,7 @@
 //! Validation failures are `BerthError::Validation` with a stable `snake_case` code
 //! (e.g. `password_too_short`); the admin UI translates it as `errors.<code>`.
 
+pub mod ai;
 pub mod auth;
 pub mod blobs;
 pub mod books;

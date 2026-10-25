@@ -1,0 +1,41 @@
+{% import "partials/ui.html" as ui %}
+{# Filling the library: start, progress (polled while it runs), the outcome. `ai_run`: run
+   (running, total, done, filled, missed, error, finished_at), missing, ready; `run_error`. #}
+{% set r = ai_run.run %}
+<div id="ai-run" class="card flex flex-col gap-4"
+  {% if r.running %}hx-get="/settings/ai/status" hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
+  <div class="flex items-start gap-4">
+    <span class="grid size-11 shrink-0 place-items-center rounded-[14px] bg-accent-soft text-accent-fg">{{ ui.icon("sparkle", "size-[22px]") }}</span>
+    <div class="min-w-0">
+      <h2 class="text-[20px] font-bold">{{ t('ai.run_title') }}</h2>
+      <p class="mt-1 text-[14px] text-text-2">{{ t('ai.run_hint') }}</p>
+    </div>
+  </div>
+  {% if run_error %}<p class="alert-error" role="alert">{{ t('errors.' ~ run_error) }}</p>{% endif %}
+
+  {% if r.running %}
+  <div>
+    <div class="h-2 overflow-hidden rounded-full bg-surface-3">
+      <div class="h-full rounded-full bg-accent transition-[width]" style="width: {{ (r.done * 100 / r.total) | int if r.total else 0 }}%"></div>
+    </div>
+    <p class="mt-2 flex items-center gap-2 text-[14px] text-text-2">
+      <span class="size-2 animate-pulse rounded-full bg-accent" aria-hidden="true"></span>{{ t('ai.run_progress', done=r.done, total=r.total, filled=r.filled, missed=r.missed) }}
+    </p>
+  </div>
+  <div>
+    <button type="button" hx-post="/settings/ai/stop" hx-target="#ai-run" hx-swap="outerHTML" class="btn btn-ghost">{{ t('ai.run_stop') }}</button>
+  </div>
+  {% else %}
+  {% if r.finished_at %}
+  <p class="{{ 'alert-error' if r.error else 'alert-ok' }}" role="status">
+    {{ t('ai.run_done', done=r.done, filled=r.filled, missed=r.missed) }}
+    {% if r.error %}<span class="mono mt-1 block text-[12.5px] break-words">{{ r.error }}</span>{% endif %}
+  </p>
+  {% endif %}
+  <div class="flex flex-wrap items-center gap-3">
+    <button type="button" hx-post="/settings/ai/run" hx-target="#ai-run" hx-swap="outerHTML" hx-disabled-elt="this"
+      {% if not ai_run.ready or not ai_run.missing %}disabled{% endif %} class="btn btn-primary">{{ ui.icon("sparkle", "size-[18px]") }}{{ t('ai.run_start') }}</button>
+    <p class="text-[14px] text-text-3">{{ t('ai.run_missing', count=ai_run.missing) if ai_run.ready else t('ai.run_not_ready') }}</p>
+  </div>
+  {% endif %}
+</div>

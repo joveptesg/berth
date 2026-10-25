@@ -1,0 +1,33 @@
+{% import "partials/ui.html" as ui %}
+{# What a book is about, opened from its card. `book`: a book of the library. #}
+{% set b = book %}
+<dialog id="book-about" x-init="$el.showModal()" @close="$el.remove()" @click="$event.target === $el && $el.close()"
+  class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,560px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
+  <div class="flex max-h-[calc(100dvh-34px)] flex-col">
+    <div class="relative flex gap-4 border-b border-line px-6 pt-5 pb-4 pr-16">
+      <span class="w-20 shrink-0">{{ ui.cover("/book/" ~ b.id ~ "/cover?v=" ~ b.cover_hash[:12] if b.cover_hash, b.title, "rounded-[12px] text-[22px]") }}</span>
+      <div class="min-w-0">
+        <h2 class="text-[20px] leading-tight font-bold">{{ b.title }}</h2>
+        <p class="mt-1 text-[14px] text-text-2">{{ b.authors | join(", ") or t('library.unknown_author') }}</p>
+        <p class="mt-1 flex flex-wrap items-center gap-x-2 text-[13px] text-text-3">
+          {% if b.year %}<span class="mono">{{ b.year }}</span><span aria-hidden="true">·</span>{% endif %}
+          <span class="mono">{{ b.duration_ms | clock }}</span>
+          {% if b.narrators %}<span aria-hidden="true">·</span><span>{{ t('book.read_by', names=b.narrators | join(", ")) }}</span>{% endif %}
+        </p>
+      </div>
+      <button type="button" onclick="this.closest('dialog').close()" aria-label="{{ t('connect.close') }}" autofocus
+        class="absolute top-4 right-4 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close") }}</button>
+    </div>
+    <div class="overflow-y-auto px-6 py-5">
+      {% if b.description %}
+      <p class="text-[15px] leading-relaxed whitespace-pre-line text-text">{{ b.description }}</p>
+      {% else %}
+      <p class="text-[15px] text-text-3">{{ t('book.about_empty') }}</p>
+      {% endif %}
+    </div>
+    <div class="flex flex-wrap gap-2 border-t border-line bg-surface-2/40 px-6 py-3.5">
+      <span class="flex-1"></span>
+      <a href="/book/{{ b.id }}" class="btn btn-ghost min-h-11 px-4 sm:px-5">{{ t('book.edit') }}</a>
+    </div>
+  </div>
+</dialog>

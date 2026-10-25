@@ -154,6 +154,61 @@ pub(crate) async fn put_tenant_setting(
     Ok(())
 }
 
+/// A tenant-scope secret setting, decrypted; the setting's place is the associated data.
+pub(crate) async fn tenant_secret(
+    conn: impl sqlx::SqliteExecutor<'_>,
+    secret: &crate::SecretKey,
+    tenant_id: &str,
+    key: &str,
+) -> anyhow::Result<Option<String>> {
+    let scope = tenant_scope(tenant_id);
+    let stored: Option<String> = sqlx::query_scalar(
+        "SELECT value_encrypted FROM settings WHERE scope = $1 AND key = $2 AND value_encrypted IS NOT NULL",
+    )
+    .bind(&scope)
+    .bind(key)
+    .fetch_optional(conn)
+    .await?;
+    stored
+        .map(|s| {
+            let plain = crate::crypto::decrypt(secret, &format!("{scope}/{key}"), &s)?;
+            String::from_utf8(plain).context("secret setting is not text")
+        })
+        .transpose()
+}
+
+/// Writes a tenant-scope secret setting, encrypted; `None` removes it.
+pub(crate) async fn put_tenant_secret(
+    conn: &mut SqliteConnection,
+    secret: &crate::SecretKey,
+    tenant_id: &str,
+    key: &str,
+    value: Option<&str>,
+) -> anyhow::Result<()> {
+    let scope = tenant_scope(tenant_id);
+    let Some(value) = value else {
+        sqlx::query("DELETE FROM settings WHERE scope = $1 AND key = $2")
+            .bind(&scope)
+            .bind(key)
+            .execute(conn)
+            .await?;
+        return Ok(());
+    };
+    let stored = crate::crypto::encrypt(secret, &format!("{scope}/{key}"), value.as_bytes())?;
+    sqlx::query(
+        "INSERT INTO settings (scope, key, value_encrypted, updated_at) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (scope, key) DO UPDATE SET value_encrypted = excluded.value_encrypted,
+             updated_at = excluded.updated_at",
+    )
+    .bind(&scope)
+    .bind(key)
+    .bind(stored)
+    .bind(now_ms())
+    .execute(conn)
+    .await?;
+    Ok(())
+}
+
 pub(crate) fn now_ms() -> i64 {
     let since_epoch = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)

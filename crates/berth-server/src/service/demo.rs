@@ -749,6 +749,7 @@ impl Target<'_> {
             rating: Some(0),
             category_ids: category.into_iter().collect(),
             language: languages::resolve(&known, &book.locale),
+            ..BookEdits::default()
         };
         ingest::save(state, tenant_id, upload, &edits)
             .await

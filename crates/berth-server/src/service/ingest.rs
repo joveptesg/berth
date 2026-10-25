@@ -480,6 +480,9 @@ pub struct Draft {
     /// Language code from the tags, else guessed from the title and names.
     #[serde(default)]
     pub language: Option<String>,
+    /// Year from the folder name, "Title (1865)".
+    #[serde(default)]
+    pub year: Option<i64>,
 }
 
 /// The language of a proposal: what the files or the folder say, if the admin keeps that
@@ -593,6 +596,17 @@ fn split_language(name: &str) -> (String, Option<String>) {
     }
 }
 
+/// The last four-digit year in parentheses: "Алиса (1865) [Чтец]".
+fn folder_year(name: &str) -> Option<i64> {
+    name.match_indices('(').rev().find_map(|(start, _)| {
+        let inner = name[start + 1..].split_once(')')?.0.trim();
+        (inner.len() == 4 && inner.bytes().all(|b| b.is_ascii_digit()))
+            .then(|| inner.parse().ok())
+            .flatten()
+            .filter(|y| books::YEARS.contains(y))
+    })
+}
+
 fn stem(name: &str) -> String {
     let file = name.rsplit(['/', '\\']).next().unwrap_or(name);
     file.rsplit_once('.').map_or(file, |(s, _)| s).to_owned()
@@ -648,6 +662,7 @@ fn propose(upload_name: &str, mut audio: Vec<(FileRow, media::AudioInfo)>) -> Dr
         title,
         authors: author.map(|a| books::split_names(&a)).unwrap_or_default(),
         narrators: narrator.map(|n| books::split_names(&n)).unwrap_or_default(),
+        year: folder_year(&folder),
         ..Draft::default()
     };
     for genre in audio.iter().flat_map(|(_, i)| &i.genres) {
@@ -1130,6 +1145,10 @@ mod tests {
             parse_folder("[NNM-Club]_Рэй Далио_Принципы успеха (2020)"),
             (None, "Рэй Далио Принципы успеха".into(), None)
         );
+        assert_eq!(folder_year("Алиса (1865) [Чтец]"), Some(1865));
+        assert_eq!(folder_year("Принципы успеха (2020)"), Some(2020));
+        assert_eq!(folder_year("Дюна (eng)"), None);
+        assert_eq!(folder_year("Книга (12)"), None);
         assert_eq!(
             parse_folder("Джеймс Дэшнер — Код лихорадки"),
             (Some("Джеймс Дэшнер".into()), "Код лихорадки".into(), None)

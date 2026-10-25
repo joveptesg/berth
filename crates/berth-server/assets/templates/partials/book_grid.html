@@ -1,6 +1,11 @@
 {% import "partials/ui.html" as ui %}
 {# Books of the library as a grid or a list. #}
+{% macro about(b, cls) -%}
+<button type="button" hx-get="/book/{{ b.id }}/about" hx-target="#book-dialog" hx-swap="innerHTML"
+  title="{{ t('book.about') }}" aria-label="{{ t('book.about') }}: {{ b.title }}" class="{{ cls }}">{{ ui.icon("info", "size-[18px]") }}</button>
+{%- endmacro %}
 <section id="books" class="mt-6" aria-live="polite">
+  <div id="book-dialog"></div>
   <p class="mb-3 text-[14px] text-text-3">{{ t('library.count', count=books | length) }}</p>
   {% if not books %}
   <div class="card flex flex-col items-start gap-4">
@@ -14,8 +19,8 @@
   {% elif list_view %}
   <ul class="card divide-y divide-line p-0 sm:p-0">
     {% for b in books %}
-    <li>
-      <a href="/book/{{ b.id }}" class="flex items-center gap-4 px-4 py-3 hover:bg-surface-2 sm:px-5">
+    <li class="flex items-center hover:bg-surface-2">
+      <a href="/book/{{ b.id }}" class="flex min-w-0 flex-1 items-center gap-4 py-3 pl-4 sm:pl-5 {{ 'pr-1' if b.description else 'pr-4 sm:pr-5' }}">
         <span class="w-12 shrink-0">{{ ui.cover("/book/" ~ b.id ~ "/cover?v=" ~ b.cover_hash[:12] if b.cover_hash, b.title, "rounded-[10px] text-[18px]") }}</span>
         <span class="min-w-0 flex-1">
           <span class="block truncate text-[16px] font-semibold">{{ b.title }}</span>
@@ -25,13 +30,14 @@
         {% if b.rating is not none %}<span class="chip bg-surface-2 text-text-2">{{ b.rating }}+</span>{% endif %}
         <span class="mono hidden text-[13px] text-text-3 sm:block">{{ b.duration_ms | clock }}</span>
       </a>
+      {% if b.description %}{{ about(b, "mr-2 grid size-10 shrink-0 place-items-center rounded-[12px] text-text-3 hover:bg-surface-3 hover:text-text sm:mr-3") }}{% endif %}
     </li>
     {% endfor %}
   </ul>
   {% else %}
   <ul class="grid grid-cols-[repeat(auto-fill,minmax(150px,1fr))] gap-x-4 gap-y-6 sm:grid-cols-[repeat(auto-fill,minmax(180px,1fr))] sm:gap-x-6">
     {% for b in books %}
-    <li>
+    <li class="relative">
       <a href="/book/{{ b.id }}" class="group block rounded-[16px] outline-offset-4">
         <span class="block transition-transform group-hover:-translate-y-0.5">{{ ui.cover("/book/" ~ b.id ~ "/cover?v=" ~ b.cover_hash[:12] if b.cover_hash, b.title, "shadow-[0_10px_30px_-18px_rgb(14_16_20/0.45)]") }}</span>
         <span class="mt-2.5 line-clamp-2 min-h-[2lh] text-[15px] leading-snug font-semibold">{{ b.title }}</span>
@@ -42,6 +48,7 @@
           {% if b.rating is not none %}<span class="chip ml-auto bg-surface-2 px-2 text-text-2">{{ b.rating }}+</span>{% endif %}
         </span>
       </a>
+      {% if b.description %}{{ about(b, "absolute top-2 right-2 grid size-8 place-items-center rounded-full bg-black/35 text-white backdrop-blur-sm transition-colors hover:bg-black/60") }}{% endif %}
     </li>
     {% endfor %}
   </ul>

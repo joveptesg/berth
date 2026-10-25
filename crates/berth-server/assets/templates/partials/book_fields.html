@@ -1,6 +1,6 @@
 {# Book metadata fields, shared by /book/{id} and the upload cards.
    f: title, authors, narrators (lists or "A, B" text), series, series_no, rating,
-   category_ids (a list or "id,id" text), language; categories: the sections to pick from;
+   category_ids (a list or "id,id" text), language, year, description; categories: the sections to pick from;
    languages: the languages (code, name) to pick from. #}
 {% macro names(value) -%}
 {%- if value is string %}{{ value }}{% elif value %}{{ value | join(", ") }}{% endif -%}
@@ -8,9 +8,15 @@
 
 {% macro fields(f, uid, ratings, categories=[], languages=[]) -%}
 <div class="flex flex-col gap-4">
-  <div>
-    <label for="{{ uid }}-title" class="field-label">{{ t('book.title_label') }}</label>
-    <input id="{{ uid }}-title" name="title" value="{{ f.title or '' }}" required maxlength="300" class="input">
+  <div class="grid grid-cols-[minmax(0,1fr)_96px] gap-4 sm:grid-cols-[minmax(0,1fr)_110px]">
+    <div>
+      <label for="{{ uid }}-title" class="field-label">{{ t('book.title_label') }}</label>
+      <input id="{{ uid }}-title" name="title" value="{{ f.title or '' }}" required maxlength="300" class="input">
+    </div>
+    <div>
+      <label for="{{ uid }}-year" class="field-label">{{ t('book.year_label') }}</label>
+      <input id="{{ uid }}-year" name="year" value="{{ f.year if f.year is not none else '' }}" inputmode="numeric" maxlength="4" autocomplete="off" class="input mono">
+    </div>
   </div>
   <div class="grid gap-4 sm:grid-cols-2">
     <div>
@@ -67,5 +73,9 @@
     </div>
   </fieldset>
   {% endif %}
+  <div>
+    <label for="{{ uid }}-description" class="field-label">{{ t('book.description_label') }}</label>
+    <textarea id="{{ uid }}-description" name="description" rows="4" maxlength="4000" class="input min-h-24 py-2.5">{{ f.description or '' }}</textarea>
+  </div>
 </div>
 {%- endmacro %}

@@ -20,6 +20,7 @@ use crate::{
     api::library::serve_image,
     error::ApiError,
     service::{
+        ai,
         books::{self, BookEdits, BookQuery, PolicyFilter, RATINGS},
         categories, languages,
     },
@@ -96,7 +97,7 @@ pub(crate) async fn library(
     )
 }
 
-async fn book_ctx(
+pub(super) async fn book_ctx(
     state: &AppState,
     tenant_id: &str,
     id: &str,
@@ -110,6 +111,7 @@ async fn book_ctx(
         book => serde(&detail), form, error, saved, ratings => RATINGS.to_vec(),
         categories => serde(categories),
         languages => serde(languages::list(&state.db, tenant_id).await?),
+        ai_ready => ai::settings(&state.db, tenant_id).await?.ready(),
         ..shell(state, "library")
     })
 }
@@ -121,6 +123,20 @@ pub(crate) async fn book(
 ) -> Page {
     let ctx = book_ctx(&state, &session.0.tenant_id, &id, None, None, false).await?;
     render(&state, "book.html", ctx)
+}
+
+/// The "about the book" dialog opened from a library card.
+pub(crate) async fn book_about(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    Path(id): Path<String>,
+) -> Page {
+    let detail = books::get(&state.db, &session.0.tenant_id, &PolicyFilter::admin(), &id).await?;
+    render(
+        &state,
+        "partials/book_about_dialog.html",
+        context! { book => serde(&detail.book) },
+    )
 }
 
 /// Book metadata as the forms send it (here and on upload cards).
@@ -144,6 +160,10 @@ pub(crate) struct BookForm {
     /// Language code; empty for none.
     #[serde(default)]
     pub(super) language: String,
+    #[serde(default)]
+    pub(super) description: String,
+    #[serde(default)]
+    pub(super) year: String,
 }
 
 impl BookForm {
@@ -157,6 +177,13 @@ impl BookForm {
                     .ok_or_else(|| BerthError::Validation("book_series_no_invalid".into()))?,
             ),
         };
+        let year = match self.year.trim() {
+            "" => None,
+            year => Some(
+                year.parse::<i64>()
+                    .map_err(|_| BerthError::Validation("book_year_invalid".into()))?,
+            ),
+        };
         Ok(BookEdits {
             title: self.title.clone(),
             authors: books::split_names(&self.authors),
@@ -166,6 +193,8 @@ impl BookForm {
             rating: self.rating.parse().ok(),
             category_ids: books::split_names(&self.category_ids),
             language: Some(self.language.clone()),
+            description: Some(self.description.clone()),
+            year,
         })
     }
 }

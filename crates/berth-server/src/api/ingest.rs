@@ -183,6 +183,10 @@ pub(crate) struct SaveBook {
     category_ids: Option<Vec<String>>,
     /// Language code (`""` for none); omitted, the language of the proposal.
     language: Option<String>,
+    /// What the book is about.
+    description: Option<String>,
+    /// Year of first publication; omitted, the year of the proposal.
+    year: Option<i64>,
 }
 
 /// The created book.
@@ -201,7 +205,7 @@ pub(crate) struct SavedBook {
     request_body = SaveBook,
     responses(
         (status = CREATED, description = "Book created", body = SavedBook),
-        (status = BAD_REQUEST, description = "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid`, `book_language_invalid` or `invalid_body`", body = Problem, content_type = "application/problem+json"),
+        (status = BAD_REQUEST, description = "`validation`; `detail`: `book_title_required`, `book_title_too_long`, `book_rating_invalid`, `book_language_invalid`, `book_description_too_long`, `book_year_invalid` or `invalid_body`", body = Problem, content_type = "application/problem+json"),
         (status = UNAUTHORIZED, description = "`unauthenticated` or `device_revoked`", body = Problem, content_type = "application/problem+json"),
         (status = FORBIDDEN, description = "`forbidden`: no `upload` or `admin` scope", body = Problem, content_type = "application/problem+json"),
         (status = NOT_FOUND, description = "`not_found`", body = Problem, content_type = "application/problem+json"),
@@ -230,6 +234,8 @@ pub(crate) async fn save_upload(
         rating: req.rating,
         category_ids,
         language,
+        description: req.description,
+        year: req.year.or(draft.year),
     };
     let book_id = ingest::save(&state, &device.tenant_id, &id, &edits).await?;
     Ok((StatusCode::CREATED, Json(SavedBook { book_id })))

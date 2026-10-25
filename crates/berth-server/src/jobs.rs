@@ -12,7 +12,7 @@ use sqlx::SqliteConnection;
 use crate::{
     AppState,
     db::now_ms,
-    service::{demo, ingest},
+    service::{ai, demo, ingest},
 };
 
 /// Lease of a claimed job: longer than any job runs.
@@ -26,6 +26,8 @@ const POLL: Duration = Duration::from_secs(5);
 pub(crate) const INGEST: &str = "ingest_pipeline";
 /// Loads a book of the demo library: `{"slot": ..., "full": ...}`.
 pub(crate) const DEMO_BOOK: &str = "demo_book";
+/// Asks the AI about the next book without a description: `{"after": ...}`.
+pub(crate) const AI_DESCRIBE: &str = "ai_describe";
 
 /// Adds a job, due now; call [`AppState::wake_jobs`] after the transaction commits.
 pub(crate) async fn enqueue(
@@ -130,6 +132,7 @@ async fn run(state: &AppState, tenant_id: &str, kind: &str, payload: &Value) -> 
             ingest::analyze(state, tenant_id, upload).await
         }
         DEMO_BOOK => demo::run_job(state, tenant_id, payload).await,
+        AI_DESCRIBE => ai::run_job(state, tenant_id, payload).await,
         _ => anyhow::bail!("unknown job kind {kind}"),
     }
 }
@@ -137,6 +140,11 @@ async fn run(state: &AppState, tenant_id: &str, kind: &str, payload: &Value) -> 
 async fn gave_up(state: &AppState, tenant_id: &str, kind: &str, payload: &Value, error: &str) {
     if kind == DEMO_BOOK {
         demo::give_up(&state.db, tenant_id, payload, error).await;
+    }
+    if kind == AI_DESCRIBE
+        && let Err(err) = ai::stop(&state.db, tenant_id).await
+    {
+        tracing::warn!(error = %err, "could not stop the AI run");
     }
     if kind == INGEST
         && let Some(upload) = payload["upload_id"].as_str()
