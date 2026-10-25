@@ -11,7 +11,7 @@ use serde_json::Value;
 use sqlx::{SqliteConnection, SqlitePool};
 
 use crate::{
-    AppState, SecretKey, crypto,
+    AppState, Config, SecretKey, crypto,
     db::{self, now_ms},
     storage::{self, Backend, CdnSigning, LocalConfig, S3Config, S3Keys},
 };
@@ -622,7 +622,7 @@ pub async fn verify(state: &AppState, tenant_id: &str, id: &str) -> Result<Profi
     let row = row(&state.db, tenant_id, id).await?;
     let result = check(
         &backend(&state.secret, &row)?,
-        &state.config.load().data_dir,
+        &state.config.load(),
         tenant_id,
         row.delivery_mode == "cdn",
     )
@@ -644,11 +644,11 @@ pub async fn verify(state: &AppState, tenant_id: &str, id: &str) -> Result<Profi
 
 async fn check(
     backend: &Backend,
-    data_dir: &std::path::Path,
+    config: &Config,
     tenant_id: &str,
     cdn: bool,
 ) -> std::result::Result<(), &'static str> {
-    let store = storage::open(backend, data_dir).map_err(|err| {
+    let store = storage::open(backend, &config.data_dir).map_err(|err| {
         tracing::info!(error = %err, "storage cannot be opened");
         match backend {
             Backend::Local(_) => "storage_local_unwritable",
@@ -656,19 +656,27 @@ async fn check(
         }
     })?;
     store.verify(tenant_id).await?;
-    match backend {
-        Backend::S3(config, keys) if cdn => {
-            let client = reqwest::Client::builder()
-                .timeout(std::time::Duration::from_secs(20))
-                .build()
-                .map_err(|_| "storage_failed")?;
-            let token_key = (!config.cdn_signing.is_none()).then_some(keys.cdn_token_key.as_str());
-            store
-                .verify_cdn(tenant_id, &config.cdn_url, token_key, &client)
-                .await
-        }
-        _ => Ok(()),
+    let Backend::S3(s3, keys) = backend else {
+        return Ok(());
+    };
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(20))
+        .build()
+        .map_err(|_| "storage_failed")?;
+    // The admin uploads straight to the bucket from the server's addresses; with none set
+    // there is no origin to ask about.
+    for url in [&config.lan_url, &config.wan_url].into_iter().flatten() {
+        store
+            .verify_cors(tenant_id, &url.origin().ascii_serialization(), &client)
+            .await?;
     }
+    if cdn {
+        let token_key = (!s3.cdn_signing.is_none()).then_some(keys.cdn_token_key.as_str());
+        store
+            .verify_cdn(tenant_id, &s3.cdn_url, token_key, &client)
+            .await?;
+    }
+    Ok(())
 }
 
 /// Setup: validates and checks the first profile before the tenant exists.
@@ -691,7 +699,7 @@ pub(crate) async fn prepare_first(
         }
     };
     let cdn = prepared.delivery_mode == "cdn";
-    check(&backend, &state.config.load().data_dir, tenant_id, cdn)
+    check(&backend, &state.config.load(), tenant_id, cdn)
         .await
         .map_err(|code| BerthError::Validation(code.into()))?;
     Ok(FirstProfile(prepared))

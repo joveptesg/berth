@@ -806,6 +806,42 @@ pub(crate) async fn fail(
     Ok(())
 }
 
+/// The browser could not send file `file`: to the bucket (`presigned`) or to the server.
+/// The upload fails with a code the admin can act on; one already sent is left alone.
+///
+/// # Errors
+/// `NotFound`, database failures.
+pub async fn send_failed(
+    db: &SqlitePool,
+    tenant_id: &str,
+    id: &str,
+    file: i64,
+    presigned: bool,
+    reason: &str,
+) -> Result<()> {
+    get(db, tenant_id, id).await?;
+    // The browser only says "network" when a request did not get through at all; from a
+    // bucket that is nearly always its CORS rules.
+    let code = if presigned && reason == "network" {
+        "upload_bucket_unreachable"
+    } else {
+        "upload_send_failed"
+    };
+    tracing::warn!(upload = %id, file, presigned, reason, "upload file not sent");
+    sqlx::query(
+        "UPDATE uploads SET status = 'failed', error = $3, updated_at = $4
+         WHERE tenant_id = $1 AND id = $2 AND status = 'uploading'",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(code)
+    .bind(now_ms())
+    .execute(db)
+    .await
+    .context("fail upload")?;
+    Ok(())
+}
+
 /// Creates the book from the proposal and the admin's edits.
 ///
 /// # Errors

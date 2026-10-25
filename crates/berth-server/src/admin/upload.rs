@@ -146,6 +146,35 @@ pub(crate) async fn complete(
     card(&state, tenant_id, &upload, None, error).await
 }
 
+/// What the browser reports when a file did not get through.
+#[derive(Deserialize)]
+pub(crate) struct SendFailure {
+    file: i64,
+    /// The file went to its presigned URL, not to the server.
+    presigned: bool,
+    reason: String,
+}
+
+pub(crate) async fn fail(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    Path(id): Path<String>,
+    Json(req): Json<SendFailure>,
+) -> Page {
+    let tenant_id = &session.0.tenant_id;
+    ingest::send_failed(
+        &state.db,
+        tenant_id,
+        &id,
+        req.file,
+        req.presigned,
+        &req.reason,
+    )
+    .await?;
+    let upload = ingest::get(&state.db, tenant_id, &id).await?;
+    card(&state, tenant_id, &upload, None, None).await
+}
+
 pub(crate) async fn status(
     State(state): State<AppState>,
     Extension(session): Extension<AdminSession>,

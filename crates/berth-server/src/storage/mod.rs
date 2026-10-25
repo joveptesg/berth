@@ -448,6 +448,59 @@ impl ObjectBlobStore {
             }
         }
     }
+
+    /// Asks the bucket, as a browser does before a presigned upload, whether a page at
+    /// `origin` may PUT there (a CORS preflight). Stores without presigned uploads pass.
+    ///
+    /// # Errors
+    /// `storage_cors_missing` when the bucket does not allow the origin, `storage_unreachable`
+    /// when it does not answer.
+    pub async fn verify_cors(
+        &self,
+        prefix: &str,
+        origin: &str,
+        client: &reqwest::Client,
+    ) -> Result<(), VerifyError> {
+        let Some(presigner) = &self.presigner else {
+            return Ok(());
+        };
+        let key = format!("{prefix}/.berth-verify/cors");
+        let url = presigner
+            .put(
+                &key,
+                &[0; 32],
+                0,
+                Duration::from_secs(300),
+                SystemTime::now(),
+            )
+            .map_err(|_| "storage_failed")?;
+        // A browser sends the file's type and the signed checksum.
+        let response = client
+            .request(reqwest::Method::OPTIONS, url)
+            .header("origin", origin)
+            .header("access-control-request-method", "PUT")
+            .header(
+                "access-control-request-headers",
+                "content-type,x-amz-checksum-sha256",
+            )
+            .send()
+            .await
+            .map_err(|err| {
+                tracing::info!(error = %err, "CORS check failed");
+                "storage_unreachable"
+            })?;
+        let allowed = response
+            .headers()
+            .get("access-control-allow-origin")
+            .and_then(|v| v.to_str().ok())
+            .is_some_and(|v| v == "*" || v == origin);
+        if response.status().is_success() && allowed {
+            Ok(())
+        } else {
+            tracing::info!(status = %response.status(), origin, "bucket CORS does not allow uploads");
+            Err("storage_cors_missing")
+        }
+    }
 }
 
 /// Seconds since the unix epoch.
@@ -826,5 +879,70 @@ mod tests {
             !dir.path().join("blobs/t1/.berth-verify").exists(),
             "probes are removed"
         );
+    }
+
+    /// A bucket that answers CORS preflights for `allowed` only (none: no CORS rules).
+    async fn fake_bucket(allowed: Option<&'static str>) -> String {
+        use axum::http::{HeaderMap, StatusCode};
+        let app = axum::Router::new().fallback(move |headers: HeaderMap| async move {
+            let origin = headers.get("origin").and_then(|v| v.to_str().ok());
+            match allowed {
+                Some(allowed) if allowed == "*" || origin == Some(allowed) => {
+                    Ok([("access-control-allow-origin", allowed)])
+                }
+                _ => Err(StatusCode::FORBIDDEN),
+            }
+        });
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        format!("http://{addr}")
+    }
+
+    fn s3_store(endpoint: &str) -> ObjectBlobStore {
+        let config = S3Config {
+            endpoint: endpoint.into(),
+            bucket: "books".into(),
+            region: "us-east-1".into(),
+            path_style: true,
+            cdn_url: String::new(),
+            cdn_signing: CdnSigning::None,
+        };
+        let keys = S3Keys {
+            access_key_id: "key".into(),
+            secret_access_key: "secret".into(),
+            cdn_token_key: String::new(),
+        };
+        open(&Backend::S3(config, keys), FsPath::new(".")).unwrap()
+    }
+
+    #[tokio::test]
+    async fn cors_check_asks_the_bucket_like_a_browser() {
+        let _ = rustls::crypto::ring::default_provider().install_default();
+        let client = reqwest::Client::new();
+        let admin = "https://berth.example.com";
+        let open_bucket = s3_store(&fake_bucket(Some("*")).await);
+        assert_eq!(open_bucket.verify_cors("t1", admin, &client).await, Ok(()));
+        let ours = s3_store(&fake_bucket(Some(admin)).await);
+        assert_eq!(ours.verify_cors("t1", admin, &client).await, Ok(()));
+        assert_eq!(
+            ours.verify_cors("t1", "https://other.example.com", &client)
+                .await,
+            Err("storage_cors_missing")
+        );
+        let closed = s3_store(&fake_bucket(None).await);
+        assert_eq!(
+            closed.verify_cors("t1", admin, &client).await,
+            Err("storage_cors_missing")
+        );
+        let dir = tempfile::tempdir().unwrap();
+        let local = open(
+            &Backend::Local(LocalConfig {
+                path: "blobs".into(),
+            }),
+            dir.path(),
+        )
+        .unwrap();
+        assert_eq!(local.verify_cors("t1", admin, &client).await, Ok(()));
     }
 }

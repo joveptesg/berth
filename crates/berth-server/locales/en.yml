@@ -416,6 +416,7 @@ errors:
   storage_mismatch: "The test file came back different: the storage corrupts data."
   storage_local_unwritable: Berth cannot write to this folder. Check the path and permissions.
   storage_failed: The check failed. Details are in the server log.
+  storage_cors_missing: "The bucket does not accept uploads from a browser, and the admin sends files straight to it. Add a CORS rule to the bucket: origin is the Berth address, methods GET, HEAD, PUT, headers *."
   book_title_required: Enter a title.
   book_title_too_long: The title is too long (300 characters at most).
   book_rating_invalid: Choose an age rating from the list.
@@ -434,6 +435,8 @@ errors:
   upload_closed: This upload is already being processed.
   upload_not_ready: This upload is not ready to be saved.
   upload_saved: This book is already in the library.
+  upload_bucket_unreachable: "The bucket did not accept the files. Check that its CORS allows the Berth address (method PUT, headers *) and that the storage address opens from the browser."
+  upload_send_failed: The files did not reach the server. Details are in the server log. Upload the folder again.
 
 backup:
   section: Backup

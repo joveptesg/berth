@@ -1851,6 +1851,61 @@ fn browser(
 }
 
 #[tokio::test]
+async fn admin_upload_reports_files_that_did_not_get_through() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let new =
+        serde_json::json!({ "name": "Основание", "files": [{ "name": "01.mp3", "size": 10 }] });
+    let created = send(
+        &state,
+        browser(
+            "POST",
+            "/upload/new",
+            &session,
+            "application/json",
+            new.to_string().into_bytes(),
+        ),
+    )
+    .await;
+    let id = created.json()["id"].as_str().unwrap().to_owned();
+    let fail = |body: serde_json::Value| {
+        browser(
+            "POST",
+            &format!("/upload/{id}/fail"),
+            &session,
+            "application/json",
+            body.to_string().into_bytes(),
+        )
+    };
+
+    // A bucket that refuses the browser looks like a network error: its CORS is the suspect.
+    let card = send(
+        &state,
+        fail(serde_json::json!({ "file": 0, "presigned": true, "reason": "network" })),
+    )
+    .await;
+    assert_eq!(card.status, StatusCode::OK, "{}", card.body);
+    assert!(card.body.contains("CORS"), "{}", card.body);
+    assert!(!card.body.contains("data-progress"), "no progress bar");
+    let tenant_id = tenant(&state).await;
+    let upload = berth_server::service::ingest::get(&state.db, &tenant_id, &id)
+        .await
+        .unwrap();
+    assert_eq!(upload.status, "failed");
+    assert_eq!(upload.error.as_deref(), Some("upload_bucket_unreachable"));
+
+    // Only an upload in progress fails; a second report changes nothing.
+    send(
+        &state,
+        fail(serde_json::json!({ "file": 0, "presigned": false, "reason": "500 boom" })),
+    )
+    .await;
+    let again = send(&state, get(&format!("/upload/{id}"), Some(&session))).await;
+    assert!(again.body.contains("CORS"), "{}", again.body);
+}
+
+#[tokio::test]
 #[expect(
     clippy::too_many_lines,
     reason = "one admin journey: upload page, library, book page"

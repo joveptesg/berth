@@ -194,8 +194,9 @@
     var bar = card.querySelector('[data-progress]');
     var status = card.querySelector('[data-status]');
     var sent = 0;
+    var j = 0;
     try {
-      for (var j = 0; j < book.files.length; j++) {
+      for (; j < book.files.length; j++) {
         var target = created.targets[j];
         var file = book.files[j].file;
         var before = sent;
@@ -217,6 +218,12 @@
       }
     } catch (err) {
       if (status) status.textContent = zone.dataset.textFailed + ' ' + err.message;
+      // The server never sees a request the bucket refused: tell it, so the log and the card say why.
+      place(created.id, await html('/upload/' + created.id + '/fail', {
+        method: 'POST',
+        headers: { 'hx-request': 'true', 'content-type': 'application/json' },
+        body: JSON.stringify({ file: j, presigned: created.targets[j].method === 'presigned', reason: err.message }),
+      }));
       return;
     }
     place(created.id, await html('/upload/' + created.id + '/complete', { method: 'POST' }));

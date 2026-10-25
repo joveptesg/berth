@@ -145,6 +145,7 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         )
         .route("/upload/{id}", get(upload::status))
         .route("/upload/{id}/complete", post(upload::complete))
+        .route("/upload/{id}/fail", post(upload::fail))
         .route("/upload/{id}/save", post(upload::save))
         .route("/upload/{id}/discard", post(upload::discard))
         .route("/upload/{id}/cover", get(upload::cover))

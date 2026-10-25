@@ -28,8 +28,13 @@
         {% if upload.book_id %}<a href="/book/{{ upload.book_id }}" class="font-semibold text-accent-fg hover:underline">{{ t('upload.open_book') }}</a>{% endif %}
       </p>
       {% elif upload.status == "failed" %}
+      {# Files that never arrived carry a code; a failed analysis carries the reader's message. #}
+      {% if upload.error is startingwith("upload_") %}
+      <p class="mt-2 text-[14px] font-semibold text-danger">{{ t('errors.' ~ upload.error) }}</p>
+      {% else %}
       <p class="mt-2 text-[14px] font-semibold text-danger">{{ t('upload.status_failed') }}</p>
-      {% if upload.error %}<p class="mono mt-1 text-[12px] break-words text-text-3">{{ upload.error }}</p>{% endif %}
+      {% endif %}
+      {% if upload.error and upload.error is not startingwith("upload_") %}<p class="mono mt-1 text-[12px] break-words text-text-3">{{ upload.error }}</p>{% endif %}
       {% endif %}
     </div>
     {% if upload.status != "saved" %}
