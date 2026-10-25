@@ -5,10 +5,22 @@
 <header class="flex flex-wrap items-end justify-between gap-4">
   <div class="min-w-0 max-w-[60ch]">
     <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('users.title') }}</h1>
-    <p class="mt-1 text-[16px] text-text-2">{{ t('users.subtitle') }}</p>
+    <p class="mt-1 text-[16px] text-text-2">{{ t('groups.subtitle') if tab == "groups" else t('users.subtitle') }}</p>
   </div>
+  {% if tab == "groups" %}
+  <button type="button" hx-get="/groups/new" hx-target="#user-dialog" hx-swap="innerHTML" class="btn btn-primary">{{ ui.icon("plus", "size-[18px]") }}{{ t('groups.add_title') }}</button>
+  {% else %}
   <button type="button" onclick="document.getElementById('add-user').showModal()" class="btn btn-primary">{{ ui.icon("plus", "size-[18px]") }}{{ t('users.add_title') }}</button>
+  {% endif %}
 </header>
+
+{# Tabs are plain links, as in the settings: each is its own page. #}
+<nav class="mt-6 grid grid-cols-2 gap-1 rounded-[14px] bg-surface-2 p-1 sm:flex sm:gap-1 sm:rounded-none sm:border-b sm:border-line sm:bg-transparent sm:p-0" aria-label="{{ t('users.title') }}">
+  {% for key, href, label in [("people", "/users", t('groups.people_title')), ("groups", "/users/groups", t('groups.title'))] %}
+  <a href="{{ href }}" {% if tab == key %}aria-current="page"{% endif %}
+    class="flex items-center justify-center rounded-[11px] px-2 py-2 text-center text-[14px] leading-tight font-semibold text-text-2 transition-colors hover:text-text aria-[current=page]:bg-surface aria-[current=page]:text-text aria-[current=page]:shadow-[0_1px_3px_rgb(0_0_0/0.1)] sm:-mb-px sm:shrink-0 sm:rounded-none sm:border-b-2 sm:border-transparent sm:px-4 sm:py-3 sm:text-[15px] sm:whitespace-nowrap sm:aria-[current=page]:border-accent sm:aria-[current=page]:bg-transparent sm:aria-[current=page]:shadow-none">{{ label }}</a>
+  {% endfor %}
+</nav>
 
 {% include "partials/users_section.html" %}
 {% endblock %}

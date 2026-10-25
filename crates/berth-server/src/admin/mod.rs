@@ -129,6 +129,7 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             post(pages::backup_restore),
         )
         .route("/users", get(access::users_page).post(access::users_create))
+        .route("/users/groups", get(access::groups_page))
         .route("/users/{id}/connect", post(access::user_connect))
         .route(
             "/users/{id}/settings",

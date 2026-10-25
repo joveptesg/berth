@@ -25,13 +25,13 @@
       </div>
 
       <section class="flex flex-col gap-3 border-t border-line pt-5">
-        <h3 class="text-[15px] font-semibold">{{ t('groups.members_title') }}</h3>
+        <h3 class="text-[15px] font-semibold">{{ t('groups.members_title') }} <span class="font-normal text-text-3" x-text="members.length">{{ s.members | length }}</span></h3>
         <input type="hidden" name="members" :value="members.join(',')" value="{{ s.members | join(',') }}">
         {% if s.listeners %}
         <div class="flex flex-wrap gap-2">
           {% for u in s.listeners %}
-          <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
-            <input type="checkbox" value="{{ u.id }}" x-model="members" {% if u.id in s.members %}checked{% endif %} class="sr-only">{{ u.name }}
+          <label class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+            <input type="checkbox" value="{{ u.id }}" x-model="members" {% if u.id in s.members %}checked{% endif %} class="peer sr-only"><span class="hidden peer-checked:inline-flex">{{ ui.icon("check", "size-[15px]") }}</span>{{ u.name }}
           </label>
           {% endfor %}
         </div>

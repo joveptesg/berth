@@ -99,12 +99,14 @@ async fn code_panel(
     })
 }
 
-/// The users list; `open` gets a fresh QR panel under its row.
+/// The users page on its `tab` (`people` or `groups`); `open` gets a fresh QR panel under
+/// its row.
 async fn users_ctx(
     state: &AppState,
     headers: &HeaderMap,
     session: &AdminSession,
     open: Option<&str>,
+    tab: &str,
 ) -> Result<Value, ApiError> {
     let tenant_id = &session.0.tenant_id;
     let list = users::list(&state.db, tenant_id).await?;
@@ -114,7 +116,9 @@ async fn users_ctx(
         None => None,
     };
     let groups = groups::list(&state.db, tenant_id).await?;
-    Ok(context! { users => serde(list), groups => serde(groups), pairing, ..shell(state, "users") })
+    Ok(
+        context! { users => serde(list), groups => serde(groups), pairing, tab, ..shell(state, "users") },
+    )
 }
 
 pub(crate) async fn users_page(
@@ -123,7 +127,24 @@ pub(crate) async fn users_page(
     headers: HeaderMap,
     Query(query): Query<UsersQuery>,
 ) -> Page {
-    let ctx = users_ctx(&state, &headers, &session, query.connect.as_deref()).await?;
+    let ctx = users_ctx(
+        &state,
+        &headers,
+        &session,
+        query.connect.as_deref(),
+        "people",
+    )
+    .await?;
+    render(&state, "users.html", ctx)
+}
+
+/// The groups tab of the users page.
+pub(crate) async fn groups_page(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    headers: HeaderMap,
+) -> Page {
+    let ctx = users_ctx(&state, &headers, &session, None, "groups").await?;
     render(&state, "users.html", ctx)
 }
 
@@ -141,12 +162,12 @@ pub(crate) async fn users_create(
                     return Ok(redirect(&headers, &format!("/users?connect={id}")));
                 }
                 (
-                    users_ctx(&state, &headers, &session, Some(&id)).await?,
+                    users_ctx(&state, &headers, &session, Some(&id), "people").await?,
                     None,
                 )
             }
             Err(err) => (
-                users_ctx(&state, &headers, &session, None).await?,
+                users_ctx(&state, &headers, &session, None, "people").await?,
                 Some(form_error(err)?),
             ),
         };
@@ -317,7 +338,7 @@ pub(crate) async fn user_settings_save(
         users::set_access(&state.db, tenant_id, &user_id, &access).await
     }
     .await;
-    let ctx = users_ctx(&state, &headers, &session, None).await?;
+    let ctx = users_ctx(&state, &headers, &session, None, "people").await?;
     let ctx = match saved {
         Ok(()) => {
             if !super::is_htmx(&headers) {
@@ -479,11 +500,11 @@ async fn group_answer(
     saved: berth_core::Result<()>,
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
-    let ctx = users_ctx(state, headers, session, None).await?;
+    let ctx = users_ctx(state, headers, session, None, "groups").await?;
     let ctx = match saved {
         Ok(()) => {
             if !super::is_htmx(headers) {
-                return Ok(redirect(headers, "/users"));
+                return Ok(redirect(headers, "/users/groups"));
             }
             ctx
         }
@@ -533,9 +554,9 @@ pub(crate) async fn group_delete(
 ) -> Page {
     groups::delete(&state.db, &session.0.tenant_id, &id).await?;
     if !super::is_htmx(&headers) {
-        return Ok(redirect(&headers, "/users"));
+        return Ok(redirect(&headers, "/users/groups"));
     }
-    let ctx = users_ctx(&state, &headers, &session, None).await?;
+    let ctx = users_ctx(&state, &headers, &session, None, "groups").await?;
     render(&state, "partials/users_section.html", ctx)
 }
 

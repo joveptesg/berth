@@ -4010,6 +4010,14 @@ async fn groups_and_age_ratings() {
     for text in ["Взрослые", "Работа", "Дети", "up to 6+"] {
         assert!(page.body.contains(text), "{text}: {}", page.body);
     }
+    let tab = send(&state, get("/users/groups", Some(&session))).await;
+    assert!(
+        tab.body.contains(&format!("/groups/{children}/settings"))
+            && tab.body.contains("Маша")
+            && !tab.body.contains("Модерация"),
+        "the groups tab lists groups with their members: {}",
+        tab.body
+    );
     let edit = send(
         &state,
         get(&format!("/categories/{work}/edit"), Some(&session)),
