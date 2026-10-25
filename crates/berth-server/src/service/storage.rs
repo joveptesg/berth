@@ -505,6 +505,7 @@ pub async fn update(
     .await
     .map_err(name_taken)?;
     tx.commit().await.context("commit storage profile")?;
+    tracing::info!(profile = %id, "storage profile updated");
     Ok(())
 }
 
@@ -566,6 +567,7 @@ pub async fn set_default(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<(
         .await
         .context("save default storage")?;
     tx.commit().await.context("commit default storage")?;
+    tracing::info!(profile = %id, "default storage changed");
     Ok(())
 }
 
@@ -627,6 +629,12 @@ pub async fn verify(state: &AppState, tenant_id: &str, id: &str) -> Result<Profi
         row.delivery_mode == "cdn",
     )
     .await;
+    match result {
+        Ok(()) => tracing::info!(profile = %id, kind = %row.kind, "storage check passed"),
+        Err(code) => {
+            tracing::info!(profile = %id, kind = %row.kind, error = code, "storage check failed");
+        }
+    }
     let now = now_ms();
     sqlx::query(
         "UPDATE storage_profiles SET verified_at = $3, verify_error = $4
