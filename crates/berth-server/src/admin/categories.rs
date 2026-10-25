@@ -19,7 +19,7 @@ use crate::{
     AppState,
     service::{
         categories::{self, CategoryInput},
-        users,
+        groups, users,
     },
 };
 
@@ -35,6 +35,18 @@ pub(crate) struct CategoryForm {
     /// Ids of the listeners it is given to, comma-separated.
     #[serde(default)]
     users: String,
+    /// Ids of the groups it is given to, comma-separated.
+    #[serde(default)]
+    groups: String,
+}
+
+/// Comma-separated ids, without blanks.
+fn ids(list: &str) -> Vec<String> {
+    list.split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 impl CategoryForm {
@@ -43,13 +55,8 @@ impl CategoryForm {
             name: self.name.clone(),
             aliases: self.aliases.clone(),
             closed: self.closed.is_some(),
-            users: self
-                .users
-                .split(',')
-                .map(str::trim)
-                .filter(|u| !u.is_empty())
-                .map(str::to_owned)
-                .collect(),
+            users: ids(&self.users),
+            groups: ids(&self.groups),
         }
     }
 }
@@ -78,22 +85,42 @@ async fn dialog_ctx(
         .filter(|u| u.role == "member")
         .map(|u| context! { id => u.id, name => u.name })
         .collect();
-    let (name, aliases, closed, given, books) = match (form, &saved) {
+    let groups: Vec<Value> = groups::list(&state.db, tenant_id)
+        .await?
+        .into_iter()
+        .map(|g| context! { id => g.id, name => g.name })
+        .collect();
+    let (name, aliases, closed, given, given_groups, books) = match (form, &saved) {
         (Some(f), _) => {
             let input = f.input();
             let books = saved.as_ref().map_or(0, |s| s.books);
-            (input.name, input.aliases, input.closed, input.users, books)
+            let CategoryInput {
+                name,
+                aliases,
+                closed,
+                users,
+                groups,
+            } = input;
+            (name, aliases, closed, users, groups, books)
         }
         (None, Some(s)) => (
             s.name.clone(),
             s.aliases.replace('\n', ", "),
             s.closed,
             s.users.clone(),
+            s.groups.clone(),
             s.books,
         ),
-        (None, None) => (String::new(), String::new(), false, Vec::new(), 0),
+        (None, None) => (
+            String::new(),
+            String::new(),
+            false,
+            Vec::new(),
+            Vec::new(),
+            0,
+        ),
     };
-    Ok(context! { id, name, aliases, closed, given, books, listeners, error })
+    Ok(context! { id, name, aliases, closed, given, given_groups, books, listeners, groups, error })
 }
 
 /// The list; `dialog` stays open over it when a form did not save.
@@ -104,6 +131,7 @@ async fn list(
     dialog: Option<Value>,
 ) -> Page {
     let listeners = users::list(&state.db, tenant_id).await?;
+    let all_groups = groups::list(&state.db, tenant_id).await?;
     let entries: Vec<Value> = categories::entries(&state.db, tenant_id)
         .await?
         .into_iter()
@@ -113,6 +141,12 @@ async fn list(
                 .iter()
                 .filter(|u| c.users.contains(&u.id))
                 .map(|u| u.name.clone())
+                .chain(
+                    all_groups
+                        .iter()
+                        .filter(|g| c.groups.contains(&g.id))
+                        .map(|g| g.name.clone()),
+                )
                 .collect();
             context! {
                 id => c.id, name => c.name, aliases, books => c.books, closed => c.closed,

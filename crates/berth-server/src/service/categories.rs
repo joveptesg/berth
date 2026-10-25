@@ -1,6 +1,6 @@
 //! Sections of the library: a flat list the admin keeps in order. A book may be in several;
 //! genres from file tags pick sections by name or alias when a book is uploaded. A section
-//! can be given to listeners, and a closed one only they (and the owner) see.
+//! can be given to listeners and groups, and a closed one only they (and the owner) see.
 
 use anyhow::Context;
 use berth_core::{BerthError, Result};
@@ -40,6 +40,8 @@ pub struct CategoryEntry {
     pub closed: bool,
     /// Listeners the section is given to.
     pub users: Vec<String>,
+    /// Groups the section is given to.
+    pub groups: Vec<String>,
 }
 
 /// What the admin sets on a section.
@@ -53,6 +55,8 @@ pub struct CategoryInput {
     pub closed: bool,
     /// Listeners it is given to; ids that are not listeners are dropped.
     pub users: Vec<String>,
+    /// Groups it is given to; unknown ids are dropped.
+    pub groups: Vec<String>,
 }
 
 /// Sections in their order.
@@ -88,14 +92,23 @@ pub async fn entries(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<Cat
             .bind(tenant_id)
             .fetch_all(db)
             .await?;
+    let group_grants: Vec<(String, String)> =
+        sqlx::query_as("SELECT category_id, group_id FROM group_categories WHERE tenant_id = $1")
+            .bind(tenant_id)
+            .fetch_all(db)
+            .await?;
+    let of = |pairs: &[(String, String)], id: &str| -> Vec<String> {
+        pairs
+            .iter()
+            .filter(|(c, _)| c == id)
+            .map(|(_, v)| v.clone())
+            .collect()
+    };
     Ok(rows
         .into_iter()
         .map(|(id, name, aliases, position, books, closed)| {
-            let users = grants
-                .iter()
-                .filter(|(c, _)| *c == id)
-                .map(|(_, u)| u.clone())
-                .collect();
+            let users = of(&grants, &id);
+            let groups = of(&group_grants, &id);
             CategoryEntry {
                 id,
                 name,
@@ -104,6 +117,7 @@ pub async fn entries(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<Cat
                 books,
                 closed,
                 users,
+                groups,
             }
         })
         .collect())
@@ -129,8 +143,10 @@ async fn grantees(
     id: &str,
 ) -> sqlx::Result<Vec<String>> {
     sqlx::query_scalar(
-        "SELECT user_id FROM user_categories WHERE tenant_id = $1 AND category_id = $2
-         ORDER BY user_id",
+        "SELECT 'u:' || user_id FROM user_categories WHERE tenant_id = $1 AND category_id = $2
+         UNION ALL
+         SELECT 'g:' || group_id FROM group_categories WHERE tenant_id = $1 AND category_id = $2
+         ORDER BY 1",
     )
     .bind(tenant_id)
     .bind(id)
@@ -138,20 +154,37 @@ async fn grantees(
     .await
 }
 
-/// Gives the section to `users` (listeners of the tenant) instead of whom it had; tells
-/// whether anything changed.
+/// Gives the section to `users` (listeners of the tenant) and `groups` instead of whom it
+/// had; tells whether anything changed.
 async fn give(
     conn: &mut SqliteConnection,
     tenant_id: &str,
     id: &str,
     users: &[String],
+    groups: &[String],
 ) -> sqlx::Result<bool> {
     let before = grantees(conn, tenant_id, id).await?;
-    sqlx::query("DELETE FROM user_categories WHERE tenant_id = $1 AND category_id = $2")
+    for sql in [
+        "DELETE FROM user_categories WHERE tenant_id = $1 AND category_id = $2",
+        "DELETE FROM group_categories WHERE tenant_id = $1 AND category_id = $2",
+    ] {
+        sqlx::query(sql)
+            .bind(tenant_id)
+            .bind(id)
+            .execute(&mut *conn)
+            .await?;
+    }
+    for group in groups {
+        sqlx::query(
+            "INSERT OR IGNORE INTO group_categories (tenant_id, group_id, category_id)
+             SELECT $1, id, $2 FROM user_groups WHERE tenant_id = $1 AND id = $3",
+        )
         .bind(tenant_id)
         .bind(id)
+        .bind(group)
         .execute(&mut *conn)
         .await?;
+    }
     for user in users {
         sqlx::query(
             "INSERT OR IGNORE INTO user_categories (tenant_id, user_id, category_id)
@@ -241,7 +274,7 @@ pub async fn create(db: &SqlitePool, tenant_id: &str, input: &CategoryInput) -> 
     .execute(&mut *tx)
     .await
     .context("insert category")?;
-    if give(&mut tx, tenant_id, &id, &input.users)
+    if give(&mut tx, tenant_id, &id, &input.users, &input.groups)
         .await
         .context("give category")?
     {
@@ -287,7 +320,7 @@ pub async fn update(
     .execute(&mut *tx)
     .await
     .context("update category")?;
-    let regiven = give(&mut tx, tenant_id, id, &input.users)
+    let regiven = give(&mut tx, tenant_id, id, &input.users, &input.groups)
         .await
         .context("give category")?;
     if regiven || was_closed != input.closed {
@@ -356,6 +389,7 @@ pub async fn delete(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
         .context("unlink books")?;
     let gated: bool = sqlx::query_scalar(
         "SELECT closed OR EXISTS (SELECT 1 FROM user_categories u WHERE u.category_id = c.id)
+                OR EXISTS (SELECT 1 FROM group_categories g WHERE g.category_id = c.id)
          FROM categories c WHERE c.tenant_id = $1 AND c.id = $2",
     )
     .bind(tenant_id)
@@ -364,12 +398,17 @@ pub async fn delete(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
     .await
     .context("load category")?
     .unwrap_or(false);
-    sqlx::query("DELETE FROM user_categories WHERE tenant_id = $1 AND category_id = $2")
-        .bind(tenant_id)
-        .bind(id)
-        .execute(&mut *tx)
-        .await
-        .context("ungive")?;
+    for sql in [
+        "DELETE FROM user_categories WHERE tenant_id = $1 AND category_id = $2",
+        "DELETE FROM group_categories WHERE tenant_id = $1 AND category_id = $2",
+    ] {
+        sqlx::query(sql)
+            .bind(tenant_id)
+            .bind(id)
+            .execute(&mut *tx)
+            .await
+            .context("ungive")?;
+    }
     if gated {
         touch_policies(&mut tx, tenant_id)
             .await

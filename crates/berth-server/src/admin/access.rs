@@ -21,7 +21,7 @@ use crate::{
     error::ApiError,
     service::{
         books::{self, BookQuery, PolicyFilter},
-        categories, devices, languages,
+        categories, devices, groups, languages,
         pairing::{self, PairingStatus},
         settings, users,
     },
@@ -113,7 +113,8 @@ async fn users_ctx(
         Some(user_id) => Some(code_panel(state, headers, tenant_id, user_id).await?),
         None => None,
     };
-    Ok(context! { users => serde(list), pairing, ..shell(state, "users") })
+    let groups = groups::list(&state.db, tenant_id).await?;
+    Ok(context! { users => serde(list), groups => serde(groups), pairing, ..shell(state, "users") })
 }
 
 pub(crate) async fn users_page(
@@ -183,16 +184,29 @@ pub(crate) struct UserSettingsForm {
     /// Ids of the sections given, comma-separated.
     #[serde(default)]
     categories: String,
+    /// Ids of the groups the user is in, comma-separated.
+    #[serde(default)]
+    groups: String,
+    /// A child's date of birth, `YYYY-MM-DD`; empty for an adult.
+    #[serde(default)]
+    birth_date: String,
+    /// Checkbox: `on` when a child sees books without a rating.
+    #[serde(default)]
+    unrated_on: Option<String>,
+}
+
+/// Comma-separated ids, without blanks.
+fn ids(list: &str) -> Vec<String> {
+    list.split(',')
+        .map(str::trim)
+        .filter(|id| !id.is_empty())
+        .map(str::to_owned)
+        .collect()
 }
 
 impl UserSettingsForm {
     fn picked(&self) -> Vec<String> {
-        self.books
-            .split(',')
-            .map(str::trim)
-            .filter(|id| !id.is_empty())
-            .map(str::to_owned)
-            .collect()
+        ids(&self.books)
     }
 }
 
@@ -230,8 +244,26 @@ async fn settings_ctx(
         None => categories::given(&state.db, tenant_id, user_id).await?,
     };
     let sections = categories::entries(&state.db, tenant_id).await?;
+    let in_groups = match form {
+        Some(form) => ids(&form.groups),
+        None => groups::of_user(&state.db, tenant_id, user_id).await?,
+    };
+    let birth_date = form.map_or(user.birth_date.clone().unwrap_or_default(), |f| {
+        f.birth_date.trim().to_owned()
+    });
+    // A new child hides books without a rating until the admin allows them.
+    let unrated_on = form.map_or(user.birth_date.is_some() && user.unrated_allowed, |f| {
+        f.unrated_on.is_some()
+    });
+    let ceiling = books::rating_ceiling(&birth_date, now_ms());
     Ok(context! {
         user_settings => context! {
+            groups => serde(groups::list(&state.db, tenant_id).await?),
+            in_groups,
+            birth_date,
+            unrated_on,
+            ceiling,
+            ratings => books::RATINGS.to_vec(),
             access => form.map_or(user.book_access.clone(), |f| f.access.clone()),
             login_on => form.map_or(user.login.is_some(), |f| f.login_on.is_some()),
             login => form.map_or(user.login.clone().unwrap_or_default(), |f| f.login.clone()),
@@ -274,11 +306,15 @@ pub(crate) async fn user_settings_save(
         } else {
             users::clear_login(&state.db, tenant_id, &user_id).await?;
         }
-        let picked = form.picked();
-        let books = (form.access == "selected").then_some(picked.as_slice());
-        let spoken = languages::split(&form.languages);
-        let given = languages::split(&form.categories);
-        users::set_access(&state.db, tenant_id, &user_id, books, &given, &spoken).await
+        let access = users::AccessInput {
+            books: (form.access == "selected").then(|| form.picked()),
+            categories: ids(&form.categories),
+            languages: languages::split(&form.languages),
+            groups: ids(&form.groups),
+            birth_date: Some(form.birth_date.clone()),
+            unrated_allowed: form.unrated_on.is_some(),
+        };
+        users::set_access(&state.db, tenant_id, &user_id, &access).await
     }
     .await;
     let ctx = users_ctx(&state, &headers, &session, None).await?;
@@ -302,6 +338,205 @@ pub(crate) async fn user_settings_save(
         "partials/users_section.html",
         ctx,
     )
+}
+
+// ── Groups ───────────────────────────────────────────────
+
+/// A group's name, the books it sees and its members.
+#[derive(Deserialize)]
+pub(crate) struct GroupForm {
+    #[serde(default)]
+    name: String,
+    /// `all` or `selected`.
+    #[serde(default)]
+    access: String,
+    /// Ids of the picked books, comma-separated.
+    #[serde(default)]
+    books: String,
+    /// Language codes the group sees, comma-separated; empty for all.
+    #[serde(default)]
+    languages: String,
+    /// Ids of the sections given, comma-separated.
+    #[serde(default)]
+    categories: String,
+    /// Ids of the listeners in the group, comma-separated.
+    #[serde(default)]
+    members: String,
+}
+
+impl GroupForm {
+    fn input(&self) -> groups::GroupInput {
+        groups::GroupInput {
+            name: self.name.clone(),
+            books: (self.access == "selected").then(|| ids(&self.books)),
+            categories: ids(&self.categories),
+            languages: languages::split(&self.languages),
+            members: ids(&self.members),
+        }
+    }
+}
+
+/// The dialog of a group (`id` empty for a new one): as saved, or as `form` sent with its
+/// `error`.
+async fn group_ctx(
+    state: &AppState,
+    tenant_id: &str,
+    id: &str,
+    form: Option<&GroupForm>,
+    error: Option<String>,
+) -> Result<Value, ApiError> {
+    let saved = if id.is_empty() {
+        None
+    } else {
+        let group = groups::list(&state.db, tenant_id)
+            .await?
+            .into_iter()
+            .find(|g| g.id == id)
+            .ok_or(BerthError::NotFound)?;
+        Some(group)
+    };
+    let library = books::default_library_id(&state.db, tenant_id).await?;
+    let list = books::list(
+        &state.db,
+        tenant_id,
+        &PolicyFilter::admin(),
+        &library,
+        &BookQuery::default(),
+    )
+    .await?;
+    let picked = match (form, &saved) {
+        (Some(form), _) => ids(&form.books),
+        (None, Some(_)) => groups::picked(&state.db, tenant_id, id).await?,
+        (None, None) => Vec::new(),
+    };
+    let listeners: Vec<Value> = users::list(&state.db, tenant_id)
+        .await?
+        .into_iter()
+        .filter(|u| u.role == "member")
+        .map(|u| context! { id => u.id, name => u.name })
+        .collect();
+    let (name, access, spoken, given, members) = match (form, saved) {
+        (Some(f), _) => (
+            f.name.clone(),
+            f.access.clone(),
+            languages::split(&f.languages),
+            ids(&f.categories),
+            ids(&f.members),
+        ),
+        (None, Some(g)) => (g.name, g.book_access, g.languages, g.categories, g.members),
+        (None, None) => (
+            String::new(),
+            "all".to_owned(),
+            Vec::new(),
+            Vec::new(),
+            Vec::new(),
+        ),
+    };
+    Ok(context! {
+        group_settings => context! {
+            id,
+            name,
+            access,
+            picked,
+            spoken,
+            given,
+            members,
+            listeners,
+            books => serde(list),
+            languages => serde(languages::list(&state.db, tenant_id).await?),
+            sections => serde(categories::entries(&state.db, tenant_id).await?),
+            error,
+        }
+    })
+}
+
+/// The empty dialog of a new group.
+pub(crate) async fn group_new(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+) -> Page {
+    let ctx = group_ctx(&state, &session.0.tenant_id, "", None, None).await?;
+    render(&state, "partials/group_settings.html", ctx)
+}
+
+/// The dialog of a group as saved.
+pub(crate) async fn group_settings(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    Path(id): Path<String>,
+) -> Page {
+    let ctx = group_ctx(&state, &session.0.tenant_id, &id, None, None).await?;
+    render(&state, "partials/group_settings.html", ctx)
+}
+
+/// The users section after a group action, or with the group dialog open on its error.
+async fn group_answer(
+    state: &AppState,
+    headers: &HeaderMap,
+    session: &AdminSession,
+    id: &str,
+    form: &GroupForm,
+    saved: berth_core::Result<()>,
+) -> Page {
+    let tenant_id = &session.0.tenant_id;
+    let ctx = users_ctx(state, headers, session, None).await?;
+    let ctx = match saved {
+        Ok(()) => {
+            if !super::is_htmx(headers) {
+                return Ok(redirect(headers, "/users"));
+            }
+            ctx
+        }
+        Err(err) => {
+            let error = Some(form_error(err)?);
+            let dialog = group_ctx(state, tenant_id, id, Some(form), error).await?;
+            context! { ..dialog, ..ctx }
+        }
+    };
+    render_form(
+        state,
+        headers,
+        "users.html",
+        "partials/users_section.html",
+        ctx,
+    )
+}
+
+pub(crate) async fn group_create(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    headers: HeaderMap,
+    Form(form): Form<GroupForm>,
+) -> Page {
+    let saved = groups::create(&state.db, &session.0.tenant_id, &form.input())
+        .await
+        .map(|_| ());
+    group_answer(&state, &headers, &session, "", &form, saved).await
+}
+
+pub(crate) async fn group_save(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+    Form(form): Form<GroupForm>,
+) -> Page {
+    let saved = groups::update(&state.db, &session.0.tenant_id, &id, &form.input()).await;
+    group_answer(&state, &headers, &session, &id, &form, saved).await
+}
+
+pub(crate) async fn group_delete(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Page {
+    groups::delete(&state.db, &session.0.tenant_id, &id).await?;
+    if !super::is_htmx(&headers) {
+        return Ok(redirect(&headers, "/users"));
+    }
+    let ctx = users_ctx(&state, &headers, &session, None).await?;
+    render(&state, "partials/users_section.html", ctx)
 }
 
 /// QR panel under a user's row.

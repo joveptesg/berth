@@ -40,6 +40,14 @@ pub struct User {
     pub books: i64,
     /// Languages the user sees; empty for all.
     pub languages: Vec<String>,
+    /// Names of the groups the user is in; their access then comes from these groups.
+    pub groups: Vec<String>,
+    /// A child's date of birth, `YYYY-MM-DD`.
+    pub birth_date: Option<String>,
+    /// A child's rating ceiling today; `None` for an adult.
+    pub ceiling: Option<i64>,
+    /// A child sees books without a rating.
+    pub unrated_allowed: bool,
 }
 
 /// Users of the tenant, owner first, then by name.
@@ -57,6 +65,8 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
         String,
         i64,
         String,
+        Option<String>,
+        String,
     );
     let rows: Vec<Row> = sqlx::query_as(
         "SELECT u.id, u.name, u.role, u.created_at,
@@ -66,7 +76,7 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
                 u.login, COALESCE(p.book_access, 'all'),
                 (SELECT COUNT(*) FROM user_books ub JOIN books b ON b.id = ub.book_id
                  WHERE ub.user_id = u.id AND b.deleted_at IS NULL),
-                COALESCE(p.languages, '')
+                COALESCE(p.languages, ''), p.birth_date, COALESCE(p.unrated_behavior, 'allowed')
          FROM users u
          LEFT JOIN access_policies p ON p.tenant_id = u.tenant_id AND p.user_id = u.id
          WHERE u.tenant_id = $1 AND u.deleted_at IS NULL
@@ -75,10 +85,32 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
     .bind(tenant_id)
     .fetch_all(db)
     .await?;
+    let groups: Vec<(String, String)> = sqlx::query_as(
+        "SELECT m.user_id, g.name FROM group_members m JOIN user_groups g ON g.id = m.group_id
+         WHERE m.tenant_id = $1 ORDER BY g.position, g.name",
+    )
+    .bind(tenant_id)
+    .fetch_all(db)
+    .await?;
+    let now = now_ms();
     Ok(rows
         .into_iter()
-        .map(
-            |(id, name, role, created_at, devices, login, book_access, books, languages)| User {
+        .map(|row| {
+            let (id, name, role, created_at, devices, login, book_access, books, languages) = (
+                row.0, row.1, row.2, row.3, row.4, row.5, row.6, row.7, row.8,
+            );
+            let (birth_date, unrated) = (row.9, row.10);
+            User {
+                groups: groups
+                    .iter()
+                    .filter(|(u, _)| *u == id)
+                    .map(|(_, g)| g.clone())
+                    .collect(),
+                ceiling: birth_date
+                    .as_deref()
+                    .and_then(|b| super::books::rating_ceiling(b, now)),
+                unrated_allowed: unrated == "allowed",
+                birth_date,
                 id,
                 name,
                 role,
@@ -88,8 +120,8 @@ pub async fn list(db: &SqlitePool, tenant_id: &str) -> anyhow::Result<Vec<User>>
                 book_access,
                 books,
                 languages: super::languages::split(&languages),
-            },
-        )
+            }
+        })
         .collect())
 }
 
@@ -245,23 +277,54 @@ pub async fn access(
     super::books::PolicyFilter::picked(db, tenant_id, user_id).await
 }
 
-/// Sets what a listener sees: the whole library (`None`) or only `books` plus the books of
-/// `categories`; closed sections among `categories` open to them; and of all that only the
-/// books in `languages` (empty for all; unknown codes are dropped). Changes the policy
-/// version, so the next sync of their phones is a full slice without the hidden books.
+/// What the admin sets on a listener's access.
+#[derive(Debug, Clone, Default)]
+pub struct AccessInput {
+    /// `None` for the whole library, else the picked book ids.
+    pub books: Option<Vec<String>>,
+    /// Ids of the sections given; closed ones open to the listener.
+    pub categories: Vec<String>,
+    /// Language codes; empty for all (unknown codes are dropped).
+    pub languages: Vec<String>,
+    /// Ids of the groups the listener is in. In groups the listener sees what the groups
+    /// see; their own rule above is kept for when they leave all groups.
+    pub groups: Vec<String>,
+    /// A child's date of birth, `YYYY-MM-DD`; `None` or empty for an adult.
+    pub birth_date: Option<String>,
+    /// A child sees books without a rating.
+    pub unrated_allowed: bool,
+}
+
+/// Sets what a listener sees: what their groups see, or, outside groups, their own rule —
+/// the whole library or only the picked books plus the books of the sections given; closed
+/// sections among those open to them; of all that only the books in their languages. A
+/// child sees only the books rated up to their age. Changes the policy version, so the next
+/// sync of their phones is a full slice without the hidden books.
 ///
 /// # Errors
-/// `NotFound`; `Validation("login_admin")` for the owner, who always sees everything.
+/// `NotFound`; `Validation("login_admin")` for the owner, who always sees everything;
+/// `Validation("birth_date_invalid")` for a date that is not one or is in the future.
 pub async fn set_access(
     db: &SqlitePool,
     tenant_id: &str,
     user_id: &str,
-    books: Option<&[String]>,
-    categories: &[String],
-    languages: &[String],
+    input: &AccessInput,
 ) -> Result<()> {
+    let (books, categories) = (input.books.as_deref(), &input.categories);
+    let now = now_ms();
+    let birth_date = input
+        .birth_date
+        .as_deref()
+        .map(str::trim)
+        .filter(|b| !b.is_empty());
+    if let Some(birth) = birth_date
+        && super::books::birth_days(birth).is_none_or(|days| days * 86_400_000 > now)
+    {
+        return Err(BerthError::Validation("birth_date_invalid".into()));
+    }
+    let ceiling = birth_date.and_then(|b| super::books::rating_ceiling(b, now));
     let known = super::languages::list(db, tenant_id).await?;
-    let languages = super::languages::pick(&known, &languages.join(","));
+    let languages = super::languages::pick(&known, &input.languages.join(","));
     listener(db, tenant_id, user_id).await?;
     let mut tx = db.begin().await.context("begin")?;
     sqlx::query("DELETE FROM user_books WHERE tenant_id = $1 AND user_id = $2")
@@ -301,22 +364,35 @@ pub async fn set_access(
         .context("pick book")?;
     }
     sqlx::query(
-        "INSERT INTO access_policies (tenant_id, user_id, book_access, languages)
-         VALUES ($1, $2, $3, $4)
+        "INSERT INTO access_policies
+            (tenant_id, user_id, book_access, languages, birth_date, max_rating, unrated_behavior)
+         VALUES ($1, $2, $3, $4, $5, $6, $7)
          ON CONFLICT (tenant_id, user_id) DO UPDATE SET
             book_access = excluded.book_access, languages = excluded.languages,
+            birth_date = excluded.birth_date, max_rating = excluded.max_rating,
+            unrated_behavior = excluded.unrated_behavior,
             policy_version = policy_version + 1",
     )
     .bind(tenant_id)
     .bind(user_id)
     .bind(if books.is_some() { "selected" } else { "all" })
     .bind(languages.join(","))
+    .bind(birth_date)
+    .bind(ceiling)
+    .bind(if input.unrated_allowed {
+        "allowed"
+    } else {
+        "blocked"
+    })
     .execute(&mut *tx)
     .await
     .context("save access")?;
+    super::groups::join(&mut tx, tenant_id, user_id, &input.groups)
+        .await
+        .context("join groups")?;
     tx.commit().await.context("commit access")?;
     let selected = books.map(<[String]>::len);
-    tracing::info!(user = %user_id, ?selected, sections = categories.len(), ?languages, "access changed (None = whole library)");
+    tracing::info!(user = %user_id, ?selected, sections = categories.len(), ?languages, groups = input.groups.len(), ?ceiling, "access changed (None = whole library)");
     Ok(())
 }
 

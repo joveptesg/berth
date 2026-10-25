@@ -1,0 +1,77 @@
+{% import "partials/ui.html" as ui %}
+{# The access rule of a listener or a group: the whole library or picked books, sections
+   given, languages. `s`: access (all | selected), books, picked (ids), sections (id, name,
+   closed), given (ids), languages (code, name), spoken (codes, empty for all). The form
+   around it keeps Alpine state: access, picked, q, given, spokenOn, spoken. #}
+{% macro fields(s, title) -%}
+      <section class="flex flex-col gap-3 border-t border-line pt-5">
+        <h3 class="text-[15px] font-semibold">{{ title }}</h3>
+        <div class="inline-flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 sm:w-auto sm:self-start">
+          {% for value in ["all", "selected"] %}
+          <label class="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-[11px] px-4 text-[14px] font-semibold whitespace-nowrap text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)]">
+            <input type="radio" name="access" value="{{ value }}" x-model="access" {% if s.access == value %}checked{% endif %} class="sr-only">{{ t('users.access_' ~ value) }}
+          </label>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="books" :value="picked.join(',')" value="{{ s.picked | join(',') }}">
+        {% if s.sections %}
+        <div class="flex flex-col gap-2">
+          <input type="hidden" name="categories" :value="given.join(',')" value="{{ s.given | join(',') }}">
+          <p class="text-[13.5px] font-semibold text-text-2">{{ t('users.sections_title') }}</p>
+          <div class="flex flex-wrap gap-2">
+            {% for c in s.sections %}
+            <label class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+              <input type="checkbox" value="{{ c.id }}" x-model="given" {% if c.id in s.given %}checked{% endif %} class="sr-only">
+              {% if c.closed %}<span title="{{ t('categories.closed_badge') }}">{{ ui.icon("lock", "size-[15px]") }}</span>{% endif %}{{ c.name }}
+            </label>
+            {% endfor %}
+          </div>
+          <p class="text-[13px] text-text-3" x-text='access === "selected" ? {{ t("users.sections_hint_selected") | tojson }} : {{ t("users.sections_hint_all") | tojson }}'>{{ t('users.sections_hint_selected') if s.access == "selected" else t('users.sections_hint_all') }}</p>
+        </div>
+        {% endif %}
+        <div x-show="access === 'selected'" {% if s.access != "selected" %}style="display: none"{% endif %} class="flex flex-col gap-2">
+          <p class="text-[13px] text-text-3">{{ t('users.access_picked') }} <span x-text="picked.length" class="font-semibold text-text">{{ s.picked | length }}</span> {{ t('users.access_of', count=s.books | length) }}</p>
+          {% if s.books %}
+          <input type="search" x-model="q" placeholder="{{ t('library.search') }}" class="input">
+          <ul class="max-h-72 divide-y divide-line overflow-y-auto rounded-[14px] border border-line">
+            {% for b in s.books %}
+            <li x-show='!q || {{ (b.title ~ " " ~ (b.authors | join(" "))) | lower | tojson }}.includes(q.toLowerCase())'>
+              <label class="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-surface-2">
+                <input type="checkbox" value="{{ b.id }}" x-model="picked" class="size-[18px] shrink-0 accent-accent">
+                <span class="w-9 shrink-0">{{ ui.cover("/book/" ~ b.id ~ "/cover?v=" ~ b.cover_hash[:12] if b.cover_hash, b.title, "rounded-[8px] text-[13px]") }}</span>
+                <span class="min-w-0">
+                  <span class="block truncate text-[14.5px] font-semibold">{{ b.title }}</span>
+                  {% if b.authors %}<span class="block truncate text-[13px] text-text-3">{{ b.authors | join(', ') }}</span>{% endif %}
+                </span>
+              </label>
+            </li>
+            {% endfor %}
+          </ul>
+          {% else %}
+          <p class="text-[14px] text-text-3">{{ t('users.access_no_books') }}</p>
+          {% endif %}
+        </div>
+      </section>
+
+      <section class="flex flex-col gap-3 border-t border-line pt-5">
+        <h3 class="text-[15px] font-semibold">{{ t('users.languages_title') }}</h3>
+        <div class="inline-flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 sm:w-auto sm:self-start">
+          {% for value, on in [("all", false), ("selected", true)] %}
+          <label class="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-[11px] px-4 text-[14px] font-semibold whitespace-nowrap text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)]">
+            <input type="radio" name="languages_on" value="{{ value }}" @change="spokenOn = {{ 'true' if on else 'false' }}" {% if (s.spoken | length > 0) == on %}checked{% endif %} class="sr-only">{{ t('users.languages_' ~ value) }}
+          </label>
+          {% endfor %}
+        </div>
+        <input type="hidden" name="languages" :value="spokenOn ? spoken.join(',') : ''" value="{{ s.spoken | join(',') }}">
+        <div x-show="spokenOn" {% if not s.spoken %}style="display: none"{% endif %} class="flex flex-col gap-2">
+          <div class="flex flex-wrap gap-2">
+            {% for l in s.languages %}
+            <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+              <input type="checkbox" value="{{ l.code }}" x-model="spoken" {% if l.code in s.spoken %}checked{% endif %} class="sr-only">{{ l.name }}
+            </label>
+            {% endfor %}
+          </div>
+          <p class="text-[13px] text-text-3">{{ t('users.languages_hint') }}</p>
+        </div>
+      </section>
+{%- endmacro %}

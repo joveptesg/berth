@@ -145,6 +145,37 @@ users:
   access_of: of %{count}
   access_chip: "Books: %{count}"
   access_no_books: The library has no books yet.
+  groups_title: Groups
+  groups_hint_in: The listener sees what their groups see. Their own settings below are kept for when they leave all groups.
+  groups_hint_none: Outside groups, access is set for the listener alone, below.
+  child_title: Child
+  child_hint: Enter the date of birth and the listener sees only the books for their age. The limit grows by itself. Empty for an adult.
+  birth_label: Date of birth
+  child_ceiling: "Sees books up to %{rating}+ now"
+  child_adult: 18 already — no rating limit
+  unrated_label: Show books without a rating
+  unrated_hint: When off, books with no age rating are hidden.
+  ceiling_chip: "up to %{rating}+"
+
+groups:
+  title: Groups
+  subtitle: Shared access for several listeners, such as Adults and Children. A listener may be in several groups and then sees the books of all of them.
+  add_title: Add a group
+  new_title: New group
+  edit_title: Group
+  hint: Who is in the group and which books it sees. Members' phones sync the library again.
+  name_label: Name
+  name_placeholder: e.g. Children
+  members_title: Members
+  members_hint: Age and sign-in are set in each listener's settings.
+  members_none: No listeners yet — add them below.
+  members: "Members: %{count}"
+  access_title: Books the group sees
+  empty: No groups yet. Without groups, each listener's access is set on its own.
+  people_title: People
+  add: Add
+  delete: Delete
+  delete_confirm: "Delete the group “%{name}”? Its members go back to their own access settings."
 
 connect:
   qr_label: QR code for the Berth app
@@ -418,6 +449,10 @@ errors:
   category_name_required: Enter the section name.
   category_name_too_long: "The name is too long: 64 characters at most."
   category_name_taken: There is a section with this name already.
+  group_name_required: Enter a group name.
+  group_name_too_long: The group name is too long.
+  group_name_taken: There is a group with this name already.
+  birth_date_invalid: There is no such date of birth, or it has not come yet.
   web_login_invalid: No such code. Check it on the sign-in page.
   web_login_expired: The code expired. Get a new one on the sign-in page.
   web_login_used: This code was already used.

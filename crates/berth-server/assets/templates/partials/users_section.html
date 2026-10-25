@@ -24,8 +24,42 @@
   </dialog>
 
   {# A listener's login and book access: loaded on demand, back open after an error. #}
-  <div id="user-dialog">{% if user_settings is defined and user_settings %}{% include "partials/user_settings.html" %}{% endif %}</div>
+  <div id="user-dialog">{% if user_settings is defined and user_settings %}{% include "partials/user_settings.html" %}{% endif %}{% if group_settings is defined and group_settings %}{% include "partials/group_settings.html" %}{% endif %}</div>
 
+  {# Groups: a shared access rule for the listeners in them. #}
+  <section class="flex flex-col gap-3" aria-labelledby="groups-title">
+    <div class="flex flex-wrap items-end justify-between gap-3">
+      <div class="min-w-0">
+        <h2 id="groups-title" class="text-[20px] font-bold">{{ t('groups.title') }}</h2>
+        <p class="mt-0.5 text-[14px] text-text-3">{{ t('groups.subtitle') }}</p>
+      </div>
+      <button type="button" hx-get="/groups/new" hx-target="#user-dialog" hx-swap="innerHTML"
+        class="btn btn-ghost min-h-11 px-4 text-[15px]">{{ ui.icon("plus", "size-[18px]") }}{{ t('groups.add_title') }}</button>
+    </div>
+    {% if groups %}
+    <ul class="card divide-y divide-line p-0 sm:p-0" aria-labelledby="groups-title">
+      {% for g in groups %}
+      <li class="flex flex-wrap items-center gap-x-4 gap-y-3 px-5 py-4 sm:px-6">
+        <span class="grid size-11 shrink-0 place-items-center rounded-[14px] bg-surface-2 text-text-2" aria-hidden="true">{{ ui.icon("users", "size-[20px]") }}</span>
+        <div class="min-w-0 flex-1">
+          <p class="truncate text-[17px] font-semibold">{{ g.name }}</p>
+          <p class="mt-0.5 flex flex-wrap items-center gap-x-2 text-[14px] text-text-3">
+            <span>{{ t('groups.members', count=g.members | length) }}</span>
+            <span aria-hidden="true">·</span>
+            <span>{{ t('users.access_chip', count=g.books) if g.book_access == "selected" else t('users.access_all') }}</span>
+          </p>
+        </div>
+        <button type="button" hx-get="/groups/{{ g.id }}/settings" hx-target="#user-dialog" hx-swap="innerHTML"
+          class="btn btn-ghost min-h-11 w-full px-4 text-[15px] sm:w-auto">{{ ui.icon("key", "size-[18px]") }}{{ t('users.settings') }}</button>
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="card text-[14px] text-text-3">{{ t('groups.empty') }}</p>
+    {% endif %}
+  </section>
+
+  <h2 class="mt-4 text-[20px] font-bold">{{ t('groups.people_title') }}</h2>
   <ul class="card divide-y divide-line p-0 sm:p-0" aria-label="{{ t('users.title') }}">
     {% for user in users %}
     <li>
@@ -38,10 +72,13 @@
             <span aria-hidden="true">·</span>
             <span id="devices-{{ user.id }}">{{ t('users.devices', count=user.devices) }}</span>
           </p>
-          {% if user.login or user.book_access == "selected" %}
+          {% set own = user.book_access == "selected" and not user.groups %}
+          {% if user.login or own or user.groups or user.birth_date %}
           <p class="mt-1.5 flex flex-wrap gap-1.5">
             {% if user.login %}<span class="chip bg-surface-2 text-text-2">{{ ui.icon("key", "size-3.5 mr-1") }}{{ t('users.login_chip', login=user.login) }}</span>{% endif %}
-            {% if user.book_access == "selected" %}<span class="chip bg-warn/10 text-warn">{{ t('users.access_chip', count=user.books) }}</span>{% endif %}
+            {% for g in user.groups %}<span class="chip bg-accent-soft text-accent-fg">{{ ui.icon("users", "size-3.5 mr-1") }}{{ g }}</span>{% endfor %}
+            {% if own %}<span class="chip bg-warn/10 text-warn">{{ t('users.access_chip', count=user.books) }}</span>{% endif %}
+            {% if user.birth_date and user.ceiling is not none %}<span class="chip bg-warn/10 text-warn">{{ t('users.ceiling_chip', rating=user.ceiling) }}</span>{% endif %}
           </p>
           {% endif %}
         </div>

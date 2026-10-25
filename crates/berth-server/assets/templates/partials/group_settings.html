@@ -1,0 +1,57 @@
+{% import "partials/ui.html" as ui %}
+{% import "partials/access_fields.html" as af %}
+{# A group to add (`id` empty) or edit. `group_settings`: id, name, error; members (ids),
+   listeners (id, name); and the access rule as in partials/access_fields.html. #}
+{% set s = group_settings %}
+{% set action = "/groups/" ~ s.id ~ "/settings" if s.id else "/groups" %}
+<dialog id="group-settings" x-init="$el.showModal()" @close="$el.remove()"
+  class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,640px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
+  <form method="post" action="{{ action }}" hx-post="{{ action }}"
+    hx-target="#users-section" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
+    x-data='{ access: {{ s.access | tojson }}, picked: {{ s.picked | tojson }}, q: "", spokenOn: {{ "true" if s.spoken else "false" }}, spoken: {{ s.spoken | tojson }}, given: {{ s.given | tojson }}, members: {{ s.members | tojson }} }'
+    class="form-dense flex max-h-[calc(100dvh-34px)] flex-col">
+    <div class="relative border-b border-line px-6 pt-5 pb-4 pr-16">
+      <h2 class="text-[20px] font-bold">{{ t('groups.edit_title') if s.id else t('groups.new_title') }}</h2>
+      <p class="mt-0.5 text-[13.5px] text-text-3">{{ t('groups.hint') }}</p>
+      <button type="button" onclick="this.closest('dialog').close()" aria-label="{{ t('connect.close') }}"
+        class="absolute top-4 right-4 grid size-10 place-items-center rounded-[12px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close") }}</button>
+    </div>
+
+    <div class="flex flex-col gap-5 overflow-y-auto px-6 py-5">
+      {% if s.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ s.error) }}</p>{% endif %}
+      <div>
+        <label for="group-name" class="field-label">{{ t('groups.name_label') }}</label>
+        <input id="group-name" name="name" value="{{ s.name }}" required maxlength="64" autocomplete="off" {% if not s.id %}autofocus{% endif %} placeholder="{{ t('groups.name_placeholder') }}" class="input">
+      </div>
+
+      <section class="flex flex-col gap-3 border-t border-line pt-5">
+        <h3 class="text-[15px] font-semibold">{{ t('groups.members_title') }}</h3>
+        <input type="hidden" name="members" :value="members.join(',')" value="{{ s.members | join(',') }}">
+        {% if s.listeners %}
+        <div class="flex flex-wrap gap-2">
+          {% for u in s.listeners %}
+          <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+            <input type="checkbox" value="{{ u.id }}" x-model="members" {% if u.id in s.members %}checked{% endif %} class="sr-only">{{ u.name }}
+          </label>
+          {% endfor %}
+        </div>
+        <p class="text-[13px] text-text-3">{{ t('groups.members_hint') }}</p>
+        {% else %}
+        <p class="text-[13px] text-text-3">{{ t('groups.members_none') }}</p>
+        {% endif %}
+      </section>
+
+      {{ af.fields(s, t('groups.access_title')) }}
+    </div>
+
+    <div class="flex flex-wrap gap-2 border-t border-line bg-surface-2/40 px-6 py-3.5">
+      {% if s.id %}
+      <button type="button" hx-post="/groups/{{ s.id }}/delete" hx-target="#users-section" hx-swap="outerHTML"
+        hx-confirm="{{ t('groups.delete_confirm', name=s.name) }}" class="btn btn-danger min-h-11 px-4">{{ ui.icon("trash", "size-[18px]") }}{{ t('groups.delete') }}</button>
+      {% endif %}
+      <span class="flex-1"></span>
+      <button type="button" onclick="this.closest('dialog').close()" class="btn btn-ghost min-h-11 px-4 sm:px-5">{{ t('users.cancel') }}</button>
+      <button type="submit" class="btn btn-primary min-h-11 px-4 sm:px-5">{{ t('common.save') if s.id else t('groups.add') }}</button>
+    </div>
+  </form>
+</dialog>

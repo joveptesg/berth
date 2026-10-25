@@ -8,13 +8,16 @@ use std::collections::{HashMap, HashSet};
 use anyhow::Context;
 use berth_core::{BerthError, Result};
 use serde::Serialize;
-use sqlx::{SqliteConnection, SqlitePool};
+use sqlx::{AssertSqlSafe, SqliteConnection, SqlitePool};
 
 use super::{blobs, storage};
 use crate::{AppState, db::now_ms, media};
 
-/// Ratings of the 436-FZ scale.
+/// Age ratings: the minimum listener age.
 pub const RATINGS: [i64; 5] = [0, 6, 12, 16, 18];
+/// From this age a listener has no rating ceiling.
+const ADULT_AGE: i64 = 18;
+const DAY_MS: i64 = 86_400_000;
 const MAX_TITLE_LEN: usize = 300;
 /// Longest description, in characters.
 pub const MAX_DESCRIPTION_LEN: usize = 4000;
@@ -47,89 +50,96 @@ impl PolicyFilter {
         }
     }
 
-    /// The filter of a user. The owner sees everything. A listener sees the whole library,
-    /// or the books picked for them plus the books of the sections given to them; then
-    /// without the books of closed sections not given to them, and only the books in their
-    /// languages or without a language.
+    /// The filter of a user. The owner sees everything. A listener in groups sees what any of
+    /// their groups sees; one outside groups, what their own rule gives (see [`Rule`]). A
+    /// child (with a date of birth) then sees only the books rated up to their age, and books
+    /// without a rating if allowed.
     ///
     /// # Errors
     /// Database failures.
     pub async fn for_user(db: &SqlitePool, tenant_id: &str, user_id: &str) -> anyhow::Result<Self> {
-        let policy: Option<(i64, String, String)> = sqlx::query_as(
-            "SELECT p.policy_version, p.languages, u.role FROM access_policies p
-             JOIN users u ON u.id = p.user_id
+        type Policy = (
+            i64,
+            String,
+            String,
+            String,
+            Option<String>,
+            Option<i64>,
+            String,
+        );
+        let policy: Option<Policy> = sqlx::query_as(
+            "SELECT p.policy_version, p.book_access, p.languages, u.role, p.birth_date,
+                    p.max_rating, p.unrated_behavior
+             FROM access_policies p JOIN users u ON u.id = p.user_id
              WHERE p.tenant_id = $1 AND p.user_id = $2",
         )
         .bind(tenant_id)
         .bind(user_id)
         .fetch_optional(db)
         .await?;
-        let (version, languages, role) = policy.unwrap_or((1, String::new(), "member".into()));
+        let (mut version, access, languages, role, birth_date, applied, unrated) = policy
+            .unwrap_or_else(|| {
+                let all = "all".to_owned();
+                (
+                    1,
+                    all,
+                    String::new(),
+                    "member".into(),
+                    None,
+                    None,
+                    "allowed".into(),
+                )
+            });
         if role == "owner" {
             return Ok(Self {
                 version,
                 ..Self::admin()
             });
         }
-        let mut books = Self::picked(db, tenant_id, user_id).await?;
-        if let Some(picked) = books.as_mut() {
-            let shelved: Vec<String> = sqlx::query_scalar(
-                "SELECT bc.book_id FROM book_categories bc JOIN user_categories uc
-                   ON uc.tenant_id = bc.tenant_id AND uc.category_id = bc.category_id
-                 WHERE bc.tenant_id = $1 AND uc.user_id = $2",
-            )
-            .bind(tenant_id)
-            .bind(user_id)
-            .fetch_all(db)
-            .await?;
-            picked.extend(shelved);
-        }
-        let hidden_categories: HashSet<String> = sqlx::query_scalar(
-            "SELECT id FROM categories c WHERE c.tenant_id = $1 AND c.closed
-             AND NOT EXISTS (SELECT 1 FROM user_categories uc
-                 WHERE uc.category_id = c.id AND uc.user_id = $2)",
-        )
-        .bind(tenant_id)
-        .bind(user_id)
-        .fetch_all(db)
-        .await?
-        .into_iter()
-        .collect();
-        if !hidden_categories.is_empty() {
-            let open: HashSet<String> = sqlx::query_scalar(
-                "SELECT id FROM books b WHERE b.tenant_id = $1 AND NOT EXISTS (
-                     SELECT 1 FROM book_categories bc JOIN categories c ON c.id = bc.category_id
-                     WHERE bc.book_id = b.id AND c.closed AND NOT EXISTS (
-                         SELECT 1 FROM user_categories uc
-                         WHERE uc.category_id = c.id AND uc.user_id = $2))",
-            )
-            .bind(tenant_id)
-            .bind(user_id)
-            .fetch_all(db)
-            .await?
-            .into_iter()
-            .collect();
-            books = Some(match books {
-                Some(picked) => picked.intersection(&open).cloned().collect(),
-                None => open,
-            });
-        }
-        let languages = super::languages::split(&languages);
-        if !languages.is_empty() {
-            let spoken: HashSet<String> = sqlx::query_scalar(
-                "SELECT id FROM books WHERE tenant_id = $1
-                 AND (language IS NULL OR instr(',' || $2 || ',', ',' || language || ',') > 0)",
-            )
-            .bind(tenant_id)
-            .bind(languages.join(","))
-            .fetch_all(db)
-            .await?
-            .into_iter()
-            .collect();
-            books = Some(match books {
-                Some(picked) => picked.intersection(&spoken).cloned().collect(),
-                None => spoken,
-            });
+        let (mut books, hidden_categories) = match groups_view(db, tenant_id, user_id).await? {
+            Some(view) => view,
+            None => {
+                Rule::User(user_id)
+                    .view(db, tenant_id, &access, &languages)
+                    .await?
+            }
+        };
+        if let Some(birth) = birth_date.as_deref() {
+            let ceiling = rating_ceiling(birth, now_ms());
+            if ceiling != applied {
+                // A birthday lifted the ceiling: a new version, so phones get a full slice.
+                sqlx::query(
+                    "UPDATE access_policies SET max_rating = $3, policy_version = policy_version + 1
+                     WHERE tenant_id = $1 AND user_id = $2 AND max_rating IS NOT $3",
+                )
+                .bind(tenant_id)
+                .bind(user_id)
+                .bind(ceiling)
+                .execute(db)
+                .await?;
+                version = sqlx::query_scalar(
+                    "SELECT policy_version FROM access_policies WHERE tenant_id = $1 AND user_id = $2",
+                )
+                .bind(tenant_id)
+                .bind(user_id)
+                .fetch_one(db)
+                .await?;
+                tracing::info!(user = %user_id, ?ceiling, "rating ceiling changed with age");
+            }
+            if let Some(ceiling) = ceiling {
+                let fit: HashSet<String> = sqlx::query_scalar(
+                    "SELECT id FROM books WHERE tenant_id = $1
+                     AND (rating <= $2 OR (rating IS NULL AND $3 = 'allowed'))",
+                )
+                .bind(tenant_id)
+                .bind(ceiling)
+                .bind(&unrated)
+                .fetch_all(db)
+                .await?
+                .into_iter()
+                .collect();
+                books = Some(narrow(books, &fit));
+            }
         }
         Ok(Self {
             version,
@@ -172,6 +182,207 @@ impl PolicyFilter {
     pub fn allows(&self, id: &str) -> bool {
         self.books.as_ref().is_none_or(|books| books.contains(id))
     }
+}
+
+/// What the groups of a listener show together: the books any of them sees (`None` for
+/// all) and the closed sections none of them opens; `None` when the listener is in no group.
+async fn groups_view(
+    db: &SqlitePool,
+    tenant_id: &str,
+    user_id: &str,
+) -> anyhow::Result<Option<(Option<HashSet<String>>, HashSet<String>)>> {
+    let groups: Vec<(String, String, String)> = sqlx::query_as(
+        "SELECT g.id, g.book_access, g.languages FROM group_members m
+         JOIN user_groups g ON g.id = m.group_id
+         WHERE m.tenant_id = $1 AND m.user_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(user_id)
+    .fetch_all(db)
+    .await?;
+    if groups.is_empty() {
+        return Ok(None);
+    }
+    let mut books = Some(HashSet::new());
+    let mut hidden: Option<HashSet<String>> = None;
+    for (id, access, languages) in &groups {
+        let (seen, closed) = Rule::Group(id)
+            .view(db, tenant_id, access, languages)
+            .await?;
+        books = match (books, seen) {
+            (Some(mut all), Some(seen)) => {
+                all.extend(seen);
+                Some(all)
+            }
+            _ => None,
+        };
+        hidden = Some(match hidden {
+            Some(hidden) => hidden.intersection(&closed).cloned().collect(),
+            None => closed,
+        });
+    }
+    Ok(Some((books, hidden.unwrap_or_default())))
+}
+
+/// `books` (`None` for all) narrowed to `fit`.
+fn narrow(books: Option<HashSet<String>>, fit: &HashSet<String>) -> HashSet<String> {
+    match books {
+        Some(books) => books.intersection(fit).cloned().collect(),
+        None => fit.clone(),
+    }
+}
+
+/// Whose access rule: a listener's own or a group's. A rule gives the whole library, or the
+/// picked books plus the books of the sections given; then without the books of closed
+/// sections not given, and only the books in its languages or without a language.
+#[derive(Debug, Clone, Copy)]
+enum Rule<'a> {
+    User(&'a str),
+    Group(&'a str),
+}
+
+impl Rule<'_> {
+    /// Tables of the picked books and given sections, their owner column, the owner id.
+    fn tables(self) -> (&'static str, &'static str, &'static str, String) {
+        match self {
+            Rule::User(id) => ("user_books", "user_categories", "user_id", id.to_owned()),
+            Rule::Group(id) => ("group_books", "group_categories", "group_id", id.to_owned()),
+        }
+    }
+
+    /// The books the rule shows (`None` for all) and the closed sections it hides.
+    async fn view(
+        self,
+        db: &SqlitePool,
+        tenant_id: &str,
+        access: &str,
+        languages: &str,
+    ) -> anyhow::Result<(Option<HashSet<String>>, HashSet<String>)> {
+        // Table and column names come from the fixed list in `tables`.
+        let (picked_table, given_table, owner, id) = self.tables();
+        let mut books = None;
+        if access == "selected" {
+            let mut picked: HashSet<String> = sqlx::query_scalar(AssertSqlSafe(format!(
+                "SELECT book_id FROM {picked_table} WHERE tenant_id = $1 AND {owner} = $2"
+            )))
+            .bind(tenant_id)
+            .bind(&id)
+            .fetch_all(db)
+            .await?
+            .into_iter()
+            .collect();
+            let shelved: Vec<String> = sqlx::query_scalar(AssertSqlSafe(format!(
+                "SELECT bc.book_id FROM book_categories bc JOIN {given_table} uc
+                   ON uc.tenant_id = bc.tenant_id AND uc.category_id = bc.category_id
+                 WHERE bc.tenant_id = $1 AND uc.{owner} = $2"
+            )))
+            .bind(tenant_id)
+            .bind(&id)
+            .fetch_all(db)
+            .await?;
+            picked.extend(shelved);
+            books = Some(picked);
+        }
+        let hidden: HashSet<String> = sqlx::query_scalar(AssertSqlSafe(format!(
+            "SELECT id FROM categories c WHERE c.tenant_id = $1 AND c.closed
+             AND NOT EXISTS (SELECT 1 FROM {given_table} uc
+                 WHERE uc.category_id = c.id AND uc.{owner} = $2)"
+        )))
+        .bind(tenant_id)
+        .bind(&id)
+        .fetch_all(db)
+        .await?
+        .into_iter()
+        .collect();
+        if !hidden.is_empty() {
+            let open: HashSet<String> = sqlx::query_scalar(AssertSqlSafe(format!(
+                "SELECT id FROM books b WHERE b.tenant_id = $1 AND NOT EXISTS (
+                     SELECT 1 FROM book_categories bc JOIN categories c ON c.id = bc.category_id
+                     WHERE bc.book_id = b.id AND c.closed AND NOT EXISTS (
+                         SELECT 1 FROM {given_table} uc
+                         WHERE uc.category_id = c.id AND uc.{owner} = $2))"
+            )))
+            .bind(tenant_id)
+            .bind(&id)
+            .fetch_all(db)
+            .await?
+            .into_iter()
+            .collect();
+            books = Some(narrow(books, &open));
+        }
+        let languages = super::languages::split(languages);
+        if !languages.is_empty() {
+            let spoken: HashSet<String> = sqlx::query_scalar(
+                "SELECT id FROM books WHERE tenant_id = $1
+                 AND (language IS NULL OR instr(',' || $2 || ',', ',' || language || ',') > 0)",
+            )
+            .bind(tenant_id)
+            .bind(languages.join(","))
+            .fetch_all(db)
+            .await?
+            .into_iter()
+            .collect();
+            books = Some(narrow(books, &spoken));
+        }
+        Ok((books, hidden))
+    }
+}
+
+/// Parses a date of birth, `YYYY-MM-DD`: days since 1970-01-01, or `None` for no such date.
+#[must_use]
+pub fn birth_days(date: &str) -> Option<i64> {
+    let mut parts = date.split('-');
+    let (y, m, d) = (parts.next()?, parts.next()?, parts.next()?);
+    if parts.next().is_some() || y.len() != 4 || m.len() != 2 || d.len() != 2 {
+        return None;
+    }
+    let (y, m, d) = (y.parse().ok()?, m.parse().ok()?, d.parse().ok()?);
+    let days = days_from_civil(y, m, d);
+    (civil_from_days(days) == (y, m, d)).then_some(days)
+}
+
+/// The rating ceiling of a child born on `birth` (`YYYY-MM-DD`) at `now_ms`: the highest of
+/// [`RATINGS`] not above their age; `None` for an adult or a date that is not one.
+#[must_use]
+pub fn rating_ceiling(birth: &str, now_ms: i64) -> Option<i64> {
+    let born = civil_from_days(birth_days(birth)?);
+    let today = civil_from_days(now_ms.div_euclid(DAY_MS));
+    let age = today.0 - born.0 - i64::from((today.1, today.2) < (born.1, born.2));
+    if age >= ADULT_AGE {
+        return None;
+    }
+    Some(
+        RATINGS
+            .iter()
+            .copied()
+            .filter(|r| *r <= age)
+            .max()
+            .unwrap_or(0),
+    )
+}
+
+/// Days since 1970-01-01 of a proleptic Gregorian date (H. Hinnant's algorithm).
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = y.div_euclid(400);
+    let yoe = y.rem_euclid(400);
+    let mp = if m > 2 { m - 3 } else { m + 9 };
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146_097 + doe - 719_468
+}
+
+/// The date (year, month, day) of days since 1970-01-01.
+fn civil_from_days(days: i64) -> (i64, i64, i64) {
+    let z = days + 719_468;
+    let era = z.div_euclid(146_097);
+    let doe = z.rem_euclid(146_097);
+    let yoe = (doe - doe / 1460 + doe / 36_524 - doe / 146_096) / 365;
+    let doy = doe - (365 * yoe + yoe / 4 - yoe / 100);
+    let mp = (5 * doy + 2) / 153;
+    let d = doy - (153 * mp + 2) / 5 + 1;
+    let m = if mp < 10 { mp + 3 } else { mp - 9 };
+    (yoe + era * 400 + i64::from(m <= 2), m, d)
 }
 
 /// Next tenant revision; call inside the write transaction.
@@ -1089,6 +1300,45 @@ pub async fn sync(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// Noon UTC of a date, epoch milliseconds.
+    fn at(date: &str) -> i64 {
+        birth_days(date).unwrap() * DAY_MS + DAY_MS / 2
+    }
+
+    #[test]
+    fn dates_and_ceilings() {
+        assert_eq!(birth_days("1970-01-01"), Some(0));
+        assert_eq!(birth_days("2000-03-01"), Some(11_017));
+        for bad in [
+            "",
+            "2020-02-30",
+            "2021-02-29",
+            "2020-13-01",
+            "20-01-01",
+            "2020-1-01",
+            "2020-01-01-1",
+        ] {
+            assert_eq!(birth_days(bad), None, "{bad}");
+        }
+        for days in [-1, 0, 59, 11_016, 20_000, 30_000] {
+            let (y, m, d) = civil_from_days(days);
+            assert_eq!(days_from_civil(y, m, d), days);
+        }
+        let born = "2012-05-20";
+        assert_eq!(rating_ceiling(born, at("2014-05-20")), Some(0));
+        assert_eq!(rating_ceiling(born, at("2018-05-19")), Some(0));
+        assert_eq!(rating_ceiling(born, at("2018-05-20")), Some(6));
+        assert_eq!(rating_ceiling(born, at("2024-05-19")), Some(6));
+        assert_eq!(rating_ceiling(born, at("2024-05-20")), Some(12));
+        assert_eq!(rating_ceiling(born, at("2028-05-20")), Some(16));
+        assert_eq!(rating_ceiling(born, at("2030-05-19")), Some(16));
+        assert_eq!(rating_ceiling(born, at("2030-05-20")), None);
+        // Born on 29 February: a year older on 1 March when the year has no 29th.
+        assert_eq!(rating_ceiling("2012-02-29", at("2018-02-28")), Some(0));
+        assert_eq!(rating_ceiling("2012-02-29", at("2018-03-01")), Some(6));
+        assert_eq!(rating_ceiling("not a date", at("2018-03-01")), None);
+    }
 
     #[test]
     fn cursors_and_edits() {

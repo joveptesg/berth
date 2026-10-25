@@ -1,12 +1,12 @@
 {% import "partials/ui.html" as ui %}
 {# A section to add (`dialog.id` empty) or edit. `dialog`: id, name, aliases, closed, given (ids),
-   books, listeners (id, name), error. #}
+   given_groups (ids), books, listeners (id, name), groups (id, name), error. #}
 {% set d = dialog %}
 <dialog id="category-edit" x-init="$el.showModal()" @close="$el.remove()"
   class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,560px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
   <form method="post" action="/categories{{ '/' ~ d.id if d.id }}" hx-post="/categories{{ '/' ~ d.id if d.id }}"
     hx-target="#categories" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
-    x-data='{ closed: {{ "true" if d.closed else "false" }}, given: {{ d.given | tojson }} }'
+    x-data='{ closed: {{ "true" if d.closed else "false" }}, given: {{ d.given | tojson }}, givenGroups: {{ d.given_groups | tojson }} }'
     class="form-dense flex max-h-[calc(100dvh-34px)] flex-col">
     <div class="relative border-b border-line px-6 pt-5 pb-4 pr-16">
       <h2 class="text-[20px] font-bold">{{ t('categories.edit_title') if d.id else t('categories.new_title') }}</h2>
@@ -35,10 +35,16 @@
           </span>
         </label>
         <input type="hidden" name="users" :value="given.join(',')" value="{{ d.given | join(',') }}">
+        <input type="hidden" name="groups" :value="givenGroups.join(',')" value="{{ d.given_groups | join(',') }}">
         <div class="flex flex-col gap-2">
           <p class="text-[13.5px] font-semibold text-text-2">{{ t('categories.users_label') }}</p>
-          {% if d.listeners %}
+          {% if d.listeners or d.groups %}
           <div class="flex flex-wrap gap-2">
+            {% for g in d.groups %}
+            <label class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+              <input type="checkbox" value="{{ g.id }}" x-model="givenGroups" {% if g.id in d.given_groups %}checked{% endif %} class="sr-only">{{ ui.icon("users", "size-[15px]") }}{{ g.name }}
+            </label>
+            {% endfor %}
             {% for u in d.listeners %}
             <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
               <input type="checkbox" value="{{ u.id }}" x-model="given" {% if u.id in d.given %}checked{% endif %} class="sr-only">{{ u.name }}

@@ -257,15 +257,13 @@ pub async fn apply(
     }
     let category_id = apply_category(db, tenant_id, plan.closed, open_to, section_name).await?;
     if let Some(id) = &reviewer {
-        users::set_access(
-            db,
-            tenant_id,
-            id,
-            Some(&[]),
-            std::slice::from_ref(&category_id),
-            &[],
-        )
-        .await?;
+        let access = users::AccessInput {
+            books: Some(Vec::new()),
+            categories: vec![category_id],
+            unrated_allowed: true,
+            ..users::AccessInput::default()
+        };
+        users::set_access(db, tenant_id, id, &access).await?;
     }
     let queued = queue_books(db, tenant_id, &slots, plan.full).await?;
     state.wake_jobs();
@@ -335,6 +333,7 @@ async fn apply_category(
             aliases: entry.aliases,
             closed,
             users,
+            groups: entry.groups,
         };
         categories::update(db, tenant_id, &entry.id, &input).await?;
         return Ok(entry.id);
@@ -350,6 +349,7 @@ async fn apply_category(
             aliases: entry.aliases,
             closed,
             users,
+            groups: entry.groups,
         };
         categories::update(db, tenant_id, &entry.id, &input).await?;
         entry.id
@@ -359,6 +359,7 @@ async fn apply_category(
             aliases: String::new(),
             closed,
             users,
+            groups: Vec::new(),
         };
         categories::create(db, tenant_id, &input).await?
     };

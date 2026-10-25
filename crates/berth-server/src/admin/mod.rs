@@ -135,6 +135,13 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             get(access::user_settings).post(access::user_settings_save),
         )
         .route("/users/{user}/pairing/{id}", get(access::pairing_status))
+        .route("/groups", post(access::group_create))
+        .route("/groups/new", get(access::group_new))
+        .route(
+            "/groups/{id}/settings",
+            get(access::group_settings).post(access::group_save),
+        )
+        .route("/groups/{id}/delete", post(access::group_delete))
         .route("/devices", get(access::devices_page))
         .route("/devices/{id}/revoke", post(access::devices_revoke))
         .route("/storage", get(storage::page).post(storage::create))

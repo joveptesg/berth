@@ -3687,3 +3687,349 @@ async fn the_queue_keeps_saved_uploads_a_day_and_the_history_pages_them() {
         "past the end: the last page"
     );
 }
+
+/// 1 January of the year `age` years before this one: the child is `age` all year round.
+fn born_years_ago(age: i64) -> String {
+    use berth_server::service::books::birth_days;
+    let today = now().div_euclid(86_400_000);
+    let year = (1970..2200)
+        .find(|y| birth_days(&format!("{}-01-01", y + 1)).unwrap() > today)
+        .unwrap();
+    format!("{}-01-01", year - age)
+}
+
+#[tokio::test]
+#[expect(
+    clippy::too_many_lines,
+    reason = "one journey: groups of a family, a child's age, the store reviewer outside groups"
+)]
+async fn groups_and_age_ratings() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let admin = admin_token(&state).await;
+    let tenant_id = tenant(&state).await;
+    let tale = add_book(&state, &admin, "Колобок").await;
+    let teen = add_book(&state, &admin, "Гарри Поттер").await;
+    let unrated = add_book(&state, &admin, "Без рейтинга").await;
+    let novel = add_book(&state, &admin, "Мастер и Маргарита").await;
+    let report = add_book(&state, &admin, "Отчёт").await;
+    // Ratings straight in the database: the book form is tested elsewhere.
+    for (id, rating) in [
+        (&tale, Some(0)),
+        (&teen, Some(12)),
+        (&unrated, None),
+        (&novel, Some(16)),
+        (&report, Some(18)),
+    ] {
+        sqlx::query("UPDATE books SET rating = $2 WHERE id = $1")
+            .bind(id)
+            .bind(rating)
+            .execute(&state.db)
+            .await
+            .unwrap();
+    }
+    for (name, closed) in [("Детское", false), ("Рабочие", true)] {
+        let mut form = vec![("name", name)];
+        if closed {
+            form.push(("closed", "on"));
+        }
+        let added = send(&state, post("/categories", Some(&session), &form)).await;
+        assert!(!added.body.contains("alert-error"), "{}", added.body);
+    }
+    let section = |name: &'static str| {
+        let state = &state;
+        async move {
+            sqlx::query_scalar::<_, String>("SELECT id FROM categories WHERE name = $1")
+                .bind(name)
+                .fetch_one(&state.db)
+                .await
+                .unwrap()
+        }
+    };
+    let kids = section("Детское").await;
+    let work = section("Рабочие").await;
+    for (book, category) in [
+        (&tale, &kids),
+        (&teen, &kids),
+        (&unrated, &kids),
+        (&report, &work),
+    ] {
+        sqlx::query(
+            "INSERT INTO book_categories (tenant_id, book_id, category_id) VALUES ($1, $2, $3)",
+        )
+        .bind(&tenant_id)
+        .bind(book)
+        .bind(category)
+        .execute(&state.db)
+        .await
+        .unwrap();
+    }
+
+    // Listeners with logins; `settings` saves their dialog (the login is sent each time).
+    let mut ids = std::collections::HashMap::new();
+    for name in ["Мама", "Папа", "Маша", "Модерация"] {
+        send(&state, post("/users", Some(&session), &[("name", name)])).await;
+        let id: String = sqlx::query_scalar("SELECT id FROM users WHERE name = $1")
+            .bind(name)
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+        ids.insert(name, id);
+    }
+    let login = |name: &str| match name {
+        "Мама" => "mama",
+        "Папа" => "papa",
+        "Маша" => "masha",
+        _ => "review",
+    };
+    let settings = |name: &'static str, extra: Vec<(&'static str, String)>| {
+        let (state, session, ids) = (&state, &session, &ids);
+        async move {
+            let mut form = vec![
+                ("login_on", "on".to_owned()),
+                ("login", login(name).to_owned()),
+                ("password", login(name).to_owned()),
+            ];
+            form.extend(extra);
+            let form: Vec<(&str, &str)> = form.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            send(
+                state,
+                post(
+                    &format!("/users/{}/settings", ids[name]),
+                    Some(session),
+                    &form,
+                ),
+            )
+            .await
+        }
+    };
+    for name in ["Мама", "Папа", "Маша"] {
+        let saved = settings(name, vec![("access", "all".into())]).await;
+        assert!(!saved.body.contains("role=\"alert\""), "{}", saved.body);
+    }
+    let reviewer = settings(
+        "Модерация",
+        vec![("access", "selected".into()), ("books", novel.clone())],
+    )
+    .await;
+    assert!(
+        !reviewer.body.contains("role=\"alert\""),
+        "{}",
+        reviewer.body
+    );
+
+    // Groups: adults see the library without closed sections, Work opens one to Papa,
+    // Children see their section.
+    let dialog = send(&state, get("/groups/new", Some(&session))).await;
+    assert!(
+        dialog.body.contains("id=\"group-settings\""),
+        "{}",
+        dialog.body
+    );
+    let group = |name: &'static str, form: Vec<(&'static str, String)>| {
+        let (state, session) = (&state, &session);
+        async move {
+            let mut form = form;
+            form.push(("name", name.to_owned()));
+            let form: Vec<(&str, &str)> = form.iter().map(|(k, v)| (*k, v.as_str())).collect();
+            send(state, post("/groups", Some(session), &form)).await
+        }
+    };
+    let adults = group(
+        "Взрослые",
+        vec![
+            ("access", "all".into()),
+            ("members", format!("{},{}", ids["Мама"], ids["Папа"])),
+        ],
+    )
+    .await;
+    assert!(!adults.body.contains("role=\"alert\""), "{}", adults.body);
+    let taken = group("взрослые", vec![("access", "all".into())]).await;
+    assert!(
+        taken.body.contains("id=\"group-settings\"") && taken.body.contains("role=\"alert\""),
+        "a taken name comes back in the dialog: {}",
+        taken.body
+    );
+    group(
+        "Работа",
+        vec![
+            ("access", "selected".into()),
+            ("categories", work.clone()),
+            ("members", ids["Папа"].clone()),
+        ],
+    )
+    .await;
+    group(
+        "Дети",
+        vec![
+            ("access", "selected".into()),
+            ("categories", kids.clone()),
+            ("members", ids["Маша"].clone()),
+        ],
+    )
+    .await;
+    let group_id = |name: &'static str| {
+        let state = &state;
+        async move {
+            sqlx::query_scalar::<_, String>("SELECT id FROM user_groups WHERE name = $1")
+                .bind(name)
+                .fetch_one(&state.db)
+                .await
+                .unwrap()
+        }
+    };
+    let children = group_id("Дети").await;
+
+    // Masha is 8: of her section only 0+, the unrated book hidden until allowed.
+    let masha = |unrated_on: bool| {
+        let mut form = vec![
+            ("access", "all".to_owned()),
+            ("groups", children.clone()),
+            ("birth_date", born_years_ago(8)),
+        ];
+        if unrated_on {
+            form.push(("unrated_on", "on".into()));
+        }
+        settings("Маша", form)
+    };
+    let saved = masha(false).await;
+    assert!(!saved.body.contains("role=\"alert\""), "{}", saved.body);
+    let future = settings(
+        "Маша",
+        vec![
+            ("access", "all".into()),
+            ("birth_date", "2999-01-01".into()),
+        ],
+    )
+    .await;
+    assert!(future.body.contains("role=\"alert\""), "{}", future.body);
+
+    let sign_in = |name: &'static str| {
+        let state = &state;
+        async move {
+            send(state, app_login(login(name), login(name)))
+                .await
+                .json()["access_token"]
+                .as_str()
+                .unwrap()
+                .to_owned()
+        }
+    };
+    let synced = |token: String, cursor: Option<String>| {
+        let state = &state;
+        async move {
+            let uri = cursor.map_or("/v1/sync".to_owned(), |c| format!("/v1/sync?cursor={c}"));
+            send(state, bearer_get(&uri, &token)).await.json()
+        }
+    };
+    let ids_of = |page: &serde_json::Value| {
+        let mut ids: Vec<String> = page["books"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|b| b["id"].as_str().unwrap().to_owned())
+            .collect();
+        ids.sort_unstable();
+        ids
+    };
+    let sorted = |books: &[&String]| {
+        let mut books: Vec<String> = books.iter().map(|b| (*b).clone()).collect();
+        books.sort_unstable();
+        books
+    };
+
+    let masha_token = sign_in("Маша").await;
+    let page = synced(masha_token.clone(), None).await;
+    assert_eq!(ids_of(&page), sorted(&[&tale]));
+    let stream = send(
+        &state,
+        bearer_get(&format!("/v1/books/{teen}/files/0/stream"), &masha_token),
+    )
+    .await;
+    assert_eq!(stream.problem(), "not_found");
+    masha(true).await;
+    let page = synced(masha_token.clone(), None).await;
+    assert_eq!(ids_of(&page), sorted(&[&tale, &unrated]));
+
+    // A birthday that lifts the ceiling: the saved one is older, so the next sync is full.
+    sqlx::query("UPDATE access_policies SET max_rating = 0 WHERE user_id = $1")
+        .bind(&ids["Маша"])
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let cursor = page["cursor"].as_str().unwrap().to_owned();
+    let next = synced(masha_token.clone(), Some(cursor)).await;
+    assert_eq!(next["reset"], true, "{next}");
+    let ceiling: Option<i64> =
+        sqlx::query_scalar("SELECT max_rating FROM access_policies WHERE user_id = $1")
+            .bind(&ids["Маша"])
+            .fetch_one(&state.db)
+            .await
+            .unwrap();
+    assert_eq!(ceiling, Some(6));
+
+    // Groups add up: Papa is in Adults and Work, Mama only in Adults.
+    let papa = synced(sign_in("Папа").await, None).await;
+    assert_eq!(
+        ids_of(&papa),
+        sorted(&[&tale, &teen, &unrated, &novel, &report])
+    );
+    let mama_token = sign_in("Мама").await;
+    let mama = synced(mama_token.clone(), None).await;
+    assert_eq!(ids_of(&mama), sorted(&[&tale, &teen, &unrated, &novel]));
+
+    // The reviewer outside groups keeps their own pick.
+    let review = synced(sign_in("Модерация").await, None).await;
+    assert_eq!(ids_of(&review), sorted(&[&novel]));
+
+    // Any change of a group: phones of everyone sync in full.
+    let adults_id = group_id("Взрослые").await;
+    let resaved = send(
+        &state,
+        post(
+            &format!("/groups/{adults_id}/settings"),
+            Some(&session),
+            &[
+                ("name", "Взрослые"),
+                ("access", "all"),
+                ("members", &format!("{},{}", ids["Мама"], ids["Папа"])),
+            ],
+        ),
+    )
+    .await;
+    assert!(!resaved.body.contains("role=\"alert\""), "{}", resaved.body);
+    let cursor = mama["cursor"].as_str().unwrap().to_owned();
+    assert_eq!(
+        synced(mama_token.clone(), Some(cursor)).await["reset"],
+        true
+    );
+
+    // The users page shows groups and the child's ceiling; the section dialog its group.
+    let page = send(&state, get("/users", Some(&session))).await;
+    for text in ["Взрослые", "Работа", "Дети", "up to 6+"] {
+        assert!(page.body.contains(text), "{text}: {}", page.body);
+    }
+    let edit = send(
+        &state,
+        get(&format!("/categories/{work}/edit"), Some(&session)),
+    )
+    .await;
+    assert!(edit.body.contains("Работа"), "{}", edit.body);
+
+    // A deleted group: Papa loses the closed section, Mama's view does not change.
+    let work_group = group_id("Работа").await;
+    send(
+        &state,
+        post(&format!("/groups/{work_group}/delete"), Some(&session), &[]),
+    )
+    .await;
+    let papa = synced(sign_in("Папа").await, None).await;
+    assert_eq!(ids_of(&papa), sorted(&[&tale, &teen, &unrated, &novel]));
+    let members: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM group_members WHERE group_id = $1")
+        .bind(&work_group)
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(members, 0);
+}

@@ -1,14 +1,18 @@
 {% import "partials/ui.html" as ui %}
+{% import "partials/access_fields.html" as af %}
 {# A listener's login for apps and the books they see. `user_settings`: user, books, picked (ids),
    access (all | selected), login_on, login, has_password, min_password, error;
    languages (code, name), spoken (the codes the user sees, empty for all);
-   sections (id, name, closed), given (ids of the sections given to the user). #}
+   sections (id, name, closed), given (ids of the sections given to the user);
+   groups (id, name), in_groups (ids); birth_date, ceiling (today's, none for an adult),
+   unrated_on, ratings. #}
 {% set s = user_settings %}
 <dialog id="user-settings" x-init="$el.showModal()" @close="$el.remove()"
   class="m-auto max-h-[calc(100dvh-32px)] w-[min(100%-32px,640px)] overflow-hidden rounded-card border border-line bg-surface p-0 text-text shadow-[0_24px_60px_-28px_rgb(14_16_20/0.5)] backdrop:bg-black/45">
   <form method="post" action="/users/{{ s.user.id }}/settings" hx-post="/users/{{ s.user.id }}/settings"
     hx-target="#users-section" hx-swap="outerHTML" hx-disabled-elt="find button[type=submit]"
-    x-data='{ loginOn: {{ "true" if s.login_on else "false" }}, access: {{ s.access | tojson }}, picked: {{ s.picked | tojson }}, q: "", spokenOn: {{ "true" if s.spoken else "false" }}, spoken: {{ s.spoken | tojson }}, given: {{ s.given | tojson }} }'
+    x-data='{ loginOn: {{ "true" if s.login_on else "false" }}, access: {{ s.access | tojson }}, picked: {{ s.picked | tojson }}, q: "", spokenOn: {{ "true" if s.spoken else "false" }}, spoken: {{ s.spoken | tojson }}, given: {{ s.given | tojson }}, groups: {{ s.in_groups | tojson }}, birth: {{ s.birth_date | tojson }}, unratedOn: {{ "true" if s.unrated_on else "false" }},
+      ceil() { if (!this.birth) return null; const [y, m, d] = this.birth.split("-").map(Number); const n = new Date(); const a = n.getFullYear() - y - (n.getMonth() + 1 < m || (n.getMonth() + 1 == m ? n.getDate() < d : false) ? 1 : 0); return a >= 18 ? null : Math.max(0, ...{{ s.ratings | tojson }}.filter(r => r <= a)) } }'
     class="form-dense flex max-h-[calc(100dvh-34px)] flex-col">
     <div class="relative border-b border-line px-6 pt-5 pb-4 pr-16">
       <h2 class="text-[20px] font-bold">{{ t('users.settings_title', name=s.user.name) }}</h2>
@@ -43,75 +47,43 @@
         </div>
       </section>
 
+      {% if s.groups %}
       <section class="flex flex-col gap-3 border-t border-line pt-5">
-        <h3 class="text-[15px] font-semibold">{{ t('users.access_title') }}</h3>
-        <div class="inline-flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 sm:w-auto sm:self-start">
-          {% for value in ["all", "selected"] %}
-          <label class="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-[11px] px-4 text-[14px] font-semibold whitespace-nowrap text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)]">
-            <input type="radio" name="access" value="{{ value }}" x-model="access" {% if s.access == value %}checked{% endif %} class="sr-only">{{ t('users.access_' ~ value) }}
+        <h3 class="text-[15px] font-semibold">{{ t('users.groups_title') }}</h3>
+        <input type="hidden" name="groups" :value="groups.join(',')" value="{{ s.in_groups | join(',') }}">
+        <div class="flex flex-wrap gap-2">
+          {% for g in s.groups %}
+          <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
+            <input type="checkbox" value="{{ g.id }}" x-model="groups" {% if g.id in s.in_groups %}checked{% endif %} class="sr-only">{{ g.name }}
           </label>
           {% endfor %}
         </div>
-        <input type="hidden" name="books" :value="picked.join(',')" value="{{ s.picked | join(',') }}">
-        {% if s.sections %}
-        <div class="flex flex-col gap-2">
-          <input type="hidden" name="categories" :value="given.join(',')" value="{{ s.given | join(',') }}">
-          <p class="text-[13.5px] font-semibold text-text-2">{{ t('users.sections_title') }}</p>
-          <div class="flex flex-wrap gap-2">
-            {% for c in s.sections %}
-            <label class="inline-flex min-h-9 cursor-pointer items-center gap-1.5 rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
-              <input type="checkbox" value="{{ c.id }}" x-model="given" {% if c.id in s.given %}checked{% endif %} class="sr-only">
-              {% if c.closed %}<span title="{{ t('categories.closed_badge') }}">{{ ui.icon("lock", "size-[15px]") }}</span>{% endif %}{{ c.name }}
-            </label>
-            {% endfor %}
-          </div>
-          <p class="text-[13px] text-text-3" x-text='access === "selected" ? {{ t("users.sections_hint_selected") | tojson }} : {{ t("users.sections_hint_all") | tojson }}'>{{ t('users.sections_hint_selected') if s.access == "selected" else t('users.sections_hint_all') }}</p>
-        </div>
-        {% endif %}
-        <div x-show="access === 'selected'" {% if s.access != "selected" %}style="display: none"{% endif %} class="flex flex-col gap-2">
-          <p class="text-[13px] text-text-3">{{ t('users.access_picked') }} <span x-text="picked.length" class="font-semibold text-text">{{ s.picked | length }}</span> {{ t('users.access_of', count=s.books | length) }}</p>
-          {% if s.books %}
-          <input type="search" x-model="q" placeholder="{{ t('library.search') }}" class="input">
-          <ul class="max-h-72 divide-y divide-line overflow-y-auto rounded-[14px] border border-line">
-            {% for b in s.books %}
-            <li x-show='!q || {{ (b.title ~ " " ~ (b.authors | join(" "))) | lower | tojson }}.includes(q.toLowerCase())'>
-              <label class="flex cursor-pointer items-center gap-3 px-3 py-2 hover:bg-surface-2">
-                <input type="checkbox" value="{{ b.id }}" x-model="picked" class="size-[18px] shrink-0 accent-accent">
-                <span class="w-9 shrink-0">{{ ui.cover("/book/" ~ b.id ~ "/cover?v=" ~ b.cover_hash[:12] if b.cover_hash, b.title, "rounded-[8px] text-[13px]") }}</span>
-                <span class="min-w-0">
-                  <span class="block truncate text-[14.5px] font-semibold">{{ b.title }}</span>
-                  {% if b.authors %}<span class="block truncate text-[13px] text-text-3">{{ b.authors | join(', ') }}</span>{% endif %}
-                </span>
-              </label>
-            </li>
-            {% endfor %}
-          </ul>
-          {% else %}
-          <p class="text-[14px] text-text-3">{{ t('users.access_no_books') }}</p>
-          {% endif %}
-        </div>
+        <p class="text-[13px] text-text-3" x-text='groups.length ? {{ t("users.groups_hint_in") | tojson }} : {{ t("users.groups_hint_none") | tojson }}'>{{ t('users.groups_hint_in') if s.in_groups else t('users.groups_hint_none') }}</p>
       </section>
+      {% endif %}
+
+      <div x-show="!groups.length" {% if s.in_groups %}style="display: none"{% endif %} class="flex flex-col gap-5">
+        {{ af.fields(s, t('users.access_title')) }}
+      </div>
 
       <section class="flex flex-col gap-3 border-t border-line pt-5">
-        <h3 class="text-[15px] font-semibold">{{ t('users.languages_title') }}</h3>
-        <div class="inline-flex w-full gap-1 rounded-[14px] bg-surface-2 p-1 sm:w-auto sm:self-start">
-          {% for value, on in [("all", false), ("selected", true)] %}
-          <label class="flex h-10 flex-1 cursor-pointer items-center justify-center rounded-[11px] px-4 text-[14px] font-semibold whitespace-nowrap text-text-2 transition-colors has-checked:bg-surface has-checked:text-text has-checked:shadow-[0_1px_3px_rgb(0_0_0/0.1)]">
-            <input type="radio" name="languages_on" value="{{ value }}" @change="spokenOn = {{ 'true' if on else 'false' }}" {% if (s.spoken | length > 0) == on %}checked{% endif %} class="sr-only">{{ t('users.languages_' ~ value) }}
-          </label>
-          {% endfor %}
+        <div>
+          <h3 class="text-[15px] font-semibold">{{ t('users.child_title') }}</h3>
+          <p class="mt-0.5 text-[13px] leading-snug text-text-3">{{ t('users.child_hint') }}</p>
         </div>
-        <input type="hidden" name="languages" :value="spokenOn ? spoken.join(',') : ''" value="{{ s.spoken | join(',') }}">
-        <div x-show="spokenOn" {% if not s.spoken %}style="display: none"{% endif %} class="flex flex-col gap-2">
-          <div class="flex flex-wrap gap-2">
-            {% for l in s.languages %}
-            <label class="inline-flex min-h-9 cursor-pointer items-center rounded-full border border-line px-3.5 text-[14px] font-semibold text-text-2 transition-colors hover:bg-surface-2 has-checked:border-accent has-checked:bg-accent-soft has-checked:text-accent-fg">
-              <input type="checkbox" value="{{ l.code }}" x-model="spoken" {% if l.code in s.spoken %}checked{% endif %} class="sr-only">{{ l.name }}
-            </label>
-            {% endfor %}
-          </div>
-          <p class="text-[13px] text-text-3">{{ t('users.languages_hint') }}</p>
+        <div class="sm:max-w-60">
+          <label for="user-birth" class="field-label">{{ t('users.birth_label') }}</label>
+          <input id="user-birth" name="birth_date" type="date" x-model="birth" value="{{ s.birth_date }}" class="input">
         </div>
+        <p class="text-[13.5px] font-semibold text-text-2" x-show="birth" {% if not s.birth_date %}style="display: none"{% endif %}
+          x-text='ceil() === null ? {{ t("users.child_adult") | tojson }} : {{ t("users.child_ceiling", rating="RATING") | tojson }}.replace("RATING", ceil())'>{% if s.birth_date %}{{ t('users.child_ceiling', rating=s.ceiling) if s.ceiling is not none else t('users.child_adult') }}{% endif %}</p>
+        <label x-show="birth" {% if not s.birth_date %}style="display: none"{% endif %} class="flex cursor-pointer items-start gap-3">
+          <input type="checkbox" name="unrated_on" value="on" x-model="unratedOn" {% if s.unrated_on %}checked{% endif %} class="mt-0.5 size-[18px] shrink-0 accent-accent">
+          <span>
+            <span class="block text-[15px] font-semibold">{{ t('users.unrated_label') }}</span>
+            <span class="block text-[13px] leading-snug text-text-3">{{ t('users.unrated_hint') }}</span>
+          </span>
+        </label>
       </section>
     </div>
 

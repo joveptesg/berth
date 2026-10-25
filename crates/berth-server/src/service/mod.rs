@@ -11,6 +11,7 @@ pub mod categories;
 pub mod delivery;
 pub mod demo;
 pub mod devices;
+pub mod groups;
 pub mod ingest;
 pub mod languages;
 pub mod pairing;
