@@ -323,6 +323,7 @@ where
         if file.blob_hash.as_ref().is_some_and(|declared| *declared != hash) {
             return Err(BerthError::Validation("upload_hash_mismatch".into()));
         }
+        let _writing = state.blob_writes.read().await;
         if !blobs::is_active(&state.db, tenant_id, &hash, &storage_id).await.context("dedup")? {
             let store = profiles::open(state, tenant_id, &storage_id).await?;
             let content = ContentHash::parse(&hash).context("hash")?;
@@ -364,6 +365,7 @@ pub async fn complete(state: &AppState, tenant_id: &str, id: &str) -> Result<()>
     let list = files(&state.db, tenant_id, id).await.context("files")?;
     let pending: Vec<&FileRow> = list.iter().filter(|f| !f.stored).collect();
     if !pending.is_empty() {
+        let _writing = state.blob_writes.read().await;
         let store = profiles::open(state, tenant_id, &storage_id).await?;
         for file in pending {
             let missing = || BerthError::Validation("upload_file_missing".into());
@@ -1180,7 +1182,8 @@ pub async fn history(
     Ok((rows.into_iter().map(Into::into).collect(), total))
 }
 
-/// Drops an unsaved upload from the queue; stored bytes stay for deduplication.
+/// Drops an unsaved upload from the queue; its stored bytes go a day later unless another
+/// book or upload uses them (`blob_gc`).
 ///
 /// # Errors
 /// `NotFound`, `Conflict("upload_saved")`.
@@ -1190,6 +1193,20 @@ pub async fn discard(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
         return Err(BerthError::Conflict("upload_saved".into()));
     }
     let mut tx = db.begin().await.context("begin")?;
+    let hashes: Vec<String> = sqlx::query_scalar(
+        "SELECT blob_hash FROM upload_files
+          WHERE tenant_id = $1 AND upload_id = $2 AND blob_hash IS NOT NULL
+         UNION SELECT json_extract(draft, '$.cover_hash') FROM uploads
+          WHERE tenant_id = $1 AND id = $2 AND json_extract(draft, '$.cover_hash') IS NOT NULL",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await
+    .context("upload blobs")?;
+    blobs::touch(&mut tx, tenant_id, &hashes)
+        .await
+        .context("touch blobs")?;
     sqlx::query("DELETE FROM upload_files WHERE tenant_id = $1 AND upload_id = $2")
         .bind(tenant_id)
         .bind(id)

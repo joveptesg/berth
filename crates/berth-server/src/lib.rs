@@ -3,6 +3,7 @@
 mod admin;
 pub mod api;
 pub mod backup;
+pub mod blob_gc;
 pub mod cleanup;
 pub mod config;
 mod crypto;
@@ -46,6 +47,9 @@ pub struct AppState {
     pub setup: Arc<SetupCode>,
     /// Wakes the job worker when a job is queued.
     jobs: Arc<tokio::sync::Notify>,
+    /// Held shared while bytes are stored and registered, exclusively while [`blob_gc`]
+    /// deletes a blob, so a collected blob is never one that was just stored again.
+    pub(crate) blob_writes: Arc<tokio::sync::RwLock<()>>,
     /// A newer release found by [`update_check`].
     pub latest_release: Arc<ArcSwapOption<update_check::Release>>,
     templates: Arc<minijinja::Environment<'static>>,
@@ -112,6 +116,7 @@ pub async fn bootstrap(config_file: Option<&Path>) -> anyhow::Result<AppState> {
         secret: Arc::new(secret),
         setup: Arc::new(setup),
         jobs: Arc::new(tokio::sync::Notify::new()),
+        blob_writes: Arc::new(tokio::sync::RwLock::new(())),
         latest_release: Arc::new(ArcSwapOption::empty()),
         templates: Arc::new(admin::templates::environment()),
     })

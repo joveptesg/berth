@@ -4344,3 +4344,137 @@ async fn the_current_release_is_not_marked() {
     let page = send(&state, get("/", Some(&session))).await;
     assert!(!page.body.contains("update-popover"), "{}", page.body);
 }
+
+// ── Blob collection ──────────────────────────────────────
+
+/// The stored object named `name` under `dir`.
+fn find_file(dir: &Path, name: &str) -> Option<std::path::PathBuf> {
+    std::fs::read_dir(dir).ok()?.flatten().find_map(|entry| {
+        let path = entry.path();
+        if path.is_dir() {
+            find_file(&path, name)
+        } else {
+            (entry.file_name() == name).then_some(path)
+        }
+    })
+}
+
+async fn book_blob(state: &AppState, book_id: &str) -> String {
+    sqlx::query_scalar("SELECT blob_hash FROM book_files WHERE book_id = $1")
+        .bind(book_id)
+        .fetch_one(&state.db)
+        .await
+        .unwrap()
+}
+
+#[tokio::test]
+async fn unused_blobs_go_a_day_after_their_last_reference() {
+    use berth_server::{
+        blob_gc::{collect_unreferenced, sweep_buckets},
+        service::{books, ingest},
+    };
+    const HOUR: i64 = 60 * 60 * 1000;
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    set_up(&state).await;
+    let token = admin_token(&state).await;
+    let tenant_id = tenant(&state).await;
+
+    // Two books of the same bytes share one blob.
+    let first = add_book(&state, &token, "Общая").await;
+    let second = add_book(&state, &token, "Общая").await;
+    let shared = book_blob(&state, &first).await;
+    assert_eq!(book_blob(&state, &second).await, shared);
+    let object = find_file(dir.path(), &shared).unwrap();
+
+    books::delete(&state.db, &tenant_id, &first).await.unwrap();
+    assert_eq!(
+        collect_unreferenced(&state, now() + 25 * HOUR)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(object.exists(), "the other book still uses it");
+
+    books::delete(&state.db, &tenant_id, &second).await.unwrap();
+    assert_eq!(
+        collect_unreferenced(&state, now() + 23 * HOUR)
+            .await
+            .unwrap(),
+        0
+    );
+    assert!(object.exists(), "kept for a day");
+    assert_eq!(
+        collect_unreferenced(&state, now() + 25 * HOUR)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!object.exists());
+    assert_eq!(
+        collect_unreferenced(&state, now() + 25 * HOUR)
+            .await
+            .unwrap(),
+        0
+    );
+    let locations: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM blob_locations WHERE hash = $1")
+        .bind(&shared)
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(locations, 0);
+
+    // A discarded upload: its bytes go too, an upload still in the queue keeps its own.
+    let upload = |title: &'static str| {
+        let state = state.clone();
+        let token = token.clone();
+        async move {
+            let mp3 = chapter_mp3(title, 1, 1);
+            let created = send(
+                &state,
+                api(
+                    "POST",
+                    "/v1/ingest/uploads",
+                    &token,
+                    Some(&serde_json::json!({ "name": title, "files": [{ "name": "a.mp3", "size": mp3.len() }] })),
+                ),
+            )
+            .await
+            .json();
+            let id = created["id"].as_str().unwrap().to_owned();
+            send(
+                &state,
+                put_bytes(
+                    &format!("/v1/ingest/uploads/{id}/files/0"),
+                    &token,
+                    mp3.clone(),
+                ),
+            )
+            .await;
+            (id, digest_of(&mp3))
+        }
+    };
+    let (dropped, dropped_hash) = upload("Брошенная").await;
+    let (_queued, queued_hash) = upload("В очереди").await;
+    ingest::discard(&state.db, &tenant_id, &dropped)
+        .await
+        .unwrap();
+    let dropped_object = find_file(dir.path(), &dropped_hash).unwrap();
+    let queued_object = find_file(dir.path(), &queued_hash).unwrap();
+    assert_eq!(
+        collect_unreferenced(&state, now() + 25 * HOUR)
+            .await
+            .unwrap(),
+        1
+    );
+    assert!(!dropped_object.exists());
+    assert!(queued_object.exists());
+
+    // An object no row knows (an upload that never finished) goes after a day.
+    let stray = queued_object.with_file_name("ab".repeat(32));
+    std::fs::write(&stray, b"stray").unwrap();
+    assert_eq!(sweep_buckets(&state, now()).await.unwrap(), 0);
+    assert_eq!(sweep_buckets(&state, now() + 25 * HOUR).await.unwrap(), 1);
+    assert!(!stray.exists());
+    assert!(queued_object.exists());
+}

@@ -100,6 +100,7 @@ async fn serve(config: Option<PathBuf>) -> anyhow::Result<()> {
         );
     }
     berth_server::cleanup::spawn(state.db.clone());
+    berth_server::blob_gc::spawn(state.clone());
     berth_server::jobs::spawn(state.clone());
     berth_server::remote_backup::spawn(state.clone());
     berth_server::update_check::spawn(state.clone());

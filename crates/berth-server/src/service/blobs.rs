@@ -72,7 +72,30 @@ pub(crate) fn sha256_hex(data: &[u8]) -> String {
     hex::encode(Sha256::digest(data))
 }
 
+/// Restarts the collection grace period of blobs that just lost a reference.
+pub(crate) async fn touch(
+    conn: &mut SqliteConnection,
+    tenant_id: &str,
+    hashes: &[String],
+) -> sqlx::Result<()> {
+    let now = now_ms();
+    for hash in hashes {
+        sqlx::query(
+            "UPDATE blob_locations SET updated_at = $3
+             WHERE tenant_id = $1 AND hash = $2 AND state = 'active'",
+        )
+        .bind(tenant_id)
+        .bind(hash)
+        .bind(now)
+        .execute(&mut *conn)
+        .await?;
+    }
+    Ok(())
+}
+
 /// Stores small bytes (a cover) in the profile unless they are already there; returns the hash.
+/// The blob is registered again either way, which keeps it from collection until the caller
+/// references it.
 pub(crate) async fn store_bytes(
     state: &AppState,
     tenant_id: &str,
@@ -81,26 +104,27 @@ pub(crate) async fn store_bytes(
     codec: &str,
 ) -> anyhow::Result<String> {
     let hash = sha256_hex(&data);
+    let size = u64::try_from(data.len())?;
+    let _writing = state.blob_writes.read().await;
     if !is_active(&state.db, tenant_id, &hash, storage_id).await? {
         let store = profiles::open(state, tenant_id, storage_id).await?;
         let content = ContentHash::parse(&hash).context("sha256 hex")?;
-        let size = u64::try_from(data.len())?;
         store
             .put(tenant_id, &content, Box::new(std::io::Cursor::new(data)))
             .await
             .context("store blob")?;
-        let mut conn = state.db.acquire().await?;
-        register(
-            &mut conn,
-            tenant_id,
-            &hash,
-            size,
-            Some(codec),
-            storage_id,
-            "active",
-        )
-        .await?;
     }
+    let mut conn = state.db.acquire().await?;
+    register(
+        &mut conn,
+        tenant_id,
+        &hash,
+        size,
+        Some(codec),
+        storage_id,
+        "active",
+    )
+    .await?;
     Ok(hash)
 }
 

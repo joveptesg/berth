@@ -1140,13 +1140,27 @@ pub async fn set_cover(state: &AppState, tenant_id: &str, id: &str, data: Vec<u8
     Ok(())
 }
 
-/// Removes a book: devices drop it on the next sync. Its blobs stay (collected later).
+/// Removes a book: devices drop it on the next sync. Its blobs go a day later unless another
+/// book or upload uses them (`blob_gc`).
 ///
 /// # Errors
 /// `NotFound`.
 pub async fn delete(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
     row(db, tenant_id, id).await?;
     let mut tx = db.begin().await.context("begin")?;
+    let hashes: Vec<String> = sqlx::query_scalar(
+        "SELECT blob_hash FROM book_files WHERE tenant_id = $1 AND book_id = $2
+         UNION SELECT cover_hash FROM books
+          WHERE tenant_id = $1 AND id = $2 AND cover_hash IS NOT NULL",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_all(&mut *tx)
+    .await
+    .context("book blobs")?;
+    blobs::touch(&mut tx, tenant_id, &hashes)
+        .await
+        .context("touch blobs")?;
     let revision = next_revision(&mut tx, tenant_id)
         .await
         .context("revision")?;
