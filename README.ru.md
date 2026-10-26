@@ -11,7 +11,7 @@
   <img alt="Rust 1.99+" src="https://img.shields.io/badge/rust-1.99%2B-0E1014?logo=rust"></p>
 
 <p align="center">
-  <a href="README.md">English</a> · <b>Русский</b>
+  <a href="README.md">English</a> · <b>Русский</b> · <a href="README.de.md">Deutsch</a> · <a href="README.es.md">Español</a> · <a href="README.fr.md">Français</a> · <a href="README.it.md">Italiano</a> · <a href="README.pt-BR.md">Português (Brasil)</a> · <a href="README.zh-Hans.md">简体中文</a> · <a href="README.ja.md">日本語</a> · <a href="README.ko.md">한국어</a>
 </p>
 
 Berth — сервер аудиокниг, который вы разворачиваете у себя, для вас и вашей семьи. Книги загружаются через веб-админку, файлы лежат в любом хранилище, а слушать их можно в приложении Berth для Android и iOS.
@@ -121,6 +121,12 @@ books.example.com {
   копии или из загруженного файла. Текущая база сначала сохраняется в автоматические копии,
   так что восстановление можно отменить тем же способом.
 - Из консоли (сервер остановлен): `berth admin restore <file>`.
+
+### Логи
+
+В лог попадают настройка сервера, входы (неудачные — с адресом), привязка телефонов, изменения
+пользователей, доступа и настроек, загрузки и книги. Пароли и токены туда не пишутся. Каждый
+HTTP-запрос тоже попадает в лог, если задать `RUST_LOG=info,tower_http=debug` в окружении контейнера.
 
 ## Структура репозитория
 
