@@ -1,0 +1,648 @@
+# Brazilian Portuguese. Keys must match en.yml (checked by a test).
+
+common:
+  save: Salvar
+  saved: Salvo
+  confirm: Confirmar
+  optional: opcional
+  version: Versão %{version}
+  show_password: Mostrar senha
+  hide_password: Ocultar senha
+
+format:
+  decimal: ","
+  kb: KB
+  mb: MB
+  gb: GB
+
+nav:
+  dashboard: Visão geral
+  users: Usuários
+  devices: Dispositivos
+  storage: Armazenamento
+  settings: Configurações
+  logout: Sair
+  menu: Menu
+  close: Fechar menu
+  theme: Tema
+  theme_light: Claro
+  theme_dark: Escuro
+  theme_system: Padrão do sistema
+  language: Idioma
+  library: Biblioteca
+  upload: Envio
+  categories: Seções
+
+setup:
+  title: Configurar o servidor
+  subtitle: Quatro passos e o Berth está pronto para os audiolivros da sua família.
+  step_code: Código de configuração
+  code_hint: "Está no log do servidor, na linha “server is not set up”: docker compose logs berth"
+  step_name: Nome do servidor
+  step_storage: Armazenamento
+  storage_hint: Onde ficam os arquivos dos audiolivros. Depois você pode adicionar outro armazenamento e mudar para ele.
+  step_password: Senha de administrador
+  name_label: Nome do servidor
+  name_hint: Aparece no app quando alguém se conecta.
+  password_label: Senha
+  confirm_label: Repita a senha
+  password_match: As senhas coincidem.
+  password_hint: Pelo menos %{min} caracteres. Para redefini-la depois, execute berth admin reset-password no servidor.
+  submit: Concluir configuração
+  locked: Definido no berth.toml ou em variável de ambiente
+
+login:
+  title: Entrar
+  subtitle: Administração de %{name}
+  password_label: Senha de administrador
+  submit: Entrar
+  forgot: Esqueceu? Execute berth admin reset-password no servidor.
+  or: ou
+  phone_start: Entrar com o celular
+  phone_qr_label: QR code para entrar com o celular
+  phone_hint: "No celular do administrador: Berth → Configurações → Entrar no painel web. Aponte a câmera para o código ou digite-o."
+  phone_waiting: Aguardando a confirmação no celular
+  phone_expired: O código expirou. Gere um novo.
+
+dashboard:
+  demo: "Biblioteca de demonstração"
+  job_demo_book: "Livro de demonstração"
+  title: Visão geral
+  subtitle: Tudo o que acontece em %{name}
+  empty_title: Nenhuma biblioteca ainda
+  empty_body: "Envie uma pasta com um audiolivro: o Berth lê as tags, os capítulos e a capa, e os celulares recebem o livro na próxima sincronização."
+  server_card: Servidor
+  version_card: Versão
+  upload: Enviar livros
+  books_card: Livros
+  uploads: Últimos envios
+  all_uploads: Todos os envios
+  no_uploads: Nada enviado ainda.
+  upload_uploading: Enviando
+  upload_analyzing: Lendo
+  upload_ready: Aguardando você
+  upload_saved: Na biblioteca
+  upload_failed: Falhou
+  jobs: Tarefas em segundo plano
+  no_jobs: Nenhuma tarefa ainda.
+  job_ingest_pipeline: Lendo um envio
+  job_status_queued: Na fila
+  job_status_running: Em execução
+  job_status_retrying: Tentando de novo
+  job_status_done: Concluída
+  job_status_failed: Falhou
+
+settings:
+  title: Configurações
+  subtitle: Nome, endereços e acesso a %{name}
+  server_section: Servidor
+  server_hint: O app recebe os dois endereços no QR code e alterna entre eles sozinho.
+  name_label: Nome do servidor
+  lan_label: Endereço na rede doméstica
+  lan_hint: "por exemplo, http://192.168.0.4:8080"
+  wan_label: Endereço na internet
+  wan_hint: "por exemplo, https://books.example.com"
+  updates_label: Verificar atualizações
+  updates_hint: A cada 6 horas o servidor consulta a versão mais recente do Berth no GitHub. Nada sobre o seu servidor é enviado.
+  password_section: Senha de administrador
+  password_hint: Seus outros navegadores são desconectados após a troca.
+  current_label: Senha atual
+  new_label: Nova senha
+  confirm_label: Repita a nova senha
+  password_saved: Senha alterada
+  password_submit: Alterar senha
+
+users:
+  sections_hint_selected: "O ouvinte vê os livros destas seções, inclusive os novos, e os livros escolhidos abaixo."
+  sections_hint_all: "Com a biblioteca inteira, só é preciso liberar as seções fechadas."
+  sections_title: "Seções"
+  languages_title: Idiomas dos livros
+  languages_all: Todos os idiomas
+  languages_selected: Selecionados
+  languages_hint: Livros sem idioma aparecem sempre. Os celulares sincronizam tudo de novo.
+  title: Usuários
+  subtitle: Você e as pessoas que ouvem neste servidor. Os celulares dos ouvintes se conectam com um código, ou com login e senha, se você tiver criado um.
+  add_title: Adicionar ouvinte
+  add_hint: Depois, mostre um QR code para conectar o celular dele.
+  name_label: Nome
+  name_placeholder: "por exemplo, Ana"
+  add_submit: Adicionar e conectar
+  role_owner: Administrador
+  role_admin: Administrador
+  role_member: Ouvinte
+  role_restricted: Restrito
+  devices: "Dispositivos: %{count}"
+  connect_phone: Conectar um celular
+  cancel: Cancelar
+  settings: Editar
+  settings_title: "%{name}"
+  settings_hint: Nome, acesso ao app com login e senha e os livros que o ouvinte vê.
+  delete: Excluir ouvinte
+  delete_confirm: "Excluir o ouvinte “%{name}”? Os celulares dele são desconectados na hora."
+  login_title: Acesso com login e senha
+  login_hint: Para celulares que não conseguem ler um QR code, como na revisão da App Store e do Google Play. No app — “Entrar com login e senha”.
+  login_label: Login
+  password_label: Senha
+  password_keep: sem alteração
+  password_hint: Pelo menos %{min} caracteres. Para uma conta de demonstração, demo serve; para pessoas reais, escolha uma senha mais longa.
+  login_chip: "Login: %{login}"
+  access_title: Livros que o ouvinte vê
+  access_all: Biblioteca inteira
+  access_selected: Só os livros escolhidos
+  access_picked: "Escolhidos:"
+  access_of: de %{count}
+  access_chip: "Livros: %{count}"
+  access_no_books: A biblioteca ainda não tem livros.
+  groups_title: Grupos
+  groups_hint_in: O ouvinte vê o que os grupos dele veem. As configurações próprias abaixo ficam guardadas para quando ele sair de todos os grupos.
+  groups_hint_none: Fora de grupos, o acesso é definido só para este ouvinte, abaixo.
+  child_title: Criança
+  child_hint: Informe a data de nascimento e o ouvinte verá só os livros para a idade dele. O limite aumenta sozinho. Deixe vazio para um adulto.
+  birth_label: Data de nascimento
+  child_ceiling: "Agora vê livros até %{rating}+"
+  child_adult: Já tem 18 anos — sem limite de classificação
+  unrated_label: Mostrar livros sem classificação
+  unrated_hint: Se desativado, os livros sem classificação etária ficam ocultos.
+  ceiling_chip: "até %{rating}+"
+
+groups:
+  title: Grupos
+  subtitle: Acesso compartilhado para vários ouvintes, como Adultos e Crianças. Um ouvinte pode estar em vários grupos e então vê os livros de todos eles.
+  add_title: Adicionar grupo
+  new_title: Novo grupo
+  edit_title: Grupo
+  hint: Quem está no grupo e quais livros ele vê. Os celulares dos membros sincronizam a biblioteca de novo.
+  name_label: Nome
+  name_placeholder: "por exemplo, Crianças"
+  members_title: Membros
+  members_hint: Idade e login são definidos nas configurações de cada ouvinte.
+  members_none: Nenhum ouvinte ainda — adicione abaixo.
+  members: "Membros: %{count}"
+  access_title: Livros que o grupo vê
+  empty: Nenhum grupo ainda. Sem grupos, o acesso de cada ouvinte é definido individualmente.
+  people_title: Pessoas
+  add: Adicionar
+  delete: Excluir
+  delete_confirm: "Excluir o grupo “%{name}”? Os membros voltam às próprias configurações de acesso."
+
+connect:
+  qr_label: QR code para o app Berth
+  scan_hint: No Berth, no celular, toque em “Ler QR code” ou em “Digitar código” e digite o endereço e o código abaixo.
+  code_label: Código
+  expires_in: Expira em
+  waiting: Aguardando o celular…
+  addresses_label: Endereços no QR code
+  fallback_hint: Nenhum endereço definido, então o QR usa o endereço desta página. Defina os endereços da rede doméstica e da internet em
+  connected_title: Celular conectado
+  connect_another: Conectar outro
+  open_devices: Abrir dispositivos
+  expired_title: O código expirou
+  expired_body: Nada foi conectado. Mostre um novo código e leia-o em até dois minutos.
+  new_code: Novo código
+  close: Fechar
+
+devices:
+  title: Dispositivos
+  subtitle: Celulares conectados a este servidor.
+  empty: Nenhum dispositivo ainda.
+  browser: Navegador
+  paired: Conectado
+  last_seen: Visto por último
+  revoke: Revogar
+  revoke_confirm: Revogar %{name}? O app nele é desconectado e apaga os downloads e a biblioteca.
+
+r2:
+  open: Cloudflare R2
+  title: Conectar Cloudflare R2
+  hint: Com um único token de API, o Berth cria o bucket, as chaves S3 e o CORS. Até 10 GB de armazenamento são gratuitos, e os downloads não têm taxa de tráfego.
+  step_token: "Crie um token de API com a permissão “Workers R2 Storage: Edit”:"
+  token_link: abrir o Cloudflare
+  step_account: Copie o Account ID na página do R2 no painel do Cloudflare.
+  account_label: Account ID
+  token_label: Token de API
+  bucket_label: Bucket
+  name_label: Nome
+  submit: Conectar
+  connecting: Conectando…
+storage:
+  presets: "Preencher para:"
+  endpoint_placeholder: https://s3.example.com
+  endpoint_aws: vazio para AWS
+  title: Armazenamento
+  subtitle: Onde ficam os arquivos dos audiolivros. Livros novos vão para o armazenamento padrão.
+  add_title: Adicionar armazenamento
+  edit_title: Editar armazenamento
+  add_hint: "Uma pasta neste servidor ou qualquer bucket compatível com S3: AWS, Cloudflare R2, Backblaze B2, Bunny Storage, MinIO, Yandex Object Storage."
+  add_submit: Adicionar armazenamento
+  kind_label: Tipo
+  kind_local: Pasta no servidor
+  kind_local_hint: Os arquivos ficam junto do Berth e são transmitidos por ele.
+  kind_s3: Bucket S3
+  kind_s3_hint: AWS, R2, B2, Bunny, MinIO, Yandex e outros armazenamentos compatíveis com S3.
+  name_label: Nome
+  name_placeholder: "por exemplo, Disco de casa"
+  path_label: Pasta
+  path_hint: "Caminho absoluto ou relativo à pasta de dados:"
+  endpoint_label: Endpoint
+  bucket_label: Bucket
+  region_label: Região
+  access_key_label: ID da chave de acesso
+  secret_key_label: Chave de acesso secreta
+  keys_hint: Guardadas criptografadas com a chave do servidor (secret.key) e nunca mais exibidas.
+  keys_keep_hint: Deixe os dois campos vazios para manter as chaves salvas.
+  keys_saved: salva
+  path_style_label: Endereços no estilo path
+  path_style_hint: endpoint/bucket em vez de bucket.endpoint. Geralmente necessário para o MinIO.
+  delivery_label: Entrega aos apps
+  delivery_hint: Links diretos tiram a carga do servidor. Pelo servidor funciona quando os celulares não alcançam o bucket. Por uma CDN é o mais rápido quando o bucket tem uma CDN ou um endereço público.
+  delivery: Entrega
+  delivery_presigned: Links diretos
+  delivery_proxy: Pelo servidor
+  delivery_cdn: Por uma CDN
+  cdn_url_label: Endereço da CDN
+  cdn_url_hint: "Endereço da raiz do bucket ou de uma CDN na frente dele (um domínio próprio do R2, Yandex Cloud CDN, CloudFront, uma pull zone do Bunny como https://zone.b-cdn.net). Sem assinatura, os arquivos abrem por um link que nunca expira; os nomes são sha256 e não podem ser adivinhados, mas revogar um dispositivo não invalida os links que ele já tem."
+  cdn_signing_label: Assinatura de links
+  cdn_signing_none: Nenhuma, links públicos
+  cdn_signing_bunny: Token do Bunny CDN
+  cdn_token_label: Chave de Token Authentication
+  cdn_token_hint: "Pull zone do Bunny → Security → Token Authentication: ative e copie a chave. Os links passam a expirar após 6 horas e não ficam vinculados a um endereço IP."
+  status: Verificação
+  verified: Aprovada
+  unchecked: Ainda não verificado
+  default: Padrão
+  verify: Verificar conexão
+  verifying: Verificando…
+  make_default: Tornar padrão
+  edit: Editar
+  delete: Excluir
+  delete_confirm: Excluir %{name}? Só o perfil é removido; os arquivos continuam onde estão.
+  footnote: A verificação grava, lê de volta e apaga um pequeno arquivo de teste.
+
+languages:
+  section: "Idiomas"
+  subtitle: "Idiomas que os livros podem ter. Um livro enviado recebe o idioma pela tag do arquivo ou pelo nome da pasta."
+  add: "Adicionar idioma"
+  new_title: "Novo idioma"
+  edit_title: "Editar idioma"
+  code_label: "Código"
+  name_label: "Nome"
+  code_hint: "Código ISO 639 de duas ou três letras: fr, pt, uz. O nome fica melhor escrito no próprio idioma."
+  delete_confirm: "Excluir o idioma “%{name}”?"
+  delete_blocked: "Há livros com este idioma: altere-o neles primeiro."
+  empty: "Nenhum idioma: os livros ficam sem idioma."
+
+demo:
+  section: "Biblioteca de demonstração"
+  section_name: "Demonstração"
+  intro: "Alguns audiolivros para experimentar o Berth: clássicos no idioma original, lidos por voluntários do LibriVox. O servidor os baixa do archive.org e os coloca em uma seção própria; você pode mudar a escolha ou removê-los depois."
+  rights: "Os textos e as gravações do LibriVox são de domínio público, e o servidor verifica a licença de cada gravação antes de carregá-la; as capas são desenhadas pelo Berth."
+  sets_title: "Livros"
+  books_count: "Livros: %{count}"
+  length_title: "Duração"
+  length_short: "Primeiros capítulos"
+  length_full: "Livros inteiros"
+  length_hint: "Os primeiros capítulos bastam para experimentar o player e os downloads."
+  size_prefix: "Para baixar:"
+  mb: "MB"
+  gb: "GB"
+  which_books: "Escolher livros"
+  hours: "%{hours} h"
+  closed_label: "Seção fechada"
+  closed_hint: "Só você e os ouvintes que escolher veem os livros de demonstração. Sem isso, eles ficam na biblioteca de todos."
+  reviewer_label: "Um ouvinte para a revisão das lojas"
+  reviewer_hint: "Para o servidor em que entram os revisores da App Store, do Google Play e da RuStore. Em um servidor doméstico, é melhor deixar desativado."
+  reviewer_name: "Nome"
+  reviewer_name_placeholder: "Revisão da loja"
+  reviewer_access: "Ele entra no app com este login e senha e vê só os livros de demonstração."
+  load: "Carregar a biblioteca de demonstração"
+  apply: "Aplicar alterações"
+  applied: "Salvo. Os livros são carregados em segundo plano, um após o outro."
+  queue_hint: "Os livros são carregados um por um; seus próprios envios aguardam enquanto isso."
+  state_title: "Livros de demonstração"
+  ready_count: "%{ready} de %{count} carregados"
+  in_section: "seção “%{name}”"
+  remove: "Remover a biblioteca de demonstração"
+  remove_confirm: "Remover os livros de demonstração e a seção deles? O ouvinte de revisão não poderá mais entrar."
+  status_queued: "Na fila"
+  status_downloading: "Carregando"
+  status_retrying: "Vai tentar de novo"
+  status_ready: "Carregado"
+  status_failed: "Falhou"
+
+categories:
+  open_to_nobody: "aberta para ninguém"
+  open_to: "aberta para %{names}"
+  users_none: "Nenhum ouvinte ainda: adicione na página Usuários."
+  users_hint_open: "Ouvintes que veem só os livros escolhidos também recebem os livros desta seção, inclusive os novos."
+  users_hint_closed: "Só estes ouvintes veem os livros da seção."
+  users_label: "Aberta para"
+  closed_badge: "Fechada"
+  closed_hint: "Os livros dela só são vistos por você e pelos ouvintes abaixo, mesmo os que têm a biblioteca inteira. Um livro que também está em uma seção aberta continua oculto."
+  closed_label: "Seção fechada"
+  edit_title: "Editar seção"
+  title: Seções
+  subtitle: "Prateleiras da biblioteca nos celulares, como Infantil, Psicologia ou Ficção científica. Um livro pode estar em várias. Uma seção fechada só é vista pelos ouvintes para quem ela está aberta."
+  new_title: Nova seção
+  name_label: Nome
+  aliases_label: Gêneros dos arquivos
+  aliases_placeholder: Sci-Fi, Ficção científica
+  aliases_hint: Um livro enviado cujo gênero no arquivo coincide com o nome ou com um destes vai para a seção sozinho. Separe-os com vírgulas.
+  add: Adicionar seção
+  edit: Editar
+  save: Salvar
+  delete: Excluir
+  delete_confirm: Excluir a seção “%{name}”? Os livros dela continuam na biblioteca.
+  up: Mover para cima
+  down: Mover para baixo
+  books: "Livros: %{count}"
+  empty: Nenhuma seção ainda. Os celulares mostram todos os livros em uma só lista.
+
+library:
+  title: Biblioteca
+  subtitle: Todos os livros deste servidor. Os celulares veem a mesma lista após a sincronização.
+  upload: Enviar livros
+  search: Título, autor, narrador ou série
+  author: Autor
+  series: Série
+  rating: Classificação etária
+  any_author: Qualquer autor
+  any_series: Qualquer série
+  any_rating: Qualquer idade
+  category: Seção
+  any_category: Qualquer seção
+  language: Idioma
+  any_language: Qualquer idioma
+  view: Exibição
+  view_grid: Grade
+  view_list: Lista
+  count: "Livros: %{count}"
+  empty_title: Nenhum livro ainda
+  empty_body: Envie uma pasta com um audiolivro ou um único arquivo m4b.
+  no_match_title: Nada encontrado
+  no_match_body: Altere a busca ou os filtros.
+  unknown_author: Autor desconhecido
+
+book:
+  title_label: Título
+  categories_label: Seções
+  language_label: Idioma
+  language_none: Não definido
+  authors_label: Autores
+  narrators_label: Narradores
+  names_hint: "Vários nomes: separe-os com vírgulas."
+  series_label: Série
+  series_no_label: Nº
+  rating_label: Classificação etária
+  rating_none: Não definida
+  year_label: Ano
+  description_label: Descrição
+  about: Sobre o livro
+  about_empty: Ainda sem descrição.
+  edit: Editar
+  read_by: narrado por %{names}
+  duration: Duração
+  chapters: Capítulos
+  files: Arquivos
+  storage: Armazenamento
+  delete_title: Excluir o livro
+  delete_hint: Os celulares removem o livro e os downloads dele na próxima sincronização. Os arquivos de áudio continuam no armazenamento.
+  delete: Excluir livro
+  delete_confirm: Excluir %{title}? Os celulares o removem na próxima sincronização.
+  cover_replace: Substituir capa
+  cover_hint: JPEG, PNG ou WebP de até 10 MB. Quadrada fica melhor; uma vertical é exibida inteira, com margens nas laterais.
+
+upload:
+  title: Enviar livros
+  subtitle: "Solte pastas com audiolivros: cada pasta vira um livro. Confira os dados antes de ele ir para a biblioteca."
+  hashing: Verificando arquivos de
+  sending: Enviando
+  send_failed: "Falha no envio:"
+  nothing: Não há arquivos de áudio aqui. O Berth aceita mp3, m4b, m4a, aac, ogg, opus, flac e wav.
+  drop_title: Solte pastas ou arquivos aqui
+  drop_hint: "Uma pasta é um livro: os arquivos de áudio em ordem e uma imagem de capa. Um único arquivo m4b ou mp3 também é um livro."
+  pick_folder: Escolher pasta
+  pick_files: Escolher arquivos
+  formats: "mp3, m4b, m4a, aac, ogg, opus, flac, wav · capas: jpg, png, webp"
+  queue: Fila
+  queue_empty: Os envios aparecem aqui.
+  tab_upload: Envio
+  history: Histórico
+  history_hint: Todos os livros adicionados por envio. Os salvos ficam na fila por um dia.
+  history_empty: Nenhum livro enviado ainda.
+  history_prev: Anterior
+  history_next: Próxima
+  history_page: "Página %{page} de %{pages}"
+  history_total: "%{count} no total"
+  files: "Arquivos: %{count}"
+  chapters: "Capítulos: %{count}"
+  status_uploading: "Arquivos salvos: %{stored} de %{count}"
+  status_analyzing: Lendo tags, capítulos e capa…
+  status_saved: Na biblioteca
+  open_book: Abrir o livro
+  status_failed: O Berth não conseguiu ler estes arquivos.
+  discard: Remover da fila
+  discard_confirm: Remover %{name} da fila?
+  retry: Tentar de novo
+  save: Adicionar à biblioteca
+  save_hint: Os celulares recebem o livro na próxima sincronização.
+
+errors:
+  demo_books_required: "Escolha pelo menos um livro."
+  demo_reviewer_name_required: "Informe o nome do ouvinte de revisão."
+  language_in_use: "Há livros com este idioma: altere-o neles primeiro."
+  language_name_too_long: "O nome é longo demais: no máximo 40 caracteres."
+  language_name_required: "Informe o nome do idioma."
+  language_code_taken: "Este idioma já está na lista."
+  language_code_invalid: "O código tem duas ou três letras latinas, como fr."
+  book_language_invalid: Escolha um idioma da lista.
+  category_name_required: Informe o nome da seção.
+  category_name_too_long: "O nome é longo demais: no máximo 64 caracteres."
+  category_name_taken: Já existe uma seção com este nome.
+  group_name_required: Informe o nome do grupo.
+  group_name_too_long: O nome do grupo é longo demais.
+  group_name_taken: Já existe um grupo com este nome.
+  birth_date_invalid: Essa data de nascimento não existe ou ainda não chegou.
+  web_login_invalid: Esse código não existe. Confira-o na página de login.
+  web_login_expired: O código expirou. Gere um novo na página de login.
+  web_login_used: Este código já foi usado.
+  restore_not_berth: Este não é um backup do Berth.
+  restore_newer: O backup foi feito por uma versão mais nova do servidor. Atualize o servidor primeiro.
+  restore_failed: Não foi possível restaurar o banco de dados. O banco de dados atual não foi alterado.
+  r2_account_invalid: O Account ID tem 32 caracteres 0–9 e a–f, da página do R2 no Cloudflare.
+  r2_token_required: Cole o token de API.
+  r2_bucket_invalid: "Nome do bucket: 3–63 caracteres, letras minúsculas, dígitos e hifens (não nas pontas)."
+  r2_token_invalid: O Cloudflare não aceitou o token. Verifique se ele foi copiado inteiro e está ativo.
+  r2_permission_denied: "O token não tem permissão de R2 nesta conta. Ele precisa de “Workers R2 Storage: Edit”."
+  r2_unreachable: Não foi possível acessar o Cloudflare. Verifique o acesso do servidor à internet.
+  r2_failed: O Cloudflare retornou um erro. Os detalhes estão no log do servidor.
+  name_required: Informe o nome do servidor.
+  name_too_long: O nome é longo demais (no máximo 64 caracteres).
+  lan_url_invalid: Informe um endereço completo começando com http:// ou https://.
+  wan_url_invalid: Informe um endereço completo começando com http:// ou https://.
+  password_too_short: A senha é curta demais.
+  setup_code_invalid: "Código de configuração incorreto. Confira-o no log do servidor; ele muda quando o servidor reinicia."
+  password_mismatch: As senhas não coincidem.
+  password_wrong: Senha incorreta.
+  user_name_required: Informe um nome.
+  user_name_too_long: O nome é longo demais (no máximo 64 caracteres).
+  login_invalid: "O login tem de 3 a 64 caracteres: letras, dígitos, ponto, hífen, sublinhado, @."
+  login_taken: Este login já está em uso.
+  login_password_short: A senha é curta demais.
+  login_password_required: Defina uma senha.
+  login_admin: Só um ouvinte pode ter login.
+  login_failed: Login ou senha incorretos.
+  storage_name_required: Informe um nome.
+  storage_name_too_long: O nome é longo demais (no máximo 64 caracteres).
+  storage_name_taken: Já existe um armazenamento com este nome.
+  storage_kind_invalid: Escolha uma pasta ou um bucket S3.
+  storage_path_required: Informe uma pasta.
+  storage_bucket_required: Informe o nome do bucket.
+  storage_endpoint_invalid: Informe um endereço completo começando com http:// ou https:// e um nome de bucket válido.
+  storage_delivery_invalid: Escolha como os arquivos são entregues.
+  storage_cdn_url_required: Informe o endereço da CDN.
+  storage_cdn_url_invalid: O endereço da CDN deve começar com https:// ou http:// e não ter parâmetros.
+  storage_cdn_unreachable: O arquivo de teste não abriu no endereço da CDN. Verifique se o bucket ou a CDN são públicos e se o endereço leva à raiz do bucket.
+  storage_cdn_mismatch: O endereço da CDN retornou outro arquivo. Ele deve levar à raiz do bucket.
+  storage_cdn_signing_invalid: Escolha como os links da CDN são assinados.
+  storage_cdn_token_required: Informe a chave de Token Authentication da pull zone.
+  storage_cdn_not_protected: A CDN também abre os arquivos sem token. Ative o Token Authentication nas configurações de segurança da pull zone.
+  storage_keys_required: Informe as duas chaves.
+  storage_is_default: O armazenamento padrão não pode ser excluído. Primeiro torne outro o padrão.
+  storage_in_use: "Há livros guardados aqui: ele não pode ser excluído nem movido."
+  storage_auth_failed: As chaves não foram aceitas. Verifique o ID da chave de acesso e a chave secreta.
+  storage_access_denied: "Acesso negado: estas chaves não podem gravar no bucket."
+  storage_bucket_not_found: Bucket não encontrado. Verifique o nome, a região e o endereço.
+  storage_unreachable: O armazenamento não responde. Verifique o endereço e a rede.
+  storage_mismatch: "O arquivo de teste voltou diferente: o armazenamento corrompe os dados."
+  storage_local_unwritable: O Berth não consegue gravar nesta pasta. Verifique o caminho e as permissões.
+  storage_failed: A verificação falhou. Os detalhes estão no log do servidor.
+  storage_cors_missing: "O bucket não aceita envios de um navegador, e o painel envia os arquivos direto para ele. Adicione uma regra CORS ao bucket: a origem é o endereço do Berth, métodos GET, HEAD, PUT, cabeçalhos *."
+  book_title_required: Informe um título.
+  book_title_too_long: O título é longo demais (no máximo 300 caracteres).
+  book_rating_invalid: Escolha uma classificação etária da lista.
+  book_description_too_long: A descrição é longa demais (no máximo 4000 caracteres).
+  book_year_invalid: O ano é um número de 1 a 2100.
+  ai_url_invalid: O endereço da API deve começar com http:// ou https://.
+  ai_model_required: Informe um modelo.
+  ai_prompt_too_long: A instrução é longa demais (no máximo 4000 caracteres).
+  ai_not_set_up: Salve a conexão com a IA primeiro.
+  remote_backup_storage_invalid: Escolha um armazenamento S3.
+  restore_secret_invalid: O secret.key tem 64 caracteres hexadecimais.
+  restore_download_failed: Não foi possível baixar o backup do armazenamento.
+  storage_keys_lost: As chaves não voltaram do backup — informe-as de novo.
+  book_series_no_invalid: O número na série deve ser um número, como 2 ou 2.5.
+  cover_invalid: Escolha uma imagem JPEG, PNG ou WebP.
+  cover_too_large: A imagem é grande demais (no máximo 10 MB).
+  upload_empty: Não há arquivos neste envio.
+  upload_too_many: Arquivos demais em um só livro (no máximo 2000).
+  upload_file_unsupported: Alguns arquivos não são de áudio nem uma imagem de capa.
+  upload_no_audio: Não há arquivo de áudio neste envio.
+  upload_hash_invalid: A soma de verificação de um arquivo está malformada.
+  upload_hash_required: Este armazenamento precisa da soma de verificação de cada arquivo. Recarregue a página e tente de novo.
+  upload_size_mismatch: Um arquivo chegou incompleto. Envie-o de novo.
+  upload_hash_mismatch: Um arquivo chegou danificado. Envie-o de novo.
+  upload_file_missing: Nem todos os arquivos chegaram. Envie a pasta de novo.
+  upload_closed: Este envio já está sendo processado.
+  upload_not_ready: Este envio ainda não está pronto para ser salvo.
+  upload_saved: Este livro já está na biblioteca.
+  upload_bucket_unreachable: "O bucket não aceitou os arquivos. Verifique se o CORS dele permite o endereço do Berth (método PUT, cabeçalhos *) e se o endereço do armazenamento abre no navegador."
+  upload_send_failed: Os arquivos não chegaram ao servidor. Os detalhes estão no log do servidor. Envie a pasta de novo.
+  upload_not_retryable: Não é possível tentar este envio de novo. Envie a pasta de novo.
+
+backup:
+  section: Backup
+  now_title: Backup do banco de dados
+  now_hint: Uma cópia da biblioteca, dos usuários, dispositivos, progresso e configurações neste momento. Os arquivos de áudio não estão nela — eles ficam nos armazenamentos.
+  download: Baixar backup do banco de dados
+  key_title: Chave do servidor (secret.key)
+  key_hint: Ela criptografa as chaves dos armazenamentos no banco de dados e assina os tokens dos dispositivos. Ela não está no backup do banco de dados — baixe-a uma vez e guarde-a separada dos backups (em um gerenciador de senhas, por exemplo). Sem ela, um backup restaurado em um novo servidor não consegue ler as chaves S3/R2.
+  key_where: "No servidor:"
+  key_download: Baixar secret.key
+  delete_one: Excluir
+  delete_confirm: Excluir este backup automático?
+  auto_title: Backups automáticos
+  auto_hint: O servidor salva uma cópia antes de cada atualização do esquema do banco de dados. Os últimos %{keep} são mantidos.
+  auto_empty: Nenhum backup automático ainda — o primeiro aparece com a primeira atualização do servidor.
+  download_one: Baixar
+  restore_one: Restaurar
+  restore_title: Restaurar de um arquivo
+  restore_hint: Envie um backup baixado antes deste servidor. O banco de dados atual é salvo primeiro nos backups automáticos, então a restauração pode ser desfeita do mesmo jeito. Talvez você precise entrar de novo depois.
+  restore_submit: Restaurar
+  restore_confirm: Substituir todo o banco de dados pelo backup? O estado atual é salvo nos backups automáticos.
+  restored: O banco de dados foi restaurado do backup. O estado anterior à restauração está nos backups automáticos.
+  restore_section: Restauração
+  restore_pick: Escolha um arquivo de backup (.sqlite)
+  restore_auto_title: Restaurar um backup automático
+  restore_auto_hint: Cópias que o próprio servidor fez antes de atualizações e restaurações.
+  col_date: Data
+  col_size: Tamanho
+  col_actions: Ações
+
+ai:
+  section: IA
+  intro: "A IA escreve descrições curtas dos livros e encontra o ano da primeira publicação. Funciona com qualquer serviço com API compatível com OpenAI: OpenAI, OpenRouter, DeepSeek ou um Ollama local."
+  connection_title: Conexão
+  connection_hint: Endereço da API, chave e modelo. A chave é guardada criptografada.
+  base_url_label: Endereço da API
+  base_url_hint: "Por exemplo: https://api.openai.com/v1, https://openrouter.ai/api/v1, http://localhost:11434/v1 (Ollama)."
+  model_label: Modelo
+  key_label: Chave de API
+  key_keep: Salva — deixe vazio para mantê-la
+  key_hint: Um modelo local não precisa de chave.
+  key_clear: Remover a chave salva
+  prompt_label: Instrução para a IA
+  prompt_reset: Restaurar padrão
+  prompt_hint: "{language} vira o idioma do livro (o idioma da interface, para um livro sem idioma). O próprio servidor adiciona os dados do livro e o formato da resposta."
+  check: Verificar conexão
+  checking: Verificando…
+  check_ok: A conexão funciona.
+  check_failed: "Não foi possível conectar:"
+  run_title: Descrições dos livros
+  run_hint: A IA preenche só as descrições e os anos vazios — o que você mesmo escreveu fica como está. Os celulares recebem as descrições na próxima sincronização.
+  run_start: Preencher descrições
+  run_stop: Parar
+  run_missing: "Sem descrição ou ano: %{count}"
+  run_not_ready: Salve a conexão primeiro.
+  run_progress: "Processados %{done} de %{total} · preenchidos %{filled} · não encontrados %{missed}"
+  run_done: "Concluído: processados %{done}, preenchidos %{filled}, não encontrados %{missed}."
+  fill_book: Preencher com IA
+  filling: A IA está pensando…
+  fill_failed: "A IA não respondeu:"
+  ai_filled: A IA preencheu os campos vazios. Confira e salve.
+  ai_unknown: A IA não conhece este livro — preencha você mesmo.
+
+remote_backup:
+  title: Backup automático no armazenamento
+  hint: "Uma vez por dia, o servidor coloca uma cópia do banco de dados no bucket, junto dos arquivos de áudio. Um novo servidor só precisa do mesmo bucket conectado para restaurar a biblioteca a partir dele. As cópias são mantidas por %{days} dias na pasta"
+  enabled: Fazer backup todos os dias
+  enabled_hint: "As cópias dos últimos %{days} dias são mantidas, e a mais recente sempre. Os backups automáticos locais continuam como estão."
+  storage_label: Armazenamento
+  now: Fazer backup agora
+  running: Copiando…
+  last_ok: "Último backup:"
+  last_failed: "Falha no backup:"
+  no_bucket: Isto requer um armazenamento S3 (S3, R2, MinIO…) — uma pasta local fica no mesmo disco que o banco de dados.
+  to_storage: Conectar armazenamento
+  restore_title: Restaurar do armazenamento
+  restore_hint: Para um novo servidor — primeiro conecte o mesmo bucket em Armazenamento, depois encontre os backups nele e escolha um.
+  restore_no_bucket: Conecte o armazenamento S3 que contém os backups.
+  find: Encontrar backups
+  finding: Procurando…
+  list_failed: "Não foi possível ler o bucket:"
+  none_found: "Este bucket não tem backups (pasta %{prefix}/)."
+  col_server: Servidor
+  this_server: Este servidor
+  secret_label: secret.key do servidor antigo (opcional)
+  secret_placeholder: 64 caracteres hexadecimais
+  secret_hint: Com ela, as chaves de todos os armazenamentos e da IA são recuperadas. Sem ela, só as chaves deste bucket; nos outros armazenamentos, será preciso informar as chaves de novo.
+
+update:
+  available: "%{version} disponível"
+  title: A versão %{version} foi lançada
+  current: Você tem a %{version}.
+  major: "Esta é uma nova versão principal. A tag da imagem não muda para ela sozinha — altere-a no docker-compose.yml para ghcr.io/joveptesg/berth:%{tag}."
+  how: "Para atualizar, execute no servidor, na pasta com o docker-compose.yml:"
+  copy: Copiar comando
+  copied: Copiado
+  data_kept: Seus dados em ./data são mantidos; o servidor faz backup do banco de dados sozinho antes de alterá-lo.
+  notes: Novidades

@@ -9,6 +9,12 @@ common:
   show_password: Показать пароль
   hide_password: Скрыть пароль
 
+format:
+  decimal: ","
+  kb: КБ
+  mb: МБ
+  gb: ГБ
+
 nav:
   dashboard: Обзор
   users: Пользователи

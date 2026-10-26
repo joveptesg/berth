@@ -30,7 +30,7 @@ BERTH_UPDATE_SNAPSHOT=1 cargo test --test openapi_snapshot
 
 ## Web admin
 
-Templates live in `crates/berth-server/assets/templates`, strings in `crates/berth-server/locales/{en,ru}.yml` (same keys in both files). Debug builds read templates from disk, so a page reload shows the change.
+Templates live in `crates/berth-server/assets/templates`, strings in `crates/berth-server/locales/*.yml`: English is the source, every other catalog has the same keys (a test checks it). A new language needs its catalog and an entry in `LOCALES` in `src/admin/i18n.rs`. Debug builds read templates from disk, so a page reload shows the change.
 
 The stylesheet is Tailwind v4, compiled by the standalone CLI (no Node). The output `assets/static/admin.css` is committed; rebuild it after changing templates or `assets/css/admin.css`. CI checks that it is up to date. Download the CLI (v4.3.3, as in CI) for your platform from the [Tailwind releases](https://github.com/tailwindlabs/tailwindcss/releases/tag/v4.3.3) into `.tools/` (git-ignored), then:
 

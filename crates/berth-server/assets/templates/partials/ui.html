@@ -75,14 +75,12 @@
     </button>
     {% endfor %}
   </div>
-  <div class="flex rounded-[14px] bg-surface-2 p-1" role="group" aria-label="{{ t('nav.language') }}">
-    {% for value in ["en", "ru"] %}
-    <button type="button" @click="setLocale('{{ value }}')" aria-pressed="{{ 'true' if current_locale() == value else 'false' }}"
-      class="mono grid h-9 min-w-10 place-items-center rounded-[10px] px-2 text-[13px] uppercase text-text-3 transition-colors hover:text-text aria-pressed:bg-surface aria-pressed:text-text aria-pressed:shadow-sm">
-      {{ value }}
-    </button>
+  <select @change="setLocale($event.target.value)" aria-label="{{ t('nav.language') }}" title="{{ t('nav.language') }}"
+    class="h-11 min-w-0 cursor-pointer rounded-[14px] bg-surface-2 px-3 text-[14px] text-text-2 hover:text-text">
+    {% for code, name in locales %}
+    <option value="{{ code }}"{% if current_locale() == code %} selected{% endif %}>{{ name }}</option>
     {% endfor %}
-  </div>
+  </select>
 </div>
 {%- endmacro %}
 

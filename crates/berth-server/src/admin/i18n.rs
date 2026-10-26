@@ -10,6 +10,35 @@ use axum::{extract::Request, http::header, middleware::Next, response::Response}
 const COOKIE: &str = "berth_locale";
 const DEFAULT: &str = "en";
 
+/// Admin languages in switcher order, each named in itself. A catalog `locales/<code>.yml` each.
+pub(crate) const LOCALES: [(&str, &str); 10] = [
+    ("en", "English"),
+    ("ru", "Русский"),
+    ("de", "Deutsch"),
+    ("es", "Español"),
+    ("fr", "Français"),
+    ("it", "Italiano"),
+    ("pt-BR", "Português (Brasil)"),
+    ("zh-Hans", "简体中文"),
+    ("ja", "日本語"),
+    ("ko", "한국어"),
+];
+
+/// The catalog for a browser language tag: `zh-CN` → `zh-Hans`, `pt-PT` → `pt-BR`, `de-AT` → `de`.
+fn catalog_for(tag: &str) -> Option<&'static str> {
+    let primary = tag
+        .split(['-', '_'])
+        .next()
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let code = match primary.as_str() {
+        "zh" => "zh-Hans",
+        "pt" => "pt-BR",
+        other => other,
+    };
+    LOCALES.iter().map(|(c, _)| *c).find(|c| *c == code)
+}
+
 tokio::task_local! {
     static CURRENT_LOCALE: String;
 }
@@ -22,10 +51,8 @@ pub(crate) fn current_locale() -> String {
 }
 
 fn resolve(req: &Request) -> String {
-    let available = rust_i18n::available_locales!();
-    let supported: Vec<&str> = available.iter().map(AsRef::as_ref).collect();
     if let Some(choice) = super::cookie(req.headers(), COOKIE)
-        && supported.contains(&choice)
+        && LOCALES.iter().any(|(code, _)| *code == choice)
     {
         return choice.to_owned();
     }
@@ -34,10 +61,11 @@ fn resolve(req: &Request) -> String {
         .get(header::ACCEPT_LANGUAGE)
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
-    accept_language::intersection(accept, &supported)
-        .into_iter()
-        .next()
-        .unwrap_or_else(|| DEFAULT.to_owned())
+    accept_language::parse(accept)
+        .iter()
+        .find_map(|tag| catalog_for(tag))
+        .unwrap_or(DEFAULT)
+        .to_owned()
 }
 
 /// Middleware binding the request locale.
@@ -88,8 +116,16 @@ mod tests {
     fn cookie_beats_accept_language() {
         assert_eq!(resolve(&request(None, "ru-RU,ru;q=0.9,en;q=0.8")), "ru");
         assert_eq!(resolve(&request(Some("a=1; berth_locale=en"), "ru")), "en");
-        assert_eq!(resolve(&request(Some("berth_locale=de"), "ru")), "ru");
-        assert_eq!(resolve(&request(None, "de")), "en");
+        assert_eq!(resolve(&request(Some("berth_locale=xx"), "ru")), "ru");
+        assert_eq!(resolve(&request(None, "nl")), "en");
+    }
+
+    #[test]
+    fn browser_tags_map_to_catalogs() {
+        assert_eq!(resolve(&request(None, "zh-CN,zh;q=0.9")), "zh-Hans");
+        assert_eq!(resolve(&request(None, "pt-PT")), "pt-BR");
+        assert_eq!(resolve(&request(None, "nl,de-AT;q=0.8")), "de");
+        assert_eq!(resolve(&request(Some("berth_locale=ja"), "en")), "ja");
     }
 
     /// Dotted key paths of a YAML catalog (nested maps with two-space indent).
@@ -117,7 +153,11 @@ mod tests {
 
     #[test]
     fn catalogs_have_the_same_keys() {
-        assert_eq!(keys("en.yml"), keys("ru.yml"));
+        let available = rust_i18n::available_locales!();
+        for (code, _) in LOCALES {
+            assert_eq!(keys("en.yml"), keys(&format!("{code}.yml")), "{code}");
+            assert!(available.iter().any(|l| *l == code), "{code} not loaded");
+        }
         assert_eq!(rust_i18n::t!("nav.settings", locale = "en"), "Settings");
         assert_eq!(rust_i18n::t!("nav.settings", locale = "ru"), "Настройки");
     }

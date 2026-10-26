@@ -11,6 +11,13 @@ common:
   show_password: Show password
   hide_password: Hide password
 
+# Number formatting: decimal separator and file size units.
+format:
+  decimal: "."
+  kb: KB
+  mb: MB
+  gb: GB
+
 nav:
   dashboard: Dashboard
   users: Users

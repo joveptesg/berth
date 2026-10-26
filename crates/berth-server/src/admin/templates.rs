@@ -28,16 +28,29 @@ pub(crate) fn environment() -> Environment<'static> {
     env.add_global("assets", super::static_files::fingerprint());
     env.add_function("t", super::i18n::translate);
     env.add_function("current_locale", super::i18n::current_locale);
+    env.add_global(
+        "locales",
+        super::i18n::LOCALES
+            .iter()
+            .map(|&(code, name)| minijinja::Value::from(vec![code, name]))
+            .collect::<minijinja::Value>(),
+    );
     env.add_filter("clock", clock);
     env.add_filter("filesize", filesize);
     env.add_filter("num", num);
     env
 }
 
-/// A number without a pointless `.0`: series numbers 2 and 2.5.
+/// A number without a pointless `.0`: series numbers 2 and 2.5 (2,5 where the locale says so).
 fn num(value: f64) -> String {
     let text = value.to_string();
-    text.strip_suffix(".0").map_or(text.clone(), str::to_owned)
+    localize_decimal(text.strip_suffix(".0").unwrap_or(&text))
+}
+
+/// Swaps the decimal dot for the locale's separator (`format.decimal` in the catalog).
+fn localize_decimal(text: &str) -> String {
+    let locale = super::i18n::current_locale();
+    text.replace('.', &rust_i18n::t!("format.decimal", locale = &locale))
 }
 
 /// Milliseconds as `H:MM:SS` (or `M:SS` under an hour).
@@ -51,15 +64,17 @@ fn clock(ms: i64) -> String {
     }
 }
 
-/// Bytes in KB, MB or GB with one decimal.
+/// Bytes in KB, MB or GB with one decimal; units and separator from the locale.
 fn filesize(bytes: i64) -> String {
     #[expect(clippy::cast_precision_loss, reason = "a rounded display value")]
     let value = bytes.max(0) as f64;
-    match bytes.max(0) {
-        0..1_000_000 => format!("{:.0} KB", value / 1e3),
-        1_000_000..1_000_000_000 => format!("{:.1} MB", value / 1e6),
-        _ => format!("{:.2} GB", value / 1e9),
-    }
+    let (number, unit) = match bytes.max(0) {
+        0..1_000_000 => (format!("{:.0}", value / 1e3), "format.kb"),
+        1_000_000..1_000_000_000 => (format!("{:.1}", value / 1e6), "format.mb"),
+        _ => (format!("{:.2}", value / 1e9), "format.gb"),
+    };
+    let unit = rust_i18n::t!(unit, locale = &super::i18n::current_locale());
+    format!("{}\u{a0}{unit}", localize_decimal(&number))
 }
 
 #[cfg(test)]
@@ -72,9 +87,19 @@ mod tests {
     fn formats_times_and_sizes() {
         assert_eq!(clock(61_000), "1:01");
         assert_eq!(clock(3_725_000), "1:02:05");
-        assert_eq!(filesize(36_092), "36 KB");
-        assert_eq!(filesize(21_200_000), "21.2 MB");
-        assert_eq!(filesize(5_200_000_000), "5.20 GB");
+        assert_eq!(filesize(36_092), "36\u{a0}KB");
+        assert_eq!(filesize(21_200_000), "21.2\u{a0}MB");
+        assert_eq!(filesize(5_200_000_000), "5.20\u{a0}GB");
+        assert_eq!(num(2.0), "2");
+    }
+
+    #[tokio::test]
+    async fn sizes_follow_the_locale() {
+        super::super::i18n::with_locale("ru", async {
+            assert_eq!(filesize(21_200_000), "21,2\u{a0}МБ");
+            assert_eq!(num(2.5), "2,5");
+        })
+        .await;
     }
 
     #[test]
@@ -230,6 +255,30 @@ mod tests {
             context! { error => "password_wrong" },
         );
         assert!(error.contains("Неверный пароль"), "{error}");
+    }
+
+    #[test]
+    fn pages_render_in_every_locale() {
+        let base = context! {
+            server_name => "Home", page => "dashboard", code => "K7P29QXM",
+            settings => context! { name => "Home", lan_url => "", wan_url => "" },
+            locked => context! { name => false },
+        };
+        for (locale, name) in super::super::i18n::LOCALES {
+            for page in [
+                "dashboard.html",
+                "login.html",
+                "setup.html",
+                "settings.html",
+            ] {
+                let html = render(locale, page, base.clone());
+                assert!(
+                    html.contains(&format!("lang=\"{locale}\"")),
+                    "{locale} {page}"
+                );
+                assert!(html.contains(name), "{locale} {page}: no switcher entry");
+            }
+        }
     }
 
     #[test]
