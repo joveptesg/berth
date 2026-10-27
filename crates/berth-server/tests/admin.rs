@@ -2196,6 +2196,17 @@ async fn admin_uploads_and_edits_books() {
     );
     let dashboard = send(&state, get("/", Some(&session))).await;
     assert!(dashboard.body.contains(">1</dd>"), "one book");
+    assert!(
+        ["Library size</dt>", "Объём</dt>"]
+            .iter()
+            .any(|card| dashboard.body.contains(card)),
+        "library size card"
+    );
+    assert_eq!(
+        dashboard.body.matches(">1</dd>").count(),
+        2,
+        "one book, one user"
+    );
 
     let deleted = send(
         &state,

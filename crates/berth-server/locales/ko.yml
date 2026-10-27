@@ -75,6 +75,8 @@ dashboard:
   version_card: "버전"
   upload: "책 업로드"
   books_card: "책"
+  volume_card: "용량"
+  users_card: "사용자"
   uploads: "최근 업로드"
   all_uploads: "모든 업로드"
   no_uploads: "아직 업로드한 항목이 없어요."

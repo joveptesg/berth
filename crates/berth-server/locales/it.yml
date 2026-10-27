@@ -75,6 +75,8 @@ dashboard:
   version_card: Versione
   upload: Carica libri
   books_card: Libri
+  volume_card: "Dimensione"
+  users_card: "Utenti"
   uploads: Ultimi caricamenti
   all_uploads: Tutti i caricamenti
   no_uploads: Ancora nessun caricamento.

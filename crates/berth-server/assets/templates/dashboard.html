@@ -24,10 +24,18 @@
 </section>
 {% endif %}
 
-<dl class="mt-8 grid gap-4 sm:grid-cols-3">
+<dl class="mt-8 grid gap-4 sm:grid-cols-3 lg:grid-cols-5">
   <a href="/library/{{ library_id }}" class="card block hover:border-accent/40">
     <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.books_card') }}</dt>
     <dd class="mt-1.5 text-[28px] leading-none font-bold">{{ book_count }}</dd>
+  </a>
+  <a href="/storage" class="card block hover:border-accent/40">
+    <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.volume_card') }}</dt>
+    <dd class="mt-1.5 text-[28px] leading-none font-bold whitespace-nowrap">{{ library_bytes | filesize }}</dd>
+  </a>
+  <a href="/users" class="card block hover:border-accent/40">
+    <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.users_card') }}</dt>
+    <dd class="mt-1.5 text-[28px] leading-none font-bold">{{ user_count }}</dd>
   </a>
   <div class="card">
     <dt class="text-[13px] font-semibold tracking-wide text-text-3 uppercase">{{ t('dashboard.server_card') }}</dt>

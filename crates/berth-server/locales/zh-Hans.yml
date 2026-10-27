@@ -75,6 +75,8 @@ dashboard:
   version_card: "版本"
   upload: "上传书籍"
   books_card: "书籍"
+  volume_card: "容量"
+  users_card: "用户"
   uploads: "最近上传"
   all_uploads: "全部上传"
   no_uploads: "还没有上传任何内容。"

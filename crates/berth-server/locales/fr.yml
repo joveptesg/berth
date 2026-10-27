@@ -75,6 +75,8 @@ dashboard:
   version_card: "Version"
   upload: "Importer des livres"
   books_card: "Livres"
+  volume_card: "Taille"
+  users_card: "Utilisateurs"
   uploads: "Derniers imports"
   all_uploads: "Tous les imports"
   no_uploads: "Rien n'a encore été importé."

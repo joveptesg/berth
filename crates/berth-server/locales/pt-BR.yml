@@ -75,6 +75,8 @@ dashboard:
   version_card: Versão
   upload: Enviar livros
   books_card: Livros
+  volume_card: "Tamanho"
+  users_card: "Usuários"
   uploads: Últimos envios
   all_uploads: Todos os envios
   no_uploads: Nada enviado ainda.

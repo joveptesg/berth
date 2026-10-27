@@ -172,7 +172,7 @@ mod tests {
     #[test]
     fn pages_render_in_both_locales() {
         let base = context! {
-            server_name => "Home", page => "dashboard",
+            server_name => "Home", page => "dashboard", library_bytes => 0, user_count => 1,
             settings => context! { name => "Home", lan_url => "", wan_url => "" },
             locked => context! { name => false, lan_url => false, wan_url => true },
             code => "K7P29QXM",
@@ -261,6 +261,7 @@ mod tests {
     fn pages_render_in_every_locale() {
         let base = context! {
             server_name => "Home", page => "dashboard", code => "K7P29QXM",
+            library_bytes => 0, user_count => 1,
             settings => context! { name => "Home", lan_url => "", wan_url => "" },
             locked => context! { name => false },
         };

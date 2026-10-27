@@ -75,6 +75,8 @@ dashboard:
   version_card: "Versión"
   upload: "Subir libros"
   books_card: "Libros"
+  volume_card: "Tamaño"
+  users_card: "Usuarios"
   uploads: "Últimas subidas"
   all_uploads: "Todas las subidas"
   no_uploads: "Aún no se ha subido nada."

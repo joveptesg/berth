@@ -75,6 +75,8 @@ dashboard:
   version_card: Версия
   upload: Загрузить книги
   books_card: Книги
+  volume_card: "Объём"
+  users_card: "Пользователи"
   uploads: Последние загрузки
   all_uploads: Все загрузки
   no_uploads: Пока ничего не загружено.

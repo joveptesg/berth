@@ -78,6 +78,8 @@ dashboard:
   version_card: Version
   upload: Upload books
   books_card: Books
+  volume_card: "Library size"
+  users_card: "Users"
   uploads: Latest uploads
   all_uploads: All uploads
   no_uploads: Nothing uploaded yet.

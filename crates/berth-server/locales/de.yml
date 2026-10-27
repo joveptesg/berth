@@ -76,6 +76,8 @@ dashboard:
   version_card: "Version"
   upload: "Bücher hochladen"
   books_card: "Bücher"
+  volume_card: "Größe"
+  users_card: "Benutzer"
   uploads: "Letzte Uploads"
   all_uploads: "Alle Uploads"
   no_uploads: "Noch nichts hochgeladen."

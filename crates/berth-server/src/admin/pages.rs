@@ -324,6 +324,22 @@ pub(crate) async fn dashboard(
     .fetch_one(&state.db)
     .await
     .map_err(anyhow::Error::from)?;
+    let library_bytes: i64 = sqlx::query_scalar(
+        "SELECT COALESCE(SUM(size), 0) FROM blobs WHERE tenant_id = $1 AND hash IN (
+            SELECT f.blob_hash FROM book_files f JOIN books b ON b.id = f.book_id
+            WHERE f.tenant_id = $1 AND b.deleted_at IS NULL)",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(anyhow::Error::from)?;
+    let user_count: i64 = sqlx::query_scalar(
+        "SELECT COUNT(*) FROM users WHERE tenant_id = $1 AND deleted_at IS NULL",
+    )
+    .bind(tenant_id)
+    .fetch_one(&state.db)
+    .await
+    .map_err(anyhow::Error::from)?;
     let uploads = ingest::recent(&state.db, tenant_id, 5).await?;
     let jobs = crate::jobs::recent(&state.db, tenant_id, 6)
         .await
@@ -332,7 +348,7 @@ pub(crate) async fn dashboard(
         &state,
         "dashboard.html",
         context! {
-            library_id, book_count,
+            library_id, book_count, library_bytes, user_count,
             uploads => Value::from(minijinja::value::Serde(uploads)),
             jobs => Value::from(minijinja::value::Serde(jobs)),
             ..shell(&state, "dashboard")
