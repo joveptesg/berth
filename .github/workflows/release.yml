@@ -101,7 +101,7 @@ jobs:
             echo "Release $TAG already exists"
             exit 0
           fi
-          prev=$(git describe --tags --abbrev=0 "$TAG^" 2>/dev/null || true)
+          prev=$(git describe --tags --abbrev=0 --match "v[0-9]*" "$TAG^" 2>/dev/null || true)
           {
             echo "## Changes"
             echo
