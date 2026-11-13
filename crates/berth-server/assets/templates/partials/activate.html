@@ -1,0 +1,58 @@
+{% import "partials/ui.html" as ui %}
+{# Device-code sign-in of a desktop app: the code, then the device and whose it becomes. #}
+<div id="activate" class="card flex flex-col gap-5">
+  {% if activate.state == "confirm" %}
+  <div class="flex items-center gap-4">
+    <span class="grid size-12 place-items-center rounded-[14px] bg-accent-soft text-accent-fg" aria-hidden="true">{{ ui.icon("system") }}</span>
+    <div class="min-w-0">
+      <p class="truncate text-[18px] font-semibold">{{ activate.device_name }}</p>
+      <p class="text-[14px] text-text-2">{{ ui.platform(activate.platform) }}</p>
+    </div>
+  </div>
+  <div>
+    <p class="field-label">{{ t('activate.code_label') }}</p>
+    <p class="font-mono text-[30px] leading-none font-semibold tracking-[0.12em] tabular-nums">
+      {{ activate.code[:4] }}<span class="mx-[0.1em] text-text-3" aria-hidden="true">·</span>{{ activate.code[4:] }}
+    </p>
+    <p class="field-hint mt-2">{{ t('activate.match_hint') }}</p>
+  </div>
+  <form method="post" action="/activate/approve" hx-post="/activate/approve" hx-target="#activate" hx-swap="outerHTML" class="flex flex-col gap-5">
+    <input type="hidden" name="code" value="{{ activate.code }}">
+    <div>
+      <label for="activate-user" class="field-label">{{ t('activate.user_label') }}</label>
+      <select id="activate-user" name="user_id" class="input select">
+        {% for user in activate.users %}<option value="{{ user.id }}" {% if user.id == activate.selected %}selected{% endif %}>{{ user.name }}</option>{% endfor %}
+      </select>
+    </div>
+    <div class="flex flex-wrap gap-3">
+      <button type="submit" class="btn btn-primary">{{ t('activate.allow') }}</button>
+      <button type="submit" formaction="/activate/deny" hx-post="/activate/deny" class="btn btn-ghost">{{ t('activate.deny') }}</button>
+    </div>
+  </form>
+  {% elif activate.state == "allowed" %}
+  <div class="flex flex-col items-center gap-3 py-4 text-center">
+    <span class="grid size-14 place-items-center rounded-full bg-ok/12 text-ok">{{ ui.icon("check", "size-7") }}</span>
+    <h2 class="text-[20px] font-bold">{{ t('activate.allowed_title') }}</h2>
+    <p class="text-[16px] text-text-2"><span class="font-semibold text-text">{{ activate.device_name }}</span> · {{ ui.platform(activate.platform) }}</p>
+    <p class="text-[15px] text-text-2">{{ t('activate.allowed_body', user=activate.user_name) }}</p>
+    <a href="/devices" class="btn btn-ghost mt-2">{{ t('connect.open_devices') }}</a>
+  </div>
+  {% elif activate.state == "denied" %}
+  <div class="flex flex-col items-center gap-3 py-4 text-center">
+    <span class="grid size-14 place-items-center rounded-full bg-surface-3 text-text-3">{{ ui.icon("close", "size-7") }}</span>
+    <h2 class="text-[20px] font-bold">{{ t('activate.denied_title') }}</h2>
+    <p class="text-[15px] text-text-2">{{ t('activate.denied_body') }}</p>
+  </div>
+  {% else %}
+  <form method="post" action="/activate/code" hx-post="/activate/code" hx-target="#activate" hx-swap="outerHTML" class="flex flex-col gap-5">
+    {% if activate.error %}<p class="alert-error" role="alert">{{ t('errors.' ~ activate.error) }}</p>{% endif %}
+    <div>
+      <label for="activate-code" class="field-label">{{ t('activate.code_label') }}</label>
+      <input id="activate-code" name="code" value="{{ activate.code }}" required autofocus autocomplete="off" spellcheck="false"
+        placeholder="XXXX-XXXX" class="input font-mono text-[20px] tracking-[0.12em] uppercase">
+      <p class="field-hint mt-2">{{ t('activate.code_hint') }}</p>
+    </div>
+    <div><button type="submit" class="btn btn-primary">{{ t('activate.next') }}</button></div>
+  </form>
+  {% endif %}
+</div>

@@ -203,6 +203,21 @@ connect:
   new_code: "新しいコード"
   close: "閉じる"
 
+activate:
+  title: "デバイスを許可"
+  subtitle: "デスクトップアプリがこのサーバーへのサインインを求めています。"
+  code_label: "コード"
+  code_hint: "パソコンの Berth アプリに表示されたコードです。"
+  match_hint: "アプリに同じコードが表示されていることを確認してください。"
+  next: "次へ"
+  user_label: "誰のデバイスか"
+  allow: "許可"
+  deny: "拒否"
+  allowed_title: "デバイスを許可しました"
+  allowed_body: "数秒後に %{user} としてサインインします。"
+  denied_title: "サインインを拒否しました"
+  denied_body: "アプリにサインインが拒否されたと表示されます。"
+
 devices:
   title: "デバイス"
   subtitle: "このサーバーに接続されたスマートフォンです。"
@@ -467,6 +482,9 @@ errors:
   web_login_invalid: "このコードは存在しません。ログインページで確認してください。"
   web_login_expired: "コードの有効期限が切れました。ログインページで新しいコードを取得してください。"
   web_login_used: "このコードはすでに使用されています。"
+  device_code_invalid: "このコードは存在しません。アプリで確認してください。"
+  device_code_expired: "コードの有効期限が切れました。アプリで新しいコードを取得してください。"
+  device_code_used: "このコードはすでに使用されています。"
   restore_not_berth: "これはBerthのバックアップではありません。"
   restore_newer: "このバックアップは新しいバージョンのサーバーで作成されています。先にサーバーをアップデートしてください。"
   restore_failed: "データベースを復元できませんでした。現在のデータベースは変更されていません。"

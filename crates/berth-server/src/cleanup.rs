@@ -43,6 +43,10 @@ pub(crate) async fn purge_expired(db: &SqlitePool, now: i64) -> sqlx::Result<()>
         .bind(now - USED_PAIRING_TTL_MS)
         .execute(&mut *tx)
         .await?;
+    sqlx::query("DELETE FROM device_auth_requests WHERE expires_at < $1")
+        .bind(now - USED_PAIRING_TTL_MS)
+        .execute(&mut *tx)
+        .await?;
     // Admin browsers are web devices with only the admin scope; an app paired from a browser
     // (scope listen, and admin for administrators) keeps its device row and scopes.
     sqlx::query(

@@ -105,7 +105,7 @@ x-data="{ pw: '', cf: '' }" x-effect="$el.querySelector('[name=confirm]').setCus
 
 {# Platform name of a device. #}
 {% macro platform(name) -%}
-{%- if name == "android" %}Android{% elif name == "ios" %}iOS{% elif name == "web" %}{{ t('devices.browser') }}{% else %}{{ name }}{% endif -%}
+{%- if name == "android" %}Android{% elif name == "ios" %}iOS{% elif name == "windows" %}Windows{% elif name == "macos" %}macOS{% elif name == "linux" %}Linux{% elif name == "web" %}{{ t('devices.browser') }}{% else %}{{ name }}{% endif -%}
 {%- endmacro %}
 
 {# Epoch milliseconds, formatted in the browser's time zone by the script in head.html. #}

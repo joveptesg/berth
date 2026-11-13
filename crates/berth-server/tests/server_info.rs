@@ -51,8 +51,9 @@ async fn server_info_is_public() {
     assert_eq!(body["name"], "Test library");
     assert_eq!(body["server_id"], server_id.as_str());
     assert_eq!(body["version"], env!("CARGO_PKG_VERSION"));
-    assert_eq!(body["auth_modes"], serde_json::json!(["pairing"]));
+    assert_eq!(body["auth_modes"], serde_json::json!(["pairing", "device"]));
     assert!(body["min_client_version"]["mobile"].is_string());
+    assert!(body["min_client_version"]["desktop"].is_string());
 }
 
 #[tokio::test]

@@ -206,6 +206,21 @@ connect:
   new_code: New code
   close: Close
 
+activate:
+  title: "Allow a device"
+  subtitle: "A desktop app asks to sign in to this server."
+  code_label: "Code"
+  code_hint: "The code shown in the Berth app on the computer."
+  match_hint: "Check that the app shows the same code."
+  next: "Continue"
+  user_label: "Whose device"
+  allow: "Allow"
+  deny: "Deny"
+  allowed_title: "Device allowed"
+  allowed_body: "It signs in as %{user} in a few seconds."
+  denied_title: "Sign-in refused"
+  denied_body: "The app shows that the sign-in was refused."
+
 devices:
   title: Devices
   subtitle: Phones paired with this server.
@@ -470,6 +485,9 @@ errors:
   web_login_invalid: No such code. Check it on the sign-in page.
   web_login_expired: The code expired. Get a new one on the sign-in page.
   web_login_used: This code was already used.
+  device_code_invalid: "No such code. Check it in the app."
+  device_code_expired: "The code expired. Get a new one in the app."
+  device_code_used: "This code was already used."
   restore_not_berth: This is not a Berth backup.
   restore_newer: The backup was made by a newer server version. Update the server first.
   restore_failed: The database could not be restored. The current database is unchanged.

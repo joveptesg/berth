@@ -161,7 +161,7 @@ pub async fn status(
     })
 }
 
-fn validate_device(device_name: &str, platform: &str) -> Result<(String, String)> {
+pub(crate) fn validate_device(device_name: &str, platform: &str) -> Result<(String, String)> {
     let platform = platform.trim().to_ascii_lowercase();
     if platform.is_empty()
         || platform.len() > 16
@@ -295,7 +295,7 @@ pub async fn login(
 
 /// A new device of the user with the `listen` scope (and `admin` for an administrator) and
 /// its first tokens.
-async fn create_device(
+pub(crate) async fn create_device(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
     secret: &SecretKey,
     (tenant_id, user_id): (&str, &str),

@@ -1,0 +1,10 @@
+{% extends "base.html" %}
+{% block title %}{{ t('activate.title') }}{% endblock %}
+{% block width %}max-w-[640px]{% endblock %}
+{% block content %}
+<header>
+  <h1 class="text-[34px] leading-tight font-bold tracking-[-0.025em]">{{ t('activate.title') }}</h1>
+  <p class="mt-1 text-[16px] text-text-2">{{ t('activate.subtitle') }}</p>
+</header>
+<div class="mt-8">{% include "partials/activate.html" %}</div>
+{% endblock %}

@@ -203,6 +203,21 @@ connect:
   new_code: "새 코드"
   close: "닫기"
 
+activate:
+  title: "기기 허용"
+  subtitle: "데스크톱 앱이 이 서버에 로그인하려고 해요."
+  code_label: "코드"
+  code_hint: "컴퓨터의 Berth 앱에 표시된 코드예요."
+  match_hint: "앱에 같은 코드가 표시되는지 확인하세요."
+  next: "계속"
+  user_label: "누구의 기기인가요"
+  allow: "허용"
+  deny: "거부"
+  allowed_title: "기기를 허용했어요"
+  allowed_body: "몇 초 후 %{user}(으)로 로그인해요."
+  denied_title: "로그인을 거부했어요"
+  denied_body: "앱에 로그인이 거부되었다고 표시돼요."
+
 devices:
   title: "기기"
   subtitle: "이 서버에 연결된 휴대폰이에요."
@@ -467,6 +482,9 @@ errors:
   web_login_invalid: "없는 코드예요. 로그인 페이지에서 확인하세요."
   web_login_expired: "코드가 만료됐어요. 로그인 페이지에서 새 코드를 받으세요."
   web_login_used: "이미 사용한 코드예요."
+  device_code_invalid: "없는 코드예요. 앱에서 확인하세요."
+  device_code_expired: "코드가 만료됐어요. 앱에서 새 코드를 받으세요."
+  device_code_used: "이미 사용한 코드예요."
   restore_not_berth: "Berth 백업이 아니에요."
   restore_newer: "더 새로운 버전의 서버에서 만든 백업이에요. 먼저 서버를 업데이트하세요."
   restore_failed: "데이터베이스를 복원하지 못했어요. 현재 데이터베이스는 그대로예요."

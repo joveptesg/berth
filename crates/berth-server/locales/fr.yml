@@ -203,6 +203,21 @@ connect:
   new_code: "Nouveau code"
   close: "Fermer"
 
+activate:
+  title: "Autoriser un appareil"
+  subtitle: "Une app de bureau demande à se connecter à ce serveur."
+  code_label: "Code"
+  code_hint: "Le code affiché par l’app Berth sur l’ordinateur."
+  match_hint: "Vérifiez que l’app affiche le même code."
+  next: "Continuer"
+  user_label: "Appareil de"
+  allow: "Autoriser"
+  deny: "Refuser"
+  allowed_title: "Appareil autorisé"
+  allowed_body: "Il se connecte en tant que %{user} dans quelques secondes."
+  denied_title: "Connexion refusée"
+  denied_body: "L’app indiquera que la connexion a été refusée."
+
 devices:
   title: "Appareils"
   subtitle: "Téléphones connectés à ce serveur."
@@ -467,6 +482,9 @@ errors:
   web_login_invalid: "Code inconnu. Vérifiez-le sur la page de connexion."
   web_login_expired: "Le code a expiré. Demandez-en un nouveau sur la page de connexion."
   web_login_used: "Ce code a déjà été utilisé."
+  device_code_invalid: "Ce code n’existe pas. Vérifiez-le dans l’app."
+  device_code_expired: "Le code a expiré. Demandez-en un nouveau dans l’app."
+  device_code_used: "Ce code a déjà été utilisé."
   restore_not_berth: "Ce n'est pas une sauvegarde Berth."
   restore_newer: "La sauvegarde a été créée par une version plus récente du serveur. Mettez d'abord le serveur à jour."
   restore_failed: "Impossible de restaurer la base de données. La base actuelle n'a pas été modifiée."

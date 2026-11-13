@@ -203,6 +203,21 @@ connect:
   new_code: Novo código
   close: Fechar
 
+activate:
+  title: "Permitir um dispositivo"
+  subtitle: "Um app de computador pede para entrar neste servidor."
+  code_label: "Código"
+  code_hint: "O código que o app Berth mostra no computador."
+  match_hint: "Confira se o app mostra o mesmo código."
+  next: "Continuar"
+  user_label: "De quem é o dispositivo"
+  allow: "Permitir"
+  deny: "Recusar"
+  allowed_title: "Dispositivo permitido"
+  allowed_body: "Ele vai entrar como %{user} em alguns segundos."
+  denied_title: "Entrada recusada"
+  denied_body: "O app vai mostrar que a entrada foi recusada."
+
 devices:
   title: Dispositivos
   subtitle: Celulares conectados a este servidor.
@@ -467,6 +482,9 @@ errors:
   web_login_invalid: Esse código não existe. Confira-o na página de login.
   web_login_expired: O código expirou. Gere um novo na página de login.
   web_login_used: Este código já foi usado.
+  device_code_invalid: "Esse código não existe. Confira no app."
+  device_code_expired: "O código expirou. Peça um novo no app."
+  device_code_used: "Este código já foi usado."
   restore_not_berth: Este não é um backup do Berth.
   restore_newer: O backup foi feito por uma versão mais nova do servidor. Atualize o servidor primeiro.
   restore_failed: Não foi possível restaurar o banco de dados. O banco de dados atual não foi alterado.

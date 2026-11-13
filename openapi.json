@@ -513,6 +513,124 @@
         }
       }
     },
+    "/v1/auth/device": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Start a device-code sign-in (desktop apps). Rate limited per client address.",
+        "operationId": "start_device_auth",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceAuthRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Codes to show and poll with",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceAuthStart"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_body`, `validation` (`platform_invalid`)",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "404": {
+            "description": "`not_found`: the server is not set up",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
+    "/v1/auth/device/token": {
+      "post": {
+        "tags": [
+          "auth"
+        ],
+        "summary": "Poll a device-code sign-in; once allowed, the tokens come back once. Rate limited per\nclient address.",
+        "operationId": "device_token",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DeviceTokenRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Where the sign-in stands",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DeviceTokenResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_body`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "429": {
+            "description": "`rate_limited`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        },
+        "security": [
+          {}
+        ]
+      }
+    },
     "/v1/auth/login": {
       "post": {
         "tags": [
@@ -1662,7 +1780,8 @@
         "description": "Client login method.",
         "enum": [
           "pairing",
-          "password"
+          "password",
+          "device"
         ]
       },
       "Book": {
@@ -1932,6 +2051,159 @@
           "presigned",
           "cdn"
         ]
+      },
+      "DeviceAuthRequest": {
+        "type": "object",
+        "description": "`POST /v1/auth/device` request.",
+        "required": [
+          "device_name",
+          "platform"
+        ],
+        "properties": {
+          "device_name": {
+            "type": "string",
+            "description": "Human-readable device name, e.g. \"Alex's laptop\"."
+          },
+          "platform": {
+            "type": "string",
+            "description": "Lower-case platform: `windows`, `macos`, `linux`, …"
+          }
+        }
+      },
+      "DeviceAuthStart": {
+        "type": "object",
+        "description": "A started sign-in.",
+        "required": [
+          "device_code",
+          "user_code",
+          "expires_in",
+          "interval"
+        ],
+        "properties": {
+          "device_code": {
+            "type": "string",
+            "description": "Secret of the app for `POST /v1/auth/device/token`; never shown."
+          },
+          "expires_in": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds until both codes expire."
+          },
+          "interval": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Seconds to wait between polls."
+          },
+          "user_code": {
+            "type": "string",
+            "description": "Code to show (8 characters; shown as two groups of four). The administrator confirms it\nat `/activate?code=<user_code>` on this server."
+          }
+        }
+      },
+      "DeviceTokenRequest": {
+        "type": "object",
+        "description": "`POST /v1/auth/device/token` request.",
+        "required": [
+          "device_code"
+        ],
+        "properties": {
+          "device_code": {
+            "type": "string",
+            "description": "The `device_code` from `POST /v1/auth/device`."
+          }
+        }
+      },
+      "DeviceTokenResponse": {
+        "oneOf": [
+          {
+            "type": "object",
+            "description": "Not decided yet: poll again after `interval`.",
+            "required": [
+              "expires_in",
+              "state"
+            ],
+            "properties": {
+              "expires_in": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Seconds until the code expires."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "waiting"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "The administrator refused the sign-in.",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "denied"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Expired, unknown or already used: start again.",
+            "required": [
+              "state"
+            ],
+            "properties": {
+              "state": {
+                "type": "string",
+                "enum": [
+                  "expired"
+                ]
+              }
+            }
+          },
+          {
+            "type": "object",
+            "description": "Allowed: a new device and its first tokens, as `POST /v1/auth/pair` gives.",
+            "required": [
+              "device_id",
+              "access_token",
+              "refresh_token",
+              "access_expires_in",
+              "state"
+            ],
+            "properties": {
+              "access_expires_in": {
+                "type": "integer",
+                "format": "int64",
+                "description": "Seconds until the access token expires; refresh ahead of it."
+              },
+              "access_token": {
+                "type": "string",
+                "description": "JWT for `Authorization: Bearer`."
+              },
+              "device_id": {
+                "type": "string",
+                "description": "Id of the new device."
+              },
+              "refresh_token": {
+                "type": "string",
+                "description": "One-time refresh token; every refresh returns the next one."
+              },
+              "state": {
+                "type": "string",
+                "enum": [
+                  "signed_in"
+                ]
+              }
+            }
+          }
+        ],
+        "description": "Where the sign-in stands."
       },
       "DownloadManifest": {
         "type": "object",
@@ -2301,9 +2573,14 @@
         "type": "object",
         "description": "Oldest supported versions per client type.",
         "required": [
-          "mobile"
+          "mobile",
+          "desktop"
         ],
         "properties": {
+          "desktop": {
+            "type": "string",
+            "description": "Desktop app."
+          },
           "mobile": {
             "type": "string",
             "description": "Mobile app."

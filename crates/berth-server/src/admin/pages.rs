@@ -58,9 +58,10 @@ fn user_agent(headers: &HeaderMap) -> &str {
         .unwrap_or("")
 }
 
-/// Signs the browser in and navigates to the dashboard.
-fn signed_in(headers: &HeaderMap, token: &str) -> Response {
-    let mut response = redirect(headers, "/");
+/// Signs the browser in and navigates to `to` (the dashboard, or the page that sent it to
+/// sign in).
+fn signed_in(headers: &HeaderMap, token: &str, to: &str) -> Response {
+    let mut response = redirect(headers, to);
     response
         .headers_mut()
         .insert(header::SET_COOKIE, session::set_cookie(headers, token));
@@ -192,7 +193,7 @@ pub(crate) async fn setup_submit(
                 user_agent(&headers),
             )
             .await?;
-            Ok(signed_in(&headers, &token))
+            Ok(signed_in(&headers, &token, "/"))
         }
         Err(BerthError::Conflict(_)) => Ok(redirect(&headers, "/login")),
         Err(err) => {
@@ -217,18 +218,51 @@ pub(crate) async fn setup_submit(
 #[derive(Deserialize)]
 pub(crate) struct LoginForm {
     password: String,
+    /// Where to go after signing in.
+    #[serde(default)]
+    next: String,
 }
 
-pub(crate) async fn login_page(State(state): State<AppState>, headers: HeaderMap) -> Page {
+/// Where to go after signing in, e.g. back to `/activate?code=…`.
+#[derive(Deserialize)]
+pub(crate) struct NextQuery {
+    #[serde(default)]
+    next: String,
+}
+
+/// `next` when it is a path on this server, else the dashboard: never another site.
+pub(super) fn safe_next(next: &str) -> &str {
+    if next.starts_with('/') && !next.starts_with("//") && !next.contains('\\') {
+        next
+    } else {
+        "/"
+    }
+}
+
+/// The sign-in page context: `next` for the password form, `next_q` (encoded) for the phone.
+fn login_ctx(state: &AppState, next: &str) -> Value {
+    let next = match safe_next(next) {
+        "/" => "",
+        next => next,
+    };
+    let next_q: String = url::form_urlencoded::byte_serialize(next.as_bytes()).collect();
+    context! { next, next_q, ..shell(state, "login") }
+}
+
+pub(crate) async fn login_page(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<NextQuery>,
+) -> Page {
     if let Some(token) = session::token(&headers)
         && auth::session(&state.db, token).await?.is_some()
     {
-        return Ok(Redirect::to("/").into_response());
+        return Ok(Redirect::to(safe_next(&query.next)).into_response());
     }
     if !setup::is_configured(&state.db).await? {
         return Ok(Redirect::to("/setup").into_response());
     }
-    render(&state, "login.html", shell(&state, "login"))
+    render(&state, "login.html", login_ctx(&state, &query.next))
 }
 
 pub(crate) async fn login_submit(
@@ -238,7 +272,7 @@ pub(crate) async fn login_submit(
     Form(form): Form<LoginForm>,
 ) -> Page {
     match auth::login(&state.db, &form.password, user_agent(&headers)).await {
-        Ok(token) => Ok(signed_in(&headers, &token)),
+        Ok(token) => Ok(signed_in(&headers, &token, safe_next(&form.next))),
         Err(err) => {
             if matches!(&err, BerthError::Validation(code) if code == "password_wrong") {
                 tracing::warn!(ip = %peer.ip(), "admin sign-in failed: wrong password");
@@ -249,7 +283,7 @@ pub(crate) async fn login_submit(
                 &headers,
                 "login.html",
                 "partials/login_form.html",
-                context! { error, ..shell(&state, "login") },
+                context! { error, ..login_ctx(&state, &form.next) },
             )
         }
     }
@@ -259,7 +293,11 @@ const LOGIN_COOKIE: &str = "berth_login";
 
 /// Starts a sign-in with the phone: a code (and QR) for the administrator's phone, and the
 /// claim of this browser in a short-lived cookie.
-pub(crate) async fn login_phone_start(State(state): State<AppState>, headers: HeaderMap) -> Page {
+pub(crate) async fn login_phone_start(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<NextQuery>,
+) -> Page {
     let started = web_login::start(&state.db, user_agent(&headers), now_ms()).await?;
     let payload = serde_json::json!({ "server_id": &*state.server_id, "web_login": started.code })
         .to_string();
@@ -268,7 +306,10 @@ pub(crate) async fn login_phone_start(State(state): State<AppState>, headers: He
     let mut response = render(
         &state,
         "partials/login_phone.html",
-        context! { phone => context! { state => "waiting", code => started.code.clone(), qr, expires_in } },
+        context! {
+            phone => context! { state => "waiting", code => started.code.clone(), qr, expires_in },
+            ..login_ctx(&state, &query.next)
+        },
     )?;
     let cookie = format!(
         "{LOGIN_COOKIE}={}.{}; Path=/login; Max-Age={}; HttpOnly; SameSite=Strict",
@@ -284,7 +325,11 @@ pub(crate) async fn login_phone_start(State(state): State<AppState>, headers: He
 }
 
 /// Polled by the sign-in page: nothing while waiting, the session once the phone approves.
-pub(crate) async fn login_phone_status(State(state): State<AppState>, headers: HeaderMap) -> Page {
+pub(crate) async fn login_phone_status(
+    State(state): State<AppState>,
+    headers: HeaderMap,
+    Query(query): Query<NextQuery>,
+) -> Page {
     let (code, claim) = super::cookie(&headers, LOGIN_COOKIE)
         .and_then(|v| v.split_once('.'))
         .unwrap_or_default();
@@ -293,9 +338,11 @@ pub(crate) async fn login_phone_status(State(state): State<AppState>, headers: H
         web_login::Status::Expired => render(
             &state,
             "partials/login_phone.html",
-            context! { phone => context! { state => "expired" } },
+            context! { phone => context! { state => "expired" }, ..login_ctx(&state, &query.next) },
         ),
-        web_login::Status::SignedIn(token) => Ok(signed_in(&headers, &token)),
+        web_login::Status::SignedIn(token) => {
+            Ok(signed_in(&headers, &token, safe_next(&query.next)))
+        }
     }
 }
 pub(crate) async fn logout(State(state): State<AppState>, headers: HeaderMap) -> Page {

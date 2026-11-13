@@ -10,6 +10,7 @@ pub mod books;
 pub mod categories;
 pub mod delivery;
 pub mod demo;
+pub mod device_auth;
 pub mod devices;
 pub mod groups;
 pub mod ingest;

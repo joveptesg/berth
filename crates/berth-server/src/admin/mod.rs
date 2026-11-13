@@ -3,6 +3,7 @@
 //! HTMX form posts get back only the fragment they replace; pages never fetch JSON.
 
 mod access;
+mod activate;
 mod ai;
 mod categories;
 mod csrf;
@@ -67,6 +68,8 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
             post(pages::login_phone_start).layer(limit(6, 10)),
         )
         .route("/login/phone/status", get(pages::login_phone_status))
+        // Checks the session itself: without one it signs in and comes back with the code.
+        .route("/activate", get(activate::page))
         .route("/logout", post(pages::logout));
 
     let protected = Router::new()
@@ -145,6 +148,9 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         )
         .route("/groups/{id}/delete", post(access::group_delete))
         .route("/devices", get(access::devices_page))
+        .route("/activate/code", post(activate::submit))
+        .route("/activate/approve", post(activate::approve))
+        .route("/activate/deny", post(activate::deny))
         .route("/devices/{id}/revoke", post(access::devices_revoke))
         .route("/storage", get(storage::page).post(storage::create))
         .route("/storage/r2", post(storage::connect_r2))

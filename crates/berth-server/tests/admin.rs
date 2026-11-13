@@ -2389,6 +2389,168 @@ async fn admin_signs_in_with_the_phone() {
 }
 
 #[tokio::test]
+#[expect(clippy::too_many_lines, reason = "one end-to-end scenario")]
+async fn desktop_signs_in_with_a_device_code() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let device = || {
+        json(
+            "/v1/auth/device",
+            None,
+            &serde_json::json!({ "device_name": "Alex's laptop", "platform": "Windows" }),
+        )
+    };
+    let poll = |device_code: &str| {
+        json(
+            "/v1/auth/device/token",
+            None,
+            &serde_json::json!({ "device_code": device_code }),
+        )
+    };
+
+    // The app gets a secret to poll with and a short code to show.
+    let started = send(&state, device()).await.json();
+    let device_code = started["device_code"].as_str().unwrap().to_owned();
+    let user_code = started["user_code"].as_str().unwrap().to_owned();
+    assert_eq!(user_code.len(), 8);
+    assert_eq!(started["interval"], 5);
+    assert!(started["expires_in"].as_i64().unwrap() > 500);
+    assert_eq!(
+        send(&state, poll(&device_code)).await.json()["state"],
+        "waiting"
+    );
+
+    // The browser the app opens signs in first and comes back with the code.
+    let typed = format!("{}-{}", &user_code[..4], &user_code[4..]).to_lowercase();
+    let page = send(&state, get(&format!("/activate?code={typed}"), None)).await;
+    let back = format!("/activate?code={user_code}");
+    let next: String = url::form_urlencoded::byte_serialize(back.as_bytes()).collect();
+    assert_eq!(
+        page.location(),
+        Some(format!("/login?next={next}").as_str())
+    );
+    let login = send(&state, get(&format!("/login?next={next}"), None)).await;
+    assert!(
+        login.body.contains(&format!(
+            "name=\"next\" value=\"&#x2f;activate?code={user_code}\""
+        )),
+        "{}",
+        login.body
+    );
+    let signed_in = send(
+        &state,
+        post("/login", None, &[("password", PASSWORD), ("next", &back)]),
+    )
+    .await;
+    assert_eq!(signed_in.location(), Some(back.as_str()));
+    let elsewhere = send(
+        &state,
+        post(
+            "/login",
+            None,
+            &[("password", PASSWORD), ("next", "//evil.example")],
+        ),
+    )
+    .await;
+    assert_eq!(elsewhere.location(), Some("/"));
+
+    // The administrator sees the device and gives it to a listener.
+    send(&state, post("/users", Some(&session), &[("name", "Анна")])).await;
+    let anna: String = sqlx::query_scalar("SELECT id FROM users WHERE name = 'Анна'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let page = send(&state, get(&back, Some(&session))).await;
+    assert_eq!(page.status, StatusCode::OK, "{}", page.body);
+    assert!(page.body.contains("Alex&#x27;s laptop") || page.body.contains("Alex's laptop"));
+    assert!(page.body.contains("Windows") && page.body.contains("Анна"));
+    let approve = [("code", typed.as_str()), ("user_id", anna.as_str())];
+    let allowed = send(&state, post("/activate/approve", Some(&session), &approve)).await;
+    assert!(allowed.body.contains("Анна"), "{}", allowed.body);
+    let again = send(&state, post("/activate/approve", Some(&session), &approve)).await;
+    assert!(again.body.contains("role=\"alert\""), "{}", again.body);
+
+    // The app gets its tokens once: a device of the listener.
+    let tokens = send(&state, poll(&device_code)).await.json();
+    assert_eq!(tokens["state"], "signed_in", "{tokens}");
+    let access = tokens["access_token"].as_str().unwrap();
+    let me = send(&state, bearer_get("/v1/me", access)).await.json();
+    assert_eq!(me["user_name"], "Анна");
+    assert_eq!(me["device_id"], tokens["device_id"]);
+    assert_eq!(me["scopes"], serde_json::json!(["listen"]));
+    let platform: String = sqlx::query_scalar("SELECT platform FROM devices WHERE id = $1")
+        .bind(tokens["device_id"].as_str().unwrap())
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(platform, "windows");
+    assert_eq!(
+        send(&state, poll(&device_code)).await.json()["state"],
+        "expired"
+    );
+    assert_eq!(
+        send(&state, poll("not-a-code")).await.json()["state"],
+        "expired"
+    );
+
+    // A refused code tells the app so.
+    let refused = send(&state, device()).await.json();
+    let refused_code = refused["user_code"].as_str().unwrap();
+    let denied = send(
+        &state,
+        post("/activate/deny", Some(&session), &[("code", refused_code)]),
+    )
+    .await;
+    assert_eq!(denied.status, StatusCode::OK, "{}", denied.body);
+    assert_eq!(
+        send(&state, poll(refused["device_code"].as_str().unwrap()))
+            .await
+            .json()["state"],
+        "denied"
+    );
+
+    // An expired or unknown code is an error on the page, not a sign-in.
+    let late = send(&state, device()).await.json();
+    sqlx::query("UPDATE device_auth_requests SET expires_at = 0 WHERE expires_at > 0 AND used_at IS NULL AND denied_at IS NULL")
+        .execute(&state.db)
+        .await
+        .unwrap();
+    let expired = send(
+        &state,
+        post(
+            "/activate/code",
+            Some(&session),
+            &[("code", late["user_code"].as_str().unwrap())],
+        ),
+    )
+    .await;
+    assert!(expired.body.contains("role=\"alert\""), "{}", expired.body);
+    assert_eq!(
+        send(&state, poll(late["device_code"].as_str().unwrap()))
+            .await
+            .json()["state"],
+        "expired"
+    );
+    let unknown = send(
+        &state,
+        post("/activate/code", Some(&session), &[("code", "ABCD2345")]),
+    )
+    .await;
+    assert!(unknown.body.contains("role=\"alert\""), "{}", unknown.body);
+    let bad = send(
+        &state,
+        json(
+            "/v1/auth/device",
+            None,
+            &serde_json::json!({ "device_name": "x", "platform": "win-11" }),
+        ),
+    )
+    .await;
+    assert_eq!(bad.status, StatusCode::BAD_REQUEST);
+}
+
+#[tokio::test]
 async fn database_restores_from_a_backup() {
     let dir = tempfile::tempdir().unwrap();
     let state = start(dir.path()).await;
@@ -2691,7 +2853,7 @@ async fn apps_sign_in_with_a_login_and_see_only_picked_books() {
     let hidden = add_book(&state, &admin, "Закрытая").await;
     let modes =
         || async { send(&state, get("/v1/server-info", None)).await.json()["auth_modes"].clone() };
-    assert_eq!(modes().await, serde_json::json!(["pairing"]));
+    assert_eq!(modes().await, serde_json::json!(["pairing", "device"]));
 
     send(
         &state,
@@ -2741,7 +2903,10 @@ async fn apps_sign_in_with_a_login_and_see_only_picked_books() {
     .await;
     assert!(!saved.body.contains("role=\"alert\""), "{}", saved.body);
     assert!(saved.body.contains("demo"), "the login chip");
-    assert_eq!(modes().await, serde_json::json!(["pairing", "password"]));
+    assert_eq!(
+        modes().await,
+        serde_json::json!(["pairing", "password", "device"])
+    );
 
     // Wrong password, then the login in other case.
     assert_eq!(
@@ -2844,7 +3009,7 @@ async fn apps_sign_in_with_a_login_and_see_only_picked_books() {
         post(&settings, Some(&session), &[("access", "all")]),
     )
     .await;
-    assert_eq!(modes().await, serde_json::json!(["pairing"]));
+    assert_eq!(modes().await, serde_json::json!(["pairing", "device"]));
     assert_eq!(
         send(&state, app_login("demo", "demo")).await.problem(),
         "login_failed"

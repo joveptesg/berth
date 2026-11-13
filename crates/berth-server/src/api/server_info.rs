@@ -5,6 +5,7 @@ use utoipa::ToSchema;
 use crate::{AppState, error::ApiError, service::users};
 
 const MIN_MOBILE_VERSION: &str = "0.1.0";
+const MIN_DESKTOP_VERSION: &str = "0.1.0";
 
 /// Public server description used for discovery before login.
 #[derive(Serialize, ToSchema)]
@@ -31,6 +32,9 @@ pub(crate) enum AuthMode {
     /// A listener's login and password (`POST /v1/auth/login`); listed while some listener
     /// has a login.
     Password,
+    /// A device code the administrator allows on `/activate` (`POST /v1/auth/device`), for
+    /// desktop apps.
+    Device,
 }
 
 /// Oldest supported versions per client type.
@@ -38,6 +42,8 @@ pub(crate) enum AuthMode {
 pub(crate) struct MinClientVersion {
     /// Mobile app.
     mobile: String,
+    /// Desktop app.
+    desktop: String,
 }
 
 /// Server info (no authentication).
@@ -55,6 +61,7 @@ pub(crate) async fn server_info(
     if users::any_login(&state.db).await? {
         auth_modes.push(AuthMode::Password);
     }
+    auth_modes.push(AuthMode::Device);
     Ok(Json(ServerInfo {
         name: state.config.load().name.clone(),
         server_id: state.server_id.to_string(),
@@ -62,6 +69,7 @@ pub(crate) async fn server_info(
         auth_modes,
         min_client_version: MinClientVersion {
             mobile: MIN_MOBILE_VERSION.to_owned(),
+            desktop: MIN_DESKTOP_VERSION.to_owned(),
         },
     }))
 }

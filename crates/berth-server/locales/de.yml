@@ -204,6 +204,21 @@ connect:
   new_code: "Neuer Code"
   close: "Schließen"
 
+activate:
+  title: "Gerät zulassen"
+  subtitle: "Eine Desktop-App möchte sich bei diesem Server anmelden."
+  code_label: "Code"
+  code_hint: "Der Code, den die Berth-App auf dem Computer zeigt."
+  match_hint: "Prüfe, dass die App denselben Code zeigt."
+  next: "Weiter"
+  user_label: "Wessen Gerät"
+  allow: "Zulassen"
+  deny: "Ablehnen"
+  allowed_title: "Gerät zugelassen"
+  allowed_body: "Es meldet sich in wenigen Sekunden als %{user} an."
+  denied_title: "Anmeldung abgelehnt"
+  denied_body: "Die App zeigt, dass die Anmeldung abgelehnt wurde."
+
 devices:
   title: "Geräte"
   subtitle: "Mit diesem Server verbundene Handys."
@@ -468,6 +483,9 @@ errors:
   web_login_invalid: "Diesen Code gibt es nicht. Prüfe ihn auf der Anmeldeseite."
   web_login_expired: "Der Code ist abgelaufen. Hol dir auf der Anmeldeseite einen neuen."
   web_login_used: "Dieser Code wurde bereits verwendet."
+  device_code_invalid: "Diesen Code gibt es nicht. Prüfe ihn in der App."
+  device_code_expired: "Der Code ist abgelaufen. Hol dir in der App einen neuen."
+  device_code_used: "Dieser Code wurde bereits verwendet."
   restore_not_berth: "Das ist kein Berth-Backup."
   restore_newer: "Das Backup stammt von einer neueren Serverversion. Aktualisiere zuerst den Server."
   restore_failed: "Die Datenbank konnte nicht wiederhergestellt werden. Die aktuelle Datenbank ist unverändert."

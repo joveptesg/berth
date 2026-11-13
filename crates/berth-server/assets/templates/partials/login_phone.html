@@ -12,7 +12,7 @@
       <span class="select-all">{{ phone.code[:4] }}</span><span class="mx-[0.1em] text-text-3" aria-hidden="true">·</span><span class="select-all">{{ phone.code[4:] }}</span>
     </p>
     <p class="text-center text-[15px] text-text-2">{{ t('login.phone_hint') }}</p>
-    <div hx-get="/login/phone/status" hx-trigger="every 2s" hx-target="#login-phone" hx-swap="outerHTML"
+    <div hx-get="/login/phone/status{% if next_q %}?next={{ next_q }}{% endif %}" hx-trigger="every 2s" hx-target="#login-phone" hx-swap="outerHTML"
       class="flex w-full items-center gap-3 rounded-[14px] bg-surface-2 px-4 py-3 text-[15px] font-semibold" role="status">
       <span class="relative flex size-2.5" aria-hidden="true">
         <span class="absolute inline-flex size-full animate-ping rounded-full bg-accent opacity-60 motion-reduce:animate-none"></span>
@@ -25,7 +25,7 @@
   </div>
   {% else %}
   {% if phone.state == "expired" %}<p class="alert-error" role="alert">{{ t('login.phone_expired') }}</p>{% endif %}
-  <button type="button" hx-post="/login/phone" hx-target="#login-phone" hx-swap="outerHTML" class="btn btn-ghost w-full">
+  <button type="button" hx-post="/login/phone{% if next_q %}?next={{ next_q }}{% endif %}" hx-target="#login-phone" hx-swap="outerHTML" class="btn btn-ghost w-full">
     {{ t('login.phone_start') }}
   </button>
   {% endif %}

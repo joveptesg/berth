@@ -3,6 +3,7 @@
 mod admin;
 mod auth;
 mod delivery;
+mod device_auth;
 mod ingest;
 pub(crate) mod library;
 mod me;
@@ -71,7 +72,7 @@ impl Modify for BearerAuth {
 
 fn routes() -> OpenApiRouter<AppState> {
     // Pairing codes have about 40 bits and passwords may be short: guessing is slowed per
-    // client address.
+    // client address. Device-code sign-ins share the bucket: an app polls every few seconds.
     let pair_limit = GovernorLayer::new(Arc::new(
         GovernorConfigBuilder::default()
             .per_second(3)
@@ -87,6 +88,8 @@ fn routes() -> OpenApiRouter<AppState> {
             OpenApiRouter::new()
                 .routes(routes!(auth::pair))
                 .routes(routes!(auth::login))
+                .routes(routes!(device_auth::start_device_auth))
+                .routes(routes!(device_auth::device_token))
                 .layer(pair_limit),
         )
         .routes(routes!(auth::refresh))

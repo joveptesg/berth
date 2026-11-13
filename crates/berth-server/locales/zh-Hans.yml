@@ -203,6 +203,21 @@ connect:
   new_code: "新代码"
   close: "关闭"
 
+activate:
+  title: "允许设备"
+  subtitle: "一个桌面应用请求登录此服务器。"
+  code_label: "代码"
+  code_hint: "电脑上的 Berth 应用显示的代码。"
+  match_hint: "请确认应用显示的是同一个代码。"
+  next: "继续"
+  user_label: "这是谁的设备"
+  allow: "允许"
+  deny: "拒绝"
+  allowed_title: "已允许设备"
+  allowed_body: "几秒钟后它会以 %{user} 的身份登录。"
+  denied_title: "已拒绝登录"
+  denied_body: "应用会显示登录已被拒绝。"
+
 devices:
   title: "设备"
   subtitle: "已与这台服务器配对的手机。"
@@ -467,6 +482,9 @@ errors:
   web_login_invalid: "没有这个代码。请在登录页面核对。"
   web_login_expired: "代码已过期。请在登录页面获取新代码。"
   web_login_used: "这个代码已被使用。"
+  device_code_invalid: "没有这个代码。请在应用中核对。"
+  device_code_expired: "代码已过期。请在应用中获取新代码。"
+  device_code_used: "这个代码已被使用。"
   restore_not_berth: "这不是 Berth 备份。"
   restore_newer: "该备份由更新版本的服务器创建。请先更新服务器。"
   restore_failed: "无法恢复数据库。当前数据库未改动。"

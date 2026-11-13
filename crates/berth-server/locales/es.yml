@@ -203,6 +203,21 @@ connect:
   new_code: "Código nuevo"
   close: "Cerrar"
 
+activate:
+  title: "Permitir un dispositivo"
+  subtitle: "Una app de escritorio pide iniciar sesión en este servidor."
+  code_label: "Código"
+  code_hint: "El código que muestra la app Berth en el ordenador."
+  match_hint: "Comprueba que la app muestra el mismo código."
+  next: "Continuar"
+  user_label: "De quién es el dispositivo"
+  allow: "Permitir"
+  deny: "Rechazar"
+  allowed_title: "Dispositivo permitido"
+  allowed_body: "Iniciará sesión como %{user} en unos segundos."
+  denied_title: "Inicio de sesión rechazado"
+  denied_body: "La app mostrará que se rechazó el inicio de sesión."
+
 devices:
   title: "Dispositivos"
   subtitle: "Teléfonos conectados a este servidor."
@@ -467,6 +482,9 @@ errors:
   web_login_invalid: "No existe ese código. Compruébalo en la página de inicio de sesión."
   web_login_expired: "El código ha caducado. Pide uno nuevo en la página de inicio de sesión."
   web_login_used: "Este código ya se ha usado."
+  device_code_invalid: "Ese código no existe. Compruébalo en la app."
+  device_code_expired: "El código ha caducado. Pide uno nuevo en la app."
+  device_code_used: "Este código ya se ha usado."
   restore_not_berth: "Esto no es una copia de seguridad de Berth."
   restore_newer: "La copia de seguridad se hizo con una versión más reciente del servidor. Actualiza primero el servidor."
   restore_failed: "No se ha podido restaurar la base de datos. La base de datos actual no ha cambiado."
