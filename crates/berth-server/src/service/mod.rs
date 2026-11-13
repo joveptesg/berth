@@ -6,6 +6,7 @@
 pub mod ai;
 pub mod auth;
 pub mod blobs;
+pub mod bookmarks;
 pub mod books;
 pub mod categories;
 pub mod delivery;

@@ -2,6 +2,7 @@
 
 mod admin;
 mod auth;
+mod bookmarks;
 mod delivery;
 mod device_auth;
 mod ingest;
@@ -116,6 +117,8 @@ fn routes() -> OpenApiRouter<AppState> {
         .routes(routes!(delivery::blob))
         .routes(routes!(delivery::progress_batch))
         .routes(routes!(delivery::progress))
+        .routes(routes!(bookmarks::bookmarks_batch))
+        .routes(routes!(bookmarks::bookmarks))
         .routes(routes!(ingest::create_upload))
         .merge(
             // Audiobook files are large: no body limit on the file upload.

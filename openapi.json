@@ -1014,6 +1014,88 @@
         ]
       }
     },
+    "/v1/bookmarks": {
+      "get": {
+        "tags": [
+          "bookmarks"
+        ],
+        "summary": "The user's bookmarks, deleted ones included so that a device drops its copies. A device\nkeeps its own change when it is newer (compare in one clock with `server_now`).",
+        "operationId": "bookmarks",
+        "responses": {
+          "200": {
+            "description": "All bookmarks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bookmarks"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/v1/bookmarks/batch": {
+      "post": {
+        "tags": [
+          "bookmarks"
+        ],
+        "summary": "Sends the device's bookmark changes (set, note edited, deleted). The batch is accepted as a\nwhole: drop it from the queue after 200. The latest change of a bookmark wins by the device\ntime corrected for its clock; a deleted bookmark stays deleted. The reply has all bookmarks.",
+        "operationId": "bookmarks_batch",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BookmarkBatch"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Accepted; all bookmarks",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Bookmarks"
+                }
+              }
+            }
+          },
+          "400": {
+            "description": "`invalid_body`, `bookmark_batch_too_long` or `bookmark_invalid`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          },
+          "401": {
+            "description": "`unauthenticated` or `device_revoked`",
+            "content": {
+              "application/problem+json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Problem"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
     "/v1/books/{id}/cover": {
       "get": {
         "tags": [
@@ -1935,6 +2017,140 @@
             "type": "integer",
             "format": "int64",
             "description": "Bytes."
+          }
+        }
+      },
+      "Bookmark": {
+        "type": "object",
+        "description": "A bookmark as the server keeps it.",
+        "required": [
+          "id",
+          "book_id",
+          "position_ms",
+          "note",
+          "created_at",
+          "updated_at",
+          "deleted"
+        ],
+        "properties": {
+          "book_id": {
+            "type": "string",
+            "description": "Book id."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it was set, server clock, epoch milliseconds."
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "Deleted: the device drops its copy."
+          },
+          "id": {
+            "type": "string",
+            "description": "Id made by the device that set it."
+          },
+          "note": {
+            "type": "string",
+            "description": "The user's note; empty for none."
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Position on the book timeline."
+          },
+          "updated_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "When it last changed, server clock, epoch milliseconds."
+          }
+        }
+      },
+      "BookmarkBatch": {
+        "type": "object",
+        "description": "`POST /v1/bookmarks/batch` body.",
+        "required": [
+          "client_now",
+          "changes"
+        ],
+        "properties": {
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/BookmarkChange"
+            },
+            "description": "Changes, oldest first."
+          },
+          "client_now": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Device clock at sending, epoch milliseconds: the server corrects the times by it."
+          }
+        }
+      },
+      "BookmarkChange": {
+        "type": "object",
+        "description": "A bookmark as the device has it now.",
+        "required": [
+          "id",
+          "book_id",
+          "position_ms",
+          "created_at",
+          "client_ts"
+        ],
+        "properties": {
+          "book_id": {
+            "type": "string",
+            "description": "Book id."
+          },
+          "client_ts": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Device clock of this change, epoch milliseconds."
+          },
+          "created_at": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Device clock when the bookmark was set, epoch milliseconds."
+          },
+          "deleted": {
+            "type": "boolean",
+            "description": "The bookmark was deleted."
+          },
+          "id": {
+            "type": "string",
+            "description": "`UUIDv7` made by the device when the bookmark was set."
+          },
+          "note": {
+            "type": "string",
+            "description": "The user's note; empty for none."
+          },
+          "position_ms": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Position on the book timeline."
+          }
+        }
+      },
+      "Bookmarks": {
+        "type": "object",
+        "description": "The user's bookmarks.",
+        "required": [
+          "server_now",
+          "bookmarks"
+        ],
+        "properties": {
+          "bookmarks": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/Bookmark"
+            },
+            "description": "Every bookmark of the user in books they may see, deleted ones included."
+          },
+          "server_now": {
+            "type": "integer",
+            "format": "int64",
+            "description": "Server clock, epoch milliseconds: `t - server_now + device_now` is device time."
           }
         }
       },

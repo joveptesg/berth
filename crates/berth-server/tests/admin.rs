@@ -4654,3 +4654,133 @@ async fn unused_blobs_go_a_day_after_their_last_reference() {
     assert!(!stray.exists());
     assert!(queued_object.exists());
 }
+
+// ── Bookmarks ────────────────────────────────────────────
+
+/// Pairs a device of `user` and returns its access token.
+async fn device_token(state: &AppState, user: &str, name: &str) -> String {
+    let tenant_id = tenant(state).await;
+    let code = pairing::create(&state.db, &tenant_id, user, now())
+        .await
+        .unwrap();
+    let paired = send(
+        state,
+        json(
+            "/v1/auth/pair",
+            None,
+            &serde_json::json!({ "pairing_token": code.code, "device_name": name, "platform": "android" }),
+        ),
+    )
+    .await;
+    assert_eq!(paired.status, StatusCode::OK, "{}", paired.body);
+    paired.json()["access_token"].as_str().unwrap().to_owned()
+}
+
+#[tokio::test]
+async fn bookmarks_sync_between_devices() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let phone = admin_token(&state).await;
+    let book = add_book(&state, &phone, "Закладки").await;
+    let owner: String = sqlx::query_scalar("SELECT id FROM users WHERE role = 'owner'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let laptop = device_token(&state, &owner, "Laptop").await;
+    let id = uuid::Uuid::now_v7().to_string();
+    let change = |position: i64, note: &str, deleted: bool, at: i64| {
+        serde_json::json!({ "id": id, "book_id": book, "position_ms": position, "note": note,
+            "deleted": deleted, "created_at": now() - 60_000, "client_ts": at })
+    };
+    let batch = |changes: Vec<serde_json::Value>| serde_json::json!({ "client_now": now(), "changes": changes });
+    let push = |token: &str, changes: Vec<serde_json::Value>| {
+        api("POST", "/v1/bookmarks/batch", token, Some(&batch(changes)))
+    };
+
+    // Set on the phone, seen on the laptop.
+    let set = send(
+        &state,
+        push(&phone, vec![change(12_000, "", false, now() - 60_000)]),
+    )
+    .await;
+    assert_eq!(set.status, StatusCode::OK, "{}", set.body);
+    assert_eq!(set.json()["bookmarks"][0]["position_ms"], 12_000);
+    let seen = send(&state, bearer_get("/v1/bookmarks", &laptop))
+        .await
+        .json();
+    assert_eq!(seen["bookmarks"].as_array().unwrap().len(), 1);
+    assert_eq!(seen["bookmarks"][0]["id"], id.as_str());
+    assert_eq!(seen["bookmarks"][0]["deleted"], false);
+
+    // The laptop adds a note; a stale edit from the phone does not undo it.
+    send(
+        &state,
+        push(
+            &laptop,
+            vec![change(12_000, "Свеча", false, now() - 10_000)],
+        ),
+    )
+    .await;
+    let kept = send(
+        &state,
+        push(
+            &phone,
+            vec![change(12_000, "Старое", false, now() - 30_000)],
+        ),
+    )
+    .await
+    .json();
+    assert_eq!(kept["bookmarks"][0]["note"], "Свеча");
+
+    // Deleted for good: a later edit does not bring it back.
+    send(
+        &state,
+        push(&phone, vec![change(12_000, "Свеча", true, now() - 5_000)]),
+    )
+    .await;
+    let after = send(
+        &state,
+        push(&laptop, vec![change(15_000, "Снова", false, now())]),
+    )
+    .await
+    .json();
+    assert_eq!(after["bookmarks"][0]["deleted"], true);
+    assert_eq!(after["bookmarks"][0]["position_ms"], 12_000);
+
+    // Another listener neither sees nor changes it.
+    send(&state, post("/users", Some(&session), &[("name", "Гость")])).await;
+    let guest: String = sqlx::query_scalar("SELECT id FROM users WHERE name = 'Гость'")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    let theirs = device_token(&state, &guest, "Guest phone").await;
+    let other = send(
+        &state,
+        push(&theirs, vec![change(1, "Чужое", false, now())]),
+    )
+    .await
+    .json();
+    assert_eq!(other["bookmarks"], serde_json::json!([]));
+    let mine = send(&state, bearer_get("/v1/bookmarks", &phone))
+        .await
+        .json();
+    assert_eq!(mine["bookmarks"][0]["note"], "Свеча");
+
+    // An unknown book is skipped; a bad id or a long note fails the batch.
+    let unknown = serde_json::json!({ "id": uuid::Uuid::now_v7().to_string(), "book_id": "nope",
+        "position_ms": 1, "created_at": now(), "client_ts": now() });
+    let skipped = send(&state, push(&phone, vec![unknown])).await;
+    assert_eq!(skipped.status, StatusCode::OK, "{}", skipped.body);
+    assert_eq!(skipped.json()["bookmarks"].as_array().unwrap().len(), 1);
+    let long = "я".repeat(501);
+    for bad in [
+        serde_json::json!({ "id": "nope", "book_id": book, "position_ms": 1, "created_at": now(), "client_ts": now() }),
+        serde_json::json!({ "id": uuid::Uuid::now_v7().to_string(), "book_id": book, "position_ms": 1, "note": long, "created_at": now(), "client_ts": now() }),
+    ] {
+        assert_eq!(
+            send(&state, push(&phone, vec![bad])).await.json()["detail"],
+            "bookmark_invalid"
+        );
+    }
+}
