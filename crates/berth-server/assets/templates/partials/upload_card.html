@@ -1,9 +1,12 @@
 {% import "partials/ui.html" as ui %}
 {% import "partials/book_fields.html" as bf %}
-{# One upload in the queue; polls itself while the files are read. #}
+{# One upload in the queue; polls itself while the files are read. `journal` is set while the
+   admin has it open: polling and the buttons keep it open. #}
 {% set d = upload.draft %}
+{% set p = upload.progress %}
+{% set q = "?log=1" if journal else "" %}
 <article id="upload-{{ upload.id }}" class="rounded-[16px] border border-line bg-surface"
-  {% if upload.status == "analyzing" %}hx-get="/upload/{{ upload.id }}" hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
+  {% if upload.status == "analyzing" %}hx-get="/upload/{{ upload.id }}{{ q }}" hx-trigger="load delay:2s" hx-swap="outerHTML"{% endif %}>
   <div class="flex items-center gap-3 px-3 py-2.5">
     <span class="w-12 shrink-0">
       {# A saved book shows its current cover, which can differ from the draft's. #}
@@ -11,32 +14,57 @@
         else ("/upload/" ~ upload.id ~ "/cover" if d and d.cover_hash), (d.title if d else upload.name), "rounded-[8px] text-[14px]") }}
     </span>
     <div class="min-w-0 flex-1">
-      <p class="truncate text-[15px] font-semibold">{{ d.title if d and upload.status == "saved" else upload.name }}</p>
-      <p class="truncate text-[13px] text-text-3">{{ t('upload.files', count=upload.files) }} · {{ upload.bytes | filesize }}{% if d %} · <span class="mono text-[12px]">{{ d.duration_ms | clock }}</span> · {{ t('upload.chapters', count=d.chapters | length) }}{% endif %}</p>
+      {% set meta %}{{ t('upload.files', count=upload.files) }} · {{ upload.bytes | filesize }}{% if d %} · <span class="mono text-[12px]">{{ d.duration_ms | clock }}</span> · {{ t('upload.chapters', count=d.chapters | length) }}{% endif %}{% endset %}
       {% if upload.status == "uploading" %}
+      <p class="truncate text-[15px] font-semibold">{{ upload.name }}</p>
+      <p class="truncate text-[13px] text-text-3">{{ meta }}</p>
       <div class="mt-1.5 h-1.5 overflow-hidden rounded-full bg-surface-3">
         <div data-progress class="h-full rounded-full bg-accent transition-[width]" style="width: {{ (upload.stored * 100 / upload.files) | int if upload.files else 0 }}%"></div>
       </div>
       <p data-status class="mt-1 text-[13px] text-text-2">{{ t('upload.status_uploading', stored=upload.stored, count=upload.files) }}</p>
+      {% else %}
+      {# The journal: what each file holds and what happened, in order. #}
+      <button type="button" hx-get="/upload/{{ upload.id }}{{ '' if journal else '?log=1' }}" hx-target="#upload-{{ upload.id }}" hx-swap="outerHTML"
+        aria-expanded="{{ 'true' if journal else 'false' }}" class="group block w-full min-w-0 text-left">
+        <span class="block truncate text-[15px] font-semibold">{{ d.title if d and upload.status == "saved" else upload.name }}</span>
+        <span class="flex items-center gap-2 text-[13px] text-text-3">
+          <span class="min-w-0 truncate">{{ meta }}</span>
+          <span class="inline-flex shrink-0 items-center gap-0.5 font-semibold text-accent-fg group-hover:underline">{{ t('upload.journal') }}{{ ui.icon("chevron-down", "size-3.5 transition-transform" ~ (" rotate-180" if journal else "")) }}</span>
+        </span>
+      </button>
+      {% endif %}
+      {% if upload.status == "analyzing" and p.retry %}
+      <p class="mono mt-0.5 truncate text-[12px] text-text-3" title="{{ p.retry.error }}">{{ p.retry.error }}</p>
       {% elif upload.status == "failed" %}
-      {# Files that never arrived carry a code; a failed analysis carries the reader's message. #}
+      {# Files that never arrived and a stopped analysis carry a code; older failures the reader's message. #}
       {% if upload.error is startingwith("upload_") %}
       <p class="mt-1 text-[13px] font-semibold text-danger">{{ t('errors.' ~ upload.error) }}</p>
+      {% elif upload.error == "analysis_files_unreadable" %}
+      <p class="mt-1 text-[13px] font-semibold text-danger">{{ t('upload.analysis_files_unreadable', count=p.problems) }}</p>
+      {% elif upload.error is startingwith("analysis_") %}
+      <p class="mt-1 text-[13px] font-semibold text-danger">{{ t('upload.' ~ upload.error) }}</p>
       {% else %}
       <p class="mt-1 text-[13px] font-semibold text-danger">{{ t('upload.status_failed') }}</p>
+      {% if upload.error %}<p class="mono mt-0.5 text-[12px] break-words text-text-3">{{ upload.error }}</p>{% endif %}
       {% endif %}
-      {% if upload.error and upload.error is not startingwith("upload_") %}<p class="mono mt-0.5 text-[12px] break-words text-text-3">{{ upload.error }}</p>{% endif %}
-      {# The files are stored: only the analysis is run again. #}
-      {% if upload.error is not startingwith("upload_") %}
-      <button type="button" hx-post="/upload/{{ upload.id }}/retry" hx-target="#upload-{{ upload.id }}" hx-swap="outerHTML"
+      {# Every file is stored: only the analysis is run again. #}
+      {% if upload.stored == upload.files %}
+      <button type="button" hx-post="/upload/{{ upload.id }}/retry{{ q }}" hx-target="#upload-{{ upload.id }}" hx-swap="outerHTML"
         class="mt-1 text-[13px] font-semibold text-accent-fg hover:underline">{{ t('upload.retry') }}</button>
       {% endif %}
       {% endif %}
     </div>
     {% if upload.status == "analyzing" %}
-    <p class="flex shrink-0 items-center gap-2 text-[13px] text-text-2">
-      <span class="size-2 animate-pulse rounded-full bg-accent" aria-hidden="true"></span>{{ t('upload.status_analyzing') }}
-    </p>
+    <div class="flex shrink-0 flex-col items-end gap-0.5 text-[13px] text-text-2">
+      <p class="flex items-center gap-2">
+        <span class="size-2 animate-pulse rounded-full {{ 'bg-danger' if p.retry else 'bg-accent' }}" aria-hidden="true"></span>
+        {%- if p.retry %}<span>{{ t('upload.status_retrying', attempt=p.retry.attempt, max=p.retry.max) }} {{ ui.time(p.retry.run_at, "time") }}</span>
+        {%- elif p.checked > 0 %}{{ t('upload.status_reading', checked=p.checked, count=p.audio) }}
+        {%- else %}{{ t('upload.status_analyzing') }}{% endif %}
+      </p>
+      <button type="button" hx-post="/upload/{{ upload.id }}/cancel{{ q }}" hx-target="#upload-{{ upload.id }}" hx-swap="outerHTML"
+        class="font-semibold text-accent-fg hover:underline">{{ t('upload.cancel') }}</button>
+    </div>
     {% elif upload.status == "saved" %}
     <p class="flex shrink-0 flex-wrap items-center justify-end gap-x-3 gap-y-0.5 text-[13px]">
       <span class="inline-flex items-center gap-1 font-semibold text-ok">{{ ui.icon("check", "size-4") }}<span class="max-sm:sr-only">{{ t('upload.status_saved') }}</span></span>
@@ -49,6 +77,40 @@
       class="grid size-8 shrink-0 place-items-center rounded-[10px] text-text-3 hover:bg-surface-2 hover:text-text">{{ ui.icon("close", "size-[18px]") }}</button>
     {% endif %}
   </div>
+
+  {% if journal %}
+  <section class="flex flex-col gap-3 border-t border-line px-4 py-3 text-[13px] sm:px-5" aria-label="{{ t('upload.journal') }}">
+    <ol class="flex flex-col divide-y divide-line">
+      {% for f in journal.files %}
+      <li class="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 py-1.5">
+        <span class="min-w-0 flex-1 truncate{{ ' font-semibold text-danger' if f.problem }}" title="{{ f.name }}">{{ f.name }}</span>
+        <span class="shrink-0 text-text-3">{{ f.size | filesize }}</span>
+        <span class="mono w-16 shrink-0 text-right text-[12px] text-text-2">
+          {%- if f.duration_ms is not none %}{{ f.duration_ms | clock }}{% elif f.kind == "image" %}{{ t('upload.file_image') }}{% elif not f.problem %}—{% endif -%}
+        </span>
+        {% if f.problem %}
+        <span class="basis-full text-danger">{{ t('upload.' ~ f.problem) }}{% if f.twin %} {{ t('upload.file_twin', name=f.twin) }}{% endif %}</span>
+        {% if f.problem_detail %}<span class="mono basis-full text-[12px] break-words text-text-3">{{ f.problem_detail }}</span>{% endif %}
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ol>
+    <div>
+      <h3 class="font-semibold text-text-2">{{ t('upload.journal_events') }}</h3>
+      <ol class="mt-1 flex flex-col gap-1">
+        {% for e in journal.events %}
+        <li class="flex gap-3">
+          <span class="w-20 shrink-0 text-text-3">{{ ui.time(e.at, "time") }}</span>
+          <span class="min-w-0 flex-1">
+            {%- if e.count is not none %}{{ t('upload.log_' ~ e.event, count=e.count) }}{% else %}{{ t('upload.log_' ~ e.event) }}{% endif %}
+            {%- if e.detail %}<span class="mono block text-[12px] break-words text-text-3">{{ e.detail }}</span>{% endif -%}
+          </span>
+        </li>
+        {% endfor %}
+      </ol>
+    </div>
+  </section>
+  {% endif %}
 
   {% if upload.status == "ready" and d %}
   <form method="post" action="/upload/{{ upload.id }}/save" hx-post="/upload/{{ upload.id }}/save" hx-target="#upload-{{ upload.id }}" hx-swap="outerHTML"

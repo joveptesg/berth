@@ -461,10 +461,29 @@ upload:
   open_book: Open the book
   status_failed: Berth could not read these files.
   discard: Remove from the queue
-  discard_confirm: Remove %{name} from the queue?
+  discard_confirm: "Remove %{name} from the queue? Its uploaded files are deleted."
   retry: Try again
   save: Add to library
   save_hint: Phones get the book on their next sync.
+  journal: "Journal"
+  journal_events: "Events"
+  status_reading: "Reading files: %{checked} of %{count}"
+  status_retrying: "Attempt %{attempt} of %{max} failed, next at"
+  cancel: "Cancel analysis"
+  analysis_files_unreadable: "Unreadable files: %{count}. The journal says why."
+  analysis_cancelled: "Analysis cancelled."
+  file_image: "image"
+  file_empty: "Empty file: only zero bytes. Probably an unfinished download."
+  file_not_audio: "Berth found no sound it can read here: the file is damaged or not audio."
+  file_twin: "Same size as “%{name}”: likely a failed copy of it."
+  log_received: "Files received: %{count}"
+  log_analysis_started: "Analysis started"
+  log_attempt_failed: "Attempt %{count} failed:"
+  log_gave_up: "Analysis stopped after the last attempt"
+  log_files_unreadable: "Unreadable files: %{count}; analysis stopped"
+  log_analysed: "Done, chapters: %{count}"
+  log_cancelled: "Analysis cancelled"
+  log_retried: "Analysis started again"
 
 errors:
   demo_books_required: "Pick at least one book."
@@ -571,6 +590,7 @@ errors:
   upload_bucket_unreachable: "The bucket did not accept the files. Check that its CORS allows the Berth address (method PUT, headers *) and that the storage address opens from the browser."
   upload_send_failed: The files did not reach the server. Details are in the server log. Upload the folder again.
   upload_not_retryable: This upload cannot be retried. Upload the folder again.
+  upload_not_analysing: "The analysis of this upload is not running."
 
 backup:
   section: Backup

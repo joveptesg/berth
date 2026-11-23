@@ -7,7 +7,7 @@
 use axum::{
     Extension, Form, Json,
     body::Body,
-    extract::{Path, State},
+    extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
     response::IntoResponse,
 };
@@ -70,7 +70,10 @@ pub(crate) async fn page(
             },
         );
     }
-    let uploads = ingest::queue(&state.db, tenant_id).await?;
+    let mut uploads = Vec::new();
+    for upload in ingest::queue(&state.db, tenant_id).await? {
+        uploads.push(view(&state, tenant_id, upload).await?);
+    }
     // S3 takes the files straight from the browser, signed with their sha256.
     let presigned = match storage::default_id(&state.db, tenant_id).await? {
         Some(id) => storage::open(&state, tenant_id, &id)
@@ -140,19 +143,58 @@ pub(crate) async fn put_file(
     Ok(StatusCode::NO_CONTENT)
 }
 
+/// An upload on its card: with how far the analysis got.
+#[derive(Serialize)]
+struct CardView {
+    #[serde(flatten)]
+    upload: Upload,
+    progress: ingest::Progress,
+}
+
+async fn view(state: &AppState, tenant_id: &str, upload: Upload) -> Result<CardView, ApiError> {
+    let progress = ingest::progress(&state.db, tenant_id, &upload.id)
+        .await
+        .map_err(|e| BerthError::Internal(e.into()))?;
+    Ok(CardView { upload, progress })
+}
+
+/// `?log=1`: the card shows the upload's journal.
+#[derive(Deserialize, Default)]
+pub(crate) struct LogQuery {
+    #[serde(default)]
+    log: Option<u8>,
+}
+
+impl LogQuery {
+    fn open(&self) -> bool {
+        self.log == Some(1)
+    }
+}
+
 async fn card(
     state: &AppState,
     tenant_id: &str,
-    upload: &Upload,
+    upload: Upload,
+    log: bool,
     form: Option<Value>,
     error: Option<String>,
 ) -> Page {
     let categories = categories::list(&state.db, tenant_id).await?;
+    let journal = if log {
+        Some(
+            ingest::journal(&state.db, tenant_id, &upload.id)
+                .await
+                .map_err(|e| BerthError::Internal(e.into()))?,
+        )
+    } else {
+        None
+    };
     render(
         state,
         "partials/upload_card.html",
         context! {
-            upload => serde(upload), form, error, ratings => RATINGS.to_vec(),
+            upload => serde(view(state, tenant_id, upload).await?), journal => journal.map(serde),
+            form, error, ratings => RATINGS.to_vec(),
             categories => serde(categories),
             languages => serde(languages::list(&state.db, tenant_id).await?),
         },
@@ -171,7 +213,7 @@ pub(crate) async fn complete(
         Err(err) => return Err(err.into()),
     };
     let upload = ingest::get(&state.db, tenant_id, &id).await?;
-    card(&state, tenant_id, &upload, None, error).await
+    card(&state, tenant_id, upload, false, None, error).await
 }
 
 /// What the browser reports when a file did not get through.
@@ -200,13 +242,14 @@ pub(crate) async fn fail(
     )
     .await?;
     let upload = ingest::get(&state.db, tenant_id, &id).await?;
-    card(&state, tenant_id, &upload, None, None).await
+    card(&state, tenant_id, upload, false, None, None).await
 }
 
 pub(crate) async fn retry(
     State(state): State<AppState>,
     Extension(session): Extension<AdminSession>,
     Path(id): Path<String>,
+    Query(query): Query<LogQuery>,
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
     let error = match ingest::retry(&state, tenant_id, &id).await {
@@ -215,17 +258,34 @@ pub(crate) async fn retry(
         Err(err) => return Err(err.into()),
     };
     let upload = ingest::get(&state.db, tenant_id, &id).await?;
-    card(&state, tenant_id, &upload, None, error).await
+    card(&state, tenant_id, upload, query.open(), None, error).await
+}
+
+pub(crate) async fn cancel(
+    State(state): State<AppState>,
+    Extension(session): Extension<AdminSession>,
+    Path(id): Path<String>,
+    Query(query): Query<LogQuery>,
+) -> Page {
+    let tenant_id = &session.0.tenant_id;
+    let error = match ingest::cancel(&state.db, tenant_id, &id).await {
+        Ok(()) => None,
+        Err(BerthError::Conflict(code)) => Some(code),
+        Err(err) => return Err(err.into()),
+    };
+    let upload = ingest::get(&state.db, tenant_id, &id).await?;
+    card(&state, tenant_id, upload, query.open(), None, error).await
 }
 
 pub(crate) async fn status(
     State(state): State<AppState>,
     Extension(session): Extension<AdminSession>,
     Path(id): Path<String>,
+    Query(query): Query<LogQuery>,
 ) -> Page {
     let tenant_id = &session.0.tenant_id;
     let upload = ingest::get(&state.db, tenant_id, &id).await?;
-    card(&state, tenant_id, &upload, None, None).await
+    card(&state, tenant_id, upload, query.open(), None, None).await
 }
 
 pub(crate) async fn save(
@@ -243,13 +303,21 @@ pub(crate) async fn save(
     };
     let upload = ingest::get(&state.db, tenant_id, &id).await?;
     match result {
-        Ok(()) => card(&state, tenant_id, &upload, None, None).await,
+        Ok(()) => card(&state, tenant_id, upload, false, None, None).await,
         Err(err) => {
             let error = match err {
                 BerthError::Conflict(code) => code,
                 err => form_error(err)?,
             };
-            card(&state, tenant_id, &upload, Some(serde(&form)), Some(error)).await
+            card(
+                &state,
+                tenant_id,
+                upload,
+                false,
+                Some(serde(&form)),
+                Some(error),
+            )
+            .await
         }
     }
 }

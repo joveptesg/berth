@@ -1996,6 +1996,179 @@ async fn a_failed_analysis_runs_again_on_the_stored_files() {
     assert_eq!(upload.error, None);
 }
 
+/// Sends `files` through the admin as the browser does and completes the upload.
+async fn browser_upload(
+    state: &AppState,
+    session: &str,
+    name: &str,
+    files: &[(&str, Vec<u8>)],
+) -> String {
+    let list: Vec<_> = files
+        .iter()
+        .map(|(n, b)| serde_json::json!({ "name": n, "size": b.len() }))
+        .collect();
+    let new = serde_json::json!({ "name": name, "files": list });
+    let created = send(
+        state,
+        browser(
+            "POST",
+            "/upload/new",
+            session,
+            "application/json",
+            new.to_string().into_bytes(),
+        ),
+    )
+    .await;
+    let id = created.json()["id"].as_str().unwrap().to_owned();
+    for (idx, (_, bytes)) in files.iter().enumerate() {
+        send(
+            state,
+            browser(
+                "PUT",
+                &format!("/upload/{id}/files/{idx}"),
+                session,
+                "application/octet-stream",
+                bytes.clone(),
+            ),
+        )
+        .await;
+    }
+    let card = send(
+        state,
+        post(&format!("/upload/{id}/complete"), Some(session), &[]),
+    )
+    .await;
+    assert_eq!(card.status, StatusCode::OK, "{}", card.body);
+    id
+}
+
+#[tokio::test]
+async fn unreadable_files_fail_the_upload_at_once_and_the_journal_names_each() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let good = chapter_mp3("Глава 1", 1, 3);
+    // An unfinished download: a copy of the right size with nothing but zeros.
+    let zeros = vec![0; good.len()];
+    let page = b"<html>not found</html>".repeat(100);
+    let id = browser_upload(
+        &state,
+        &session,
+        "Сами боги",
+        &[("01.mp3", good), ("01.mp3(1).mp3", zeros), ("02.mp3", page)],
+    )
+    .await;
+
+    // The analysis is not retried: the files will not change.
+    assert_eq!(berth_server::jobs::run_due(&state).await.unwrap(), 1);
+    assert_eq!(berth_server::jobs::run_due(&state).await.unwrap(), 0);
+    let tenant_id = tenant(&state).await;
+    let upload = berth_server::service::ingest::get(&state.db, &tenant_id, &id)
+        .await
+        .unwrap();
+    assert_eq!(upload.status, "failed");
+    assert_eq!(upload.error.as_deref(), Some("analysis_files_unreadable"));
+
+    // The card says what went wrong; the journal names every file and why.
+    let card = send(&state, get(&format!("/upload/{id}"), Some(&session))).await;
+    assert!(card.body.contains("Unreadable files: 2"), "{}", card.body);
+    assert!(
+        card.body.contains(&format!("/upload/{id}/retry")),
+        "{}",
+        card.body
+    );
+    assert!(
+        !card.body.contains("01.mp3(1).mp3"),
+        "journal closed: {}",
+        card.body
+    );
+    let log = send(&state, get(&format!("/upload/{id}?log=1"), Some(&session))).await;
+    assert_eq!(log.status, StatusCode::OK, "{}", log.body);
+    let empty = between(&log.body, "01.mp3(1).mp3", "</li>");
+    assert!(empty.contains("only zero bytes"), "{empty}");
+    assert!(empty.contains("01.mp3"), "same size as 01.mp3: {empty}");
+    let page = between(&log.body, "02.mp3", "</li>");
+    assert!(page.contains("not audio"), "{page}");
+    assert!(
+        between(&log.body, "01.mp3", "</li>").contains("0:03"),
+        "{}",
+        log.body
+    );
+    assert!(log.body.contains("Files received: 3"), "{}", log.body);
+}
+
+#[tokio::test]
+async fn an_analysis_can_be_cancelled_retried_and_discarded() {
+    let dir = tempfile::tempdir().unwrap();
+    let state = start(dir.path()).await;
+    let session = set_up(&state).await;
+    let tenant_id = tenant(&state).await;
+    let id = browser_upload(
+        &state,
+        &session,
+        "Сами боги",
+        &[("01.mp3", chapter_mp3("Глава 1", 1, 3))],
+    )
+    .await;
+
+    let analysing = send(&state, get(&format!("/upload/{id}"), Some(&session))).await;
+    assert!(
+        analysing.body.contains(&format!("/upload/{id}/cancel")),
+        "{}",
+        analysing.body
+    );
+    let cancelled = send(
+        &state,
+        post(&format!("/upload/{id}/cancel"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(cancelled.status, StatusCode::OK, "{}", cancelled.body);
+    assert!(
+        cancelled.body.contains(&format!("/upload/{id}/retry")),
+        "{}",
+        cancelled.body
+    );
+    // The queued analysis does not run.
+    assert_eq!(berth_server::jobs::run_due(&state).await.unwrap(), 0);
+    let upload = berth_server::service::ingest::get(&state.db, &tenant_id, &id)
+        .await
+        .unwrap();
+    assert_eq!(upload.status, "failed");
+    assert_eq!(upload.error.as_deref(), Some("analysis_cancelled"));
+
+    send(
+        &state,
+        post(&format!("/upload/{id}/retry"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(berth_server::jobs::run_due(&state).await.unwrap(), 1);
+    let upload = berth_server::service::ingest::get(&state.db, &tenant_id, &id)
+        .await
+        .unwrap();
+    assert_eq!(upload.status, "ready");
+
+    // Discarding an upload in analysis drops its job too.
+    let other = browser_upload(
+        &state,
+        &session,
+        "Основание",
+        &[("01.mp3", chapter_mp3("Глава 1", 1, 2))],
+    )
+    .await;
+    let gone = send(
+        &state,
+        post(&format!("/upload/{other}/discard"), Some(&session), &[]),
+    )
+    .await;
+    assert_eq!(gone.status, StatusCode::OK, "{}", gone.body);
+    assert_eq!(berth_server::jobs::run_due(&state).await.unwrap(), 0);
+    let pending: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE done_at IS NULL")
+        .fetch_one(&state.db)
+        .await
+        .unwrap();
+    assert_eq!(pending, 0);
+}
+
 #[tokio::test]
 #[expect(
     clippy::too_many_lines,

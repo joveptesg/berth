@@ -108,9 +108,10 @@ x-data="{ pw: '', cf: '' }" x-effect="$el.querySelector('[name=confirm]').setCus
 {%- if name == "android" %}Android{% elif name == "ios" %}iOS{% elif name == "windows" %}Windows{% elif name == "macos" %}macOS{% elif name == "linux" %}Linux{% elif name == "web" %}{{ t('devices.browser') }}{% else %}{{ name }}{% endif -%}
 {%- endmacro %}
 
-{# Epoch milliseconds, formatted in the browser's time zone by the script in head.html. #}
-{% macro time(ms) -%}
-<time data-ts="{{ ms }}" class="mono text-[13px] font-normal">{{ ms }}</time>
+{# Epoch milliseconds, formatted in the browser's time zone by the script in head.html;
+   style "time" leaves out the date and keeps the seconds. #}
+{% macro time(ms, style="") -%}
+<time data-ts="{{ ms }}"{% if style %} data-style="{{ style }}"{% endif %} class="mono text-[13px] font-normal">{{ ms }}</time>
 {%- endmacro %}
 
 {# Closes the QR panel around it; the status polling stops with it. #}

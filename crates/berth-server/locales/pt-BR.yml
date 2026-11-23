@@ -458,10 +458,29 @@ upload:
   open_book: Abrir o livro
   status_failed: O Berth não conseguiu ler estes arquivos.
   discard: Remover da fila
-  discard_confirm: Remover %{name} da fila?
+  discard_confirm: "Remover %{name} da fila? Os arquivos enviados são apagados."
   retry: Tentar de novo
   save: Adicionar à biblioteca
   save_hint: Os celulares recebem o livro na próxima sincronização.
+  journal: "Registro"
+  journal_events: "Eventos"
+  status_reading: "Lendo arquivos: %{checked} de %{count}"
+  status_retrying: "Tentativa %{attempt} de %{max} falhou, próxima às"
+  cancel: "Cancelar análise"
+  analysis_files_unreadable: "Arquivos ilegíveis: %{count}. O registro diz por quê."
+  analysis_cancelled: "Análise cancelada."
+  file_image: "imagem"
+  file_empty: "Arquivo vazio: só bytes zero. Provavelmente um download não terminado."
+  file_not_audio: "O Berth não encontrou aqui um som que saiba ler: o arquivo está danificado ou não é áudio."
+  file_twin: "Mesmo tamanho que “%{name}”: provavelmente uma cópia que falhou."
+  log_received: "Arquivos recebidos: %{count}"
+  log_analysis_started: "Análise iniciada"
+  log_attempt_failed: "Tentativa %{count} falhou:"
+  log_gave_up: "Análise parada após a última tentativa"
+  log_files_unreadable: "Arquivos ilegíveis: %{count}; análise parada"
+  log_analysed: "Pronto, capítulos: %{count}"
+  log_cancelled: "Análise cancelada"
+  log_retried: "Análise iniciada de novo"
 
 errors:
   demo_books_required: "Escolha pelo menos um livro."
@@ -568,6 +587,7 @@ errors:
   upload_bucket_unreachable: "O bucket não aceitou os arquivos. Verifique se o CORS dele permite o endereço do Berth (método PUT, cabeçalhos *) e se o endereço do armazenamento abre no navegador."
   upload_send_failed: Os arquivos não chegaram ao servidor. Os detalhes estão no log do servidor. Envie a pasta de novo.
   upload_not_retryable: Não é possível tentar este envio de novo. Envie a pasta de novo.
+  upload_not_analysing: "A análise deste envio não está em andamento."
 
 backup:
   section: Backup

@@ -458,10 +458,29 @@ upload:
   open_book: Открыть книгу
   status_failed: Berth не смог прочитать эти файлы.
   discard: Убрать из очереди
-  discard_confirm: Убрать «%{name}» из очереди?
+  discard_confirm: "Убрать «%{name}» из очереди? Загруженные файлы будут удалены."
   retry: Повторить разбор
   save: Добавить в библиотеку
   save_hint: Телефоны получат книгу при следующем синке.
+  journal: "Журнал"
+  journal_events: "События"
+  status_reading: "Читаем файлы: %{checked} из %{count}"
+  status_retrying: "Сбой, попытка %{attempt} из %{max}, повтор в"
+  cancel: "Отменить разбор"
+  analysis_files_unreadable: "Не читаются файлы: %{count}. Причины — в журнале."
+  analysis_cancelled: "Разбор отменён."
+  file_image: "картинка"
+  file_empty: "Пустой файл: одни нулевые байты. Похоже, он не докачался."
+  file_not_audio: "Berth не нашёл здесь звука, который умеет читать: файл повреждён или это не аудио."
+  file_twin: "Того же размера, что и «%{name}», — видимо, его неудачная копия."
+  log_received: "Получено файлов: %{count}"
+  log_analysis_started: "Разбор начат"
+  log_attempt_failed: "Попытка %{count} не удалась:"
+  log_gave_up: "Разбор остановлен после последней попытки"
+  log_files_unreadable: "Не читаются файлы: %{count}, разбор остановлен"
+  log_analysed: "Готово, глав: %{count}"
+  log_cancelled: "Разбор отменён"
+  log_retried: "Разбор запущен заново"
 
 errors:
   demo_books_required: "Выберите хотя бы одну книгу."
@@ -568,6 +587,7 @@ errors:
   upload_bucket_unreachable: "Бакет не принял файлы. Проверьте, что на нём разрешён CORS для адреса Berth (методы PUT и заголовки *) и что адрес хранилища открывается из браузера."
   upload_send_failed: Файлы не дошли до сервера. Подробности — в логе сервера. Загрузите папку снова.
   upload_not_retryable: Эту загрузку нельзя повторить. Загрузите папку снова.
+  upload_not_analysing: "Разбор этой загрузки сейчас не идёт."
 
 backup:
   section: Бэкап

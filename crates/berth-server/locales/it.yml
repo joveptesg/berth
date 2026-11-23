@@ -458,10 +458,29 @@ upload:
   open_book: Apri il libro
   status_failed: Berth non è riuscito a leggere questi file.
   discard: Rimuovi dalla coda
-  discard_confirm: Rimuovere %{name} dalla coda?
+  discard_confirm: "Rimuovere %{name} dalla coda? I file caricati vengono eliminati."
   retry: Riprova
   save: Aggiungi alla libreria
   save_hint: I telefoni ricevono il libro alla prossima sincronizzazione.
+  journal: "Registro"
+  journal_events: "Eventi"
+  status_reading: "Lettura file: %{checked} di %{count}"
+  status_retrying: "Tentativo %{attempt} di %{max} fallito, prossimo alle"
+  cancel: "Annulla analisi"
+  analysis_files_unreadable: "File illeggibili: %{count}. Il registro dice perché."
+  analysis_cancelled: "Analisi annullata."
+  file_image: "immagine"
+  file_empty: "File vuoto: solo byte zero. Probabilmente un download non finito."
+  file_not_audio: "Berth non trova qui un suono che sa leggere: il file è danneggiato o non è audio."
+  file_twin: "Stessa dimensione di «%{name}»: probabilmente una sua copia non riuscita."
+  log_received: "File ricevuti: %{count}"
+  log_analysis_started: "Analisi avviata"
+  log_attempt_failed: "Tentativo %{count} fallito:"
+  log_gave_up: "Analisi fermata dopo l'ultimo tentativo"
+  log_files_unreadable: "File illeggibili: %{count}; analisi fermata"
+  log_analysed: "Fatto, capitoli: %{count}"
+  log_cancelled: "Analisi annullata"
+  log_retried: "Analisi riavviata"
 
 errors:
   demo_books_required: "Scegli almeno un libro."
@@ -568,6 +587,7 @@ errors:
   upload_bucket_unreachable: "Il bucket non ha accettato i file. Controlla che le sue regole CORS consentano l'indirizzo di Berth (metodo PUT, header *) e che l'indirizzo dell'archivio si apra dal browser."
   upload_send_failed: I file non hanno raggiunto il server. I dettagli sono nel log del server. Carica di nuovo la cartella.
   upload_not_retryable: Questo caricamento non può essere ritentato. Carica di nuovo la cartella.
+  upload_not_analysing: "L'analisi di questo caricamento non è in corso."
 
 backup:
   section: Backup

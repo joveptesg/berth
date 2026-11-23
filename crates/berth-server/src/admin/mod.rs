@@ -189,6 +189,7 @@ pub(crate) fn router(state: AppState) -> Router<AppState> {
         .route("/upload/{id}/fail", post(upload::fail))
         .route("/upload/{id}/save", post(upload::save))
         .route("/upload/{id}/retry", post(upload::retry))
+        .route("/upload/{id}/cancel", post(upload::cancel))
         .route("/upload/{id}/discard", post(upload::discard))
         .route("/upload/{id}/cover", get(upload::cover))
         .layer(middleware::from_fn_with_state(state, session::require));

@@ -45,10 +45,11 @@
   (function () {
     function format(root) {
       var fmt = new Intl.DateTimeFormat(document.documentElement.lang, { dateStyle: 'medium', timeStyle: 'short' });
+      var time = new Intl.DateTimeFormat(document.documentElement.lang, { timeStyle: 'medium' });
       root.querySelectorAll('time[data-ts]').forEach(function (el) {
         var date = new Date(Number(el.dataset.ts));
         el.dateTime = date.toISOString();
-        el.textContent = fmt.format(date);
+        el.textContent = (el.dataset.style === 'time' ? time : fmt).format(date);
       });
     }
     document.addEventListener('DOMContentLoaded', function () { format(document); });
@@ -75,7 +76,17 @@
     dialog.querySelector('[data-question]').textContent = e.detail.question;
     dialog.addEventListener('close', function () {
       dialog.remove();
-      if (dialog.returnValue === 'ok') e.detail.issueRequest(true);
+      if (dialog.returnValue !== 'ok') return;
+      if (document.body.contains(e.detail.elt)) {
+        e.detail.issueRequest(true);
+        return;
+      }
+      // Polling replaced the element while the dialog was open, and htmx drops the requests
+      // of detached elements: send the request into the target's replacement instead.
+      var id = e.detail.target && e.detail.target.id;
+      if (id && document.getElementById(id)) {
+        htmx.ajax(e.detail.verb, e.detail.path, { target: '#' + id, swap: e.detail.elt.getAttribute('hx-swap') || undefined });
+      }
     });
     document.body.appendChild(dialog);
     dialog.showModal();

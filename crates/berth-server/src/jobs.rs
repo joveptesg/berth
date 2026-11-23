@@ -17,7 +17,8 @@ use crate::{
 
 /// Lease of a claimed job: longer than any job runs.
 const LEASE_MS: i64 = 30 * 60 * 1000;
-const MAX_ATTEMPTS: i64 = 5;
+/// Attempts of a job before it gives up.
+pub(crate) const MAX_ATTEMPTS: i64 = 5;
 const BACKOFF_MS: i64 = 30_000;
 /// The worker also polls, so jobs enqueued by another process (the CLI) run too.
 const POLL: Duration = Duration::from_secs(5);
@@ -49,6 +50,27 @@ pub(crate) async fn enqueue(
     .execute(conn)
     .await?;
     Ok(id)
+}
+
+/// Drops the pending analysis of upload `upload_id`. One running now stops when it finds
+/// the upload gone or no longer analysing.
+pub(crate) async fn cancel_ingest(
+    conn: &mut SqliteConnection,
+    tenant_id: &str,
+    upload_id: &str,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "UPDATE jobs SET done_at = $3
+         WHERE tenant_id = $1 AND kind = $4 AND done_at IS NULL
+           AND json_extract(payload, '$.upload_id') = $2",
+    )
+    .bind(tenant_id)
+    .bind(upload_id)
+    .bind(now_ms())
+    .bind(INGEST)
+    .execute(conn)
+    .await?;
+    Ok(())
 }
 
 #[derive(sqlx::FromRow)]
@@ -117,6 +139,19 @@ pub async fn run_due(state: &AppState) -> anyhow::Result<usize> {
                 .bind(last.then_some(now))
                 .execute(&state.db)
                 .await?;
+                if job.kind == INGEST
+                    && let Some(upload) = payload["upload_id"].as_str()
+                    && let Err(err) = ingest::attempt_failed(
+                        &state.db,
+                        &job.tenant_id,
+                        upload,
+                        job.attempts,
+                        &message,
+                    )
+                    .await
+                {
+                    tracing::warn!(error = %err, "could not journal the failed attempt");
+                }
                 if last {
                     gave_up(state, &job.tenant_id, &job.kind, &payload, &message).await;
                 }

@@ -256,6 +256,31 @@ async fn upload_row(
     .ok_or(BerthError::NotFound)
 }
 
+/// Adds an event to the journal of upload `id`; nothing when the upload is gone.
+async fn note(
+    db: impl sqlx::SqliteExecutor<'_>,
+    tenant_id: &str,
+    id: &str,
+    event: &str,
+    count: Option<i64>,
+    detail: Option<&str>,
+) -> sqlx::Result<()> {
+    sqlx::query(
+        "INSERT INTO upload_events (id, tenant_id, upload_id, at, event, count, detail)
+         SELECT $1, $2, $3, $4, $5, $6, $7 WHERE EXISTS (SELECT 1 FROM uploads WHERE id = $3)",
+    )
+    .bind(uuid::Uuid::now_v7().to_string())
+    .bind(tenant_id)
+    .bind(id)
+    .bind(now_ms())
+    .bind(event)
+    .bind(count)
+    .bind(detail)
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 async fn files(db: &SqlitePool, tenant_id: &str, id: &str) -> sqlx::Result<Vec<FileRow>> {
     sqlx::query_as(
         "SELECT idx, name, size, kind, blob_hash, stored FROM upload_files
@@ -421,6 +446,16 @@ pub async fn complete(state: &AppState, tenant_id: &str, id: &str) -> Result<()>
     )
     .await
     .context("queue analysis")?;
+    note(
+        &mut *tx,
+        tenant_id,
+        id,
+        "received",
+        i64::try_from(list.len()).ok(),
+        None,
+    )
+    .await
+    .context("journal")?;
     tx.commit().await.context("commit")?;
     state.wake_jobs();
     Ok(())
@@ -747,38 +782,160 @@ async fn readable(
     Ok((path, true))
 }
 
+/// Whether the file holds nothing but zero bytes, as a download that never finished.
+fn all_zero(path: &std::path::Path) -> bool {
+    use std::io::Read;
+    let Ok(mut file) = std::fs::File::open(path) else {
+        return false;
+    };
+    let mut buf = vec![0u8; 1 << 16];
+    let mut any = false;
+    loop {
+        match file.read(&mut buf) {
+            Ok(0) => return any,
+            Ok(n) if buf[..n].iter().all(|&b| b == 0) => any = true,
+            _ => return false,
+        }
+    }
+}
+
+/// Whether upload `id` still waits for its analysis (not cancelled or discarded meanwhile).
+async fn still_analyzing(db: &SqlitePool, tenant_id: &str, id: &str) -> sqlx::Result<bool> {
+    let status: Option<String> =
+        sqlx::query_scalar("SELECT status FROM uploads WHERE tenant_id = $1 AND id = $2")
+            .bind(tenant_id)
+            .bind(id)
+            .fetch_optional(db)
+            .await?;
+    Ok(status.as_deref() == Some("analyzing"))
+}
+
+/// Reads audio file `file` of upload `id` and records what it holds for the journal: its
+/// duration, or (returning `None`) why it cannot be read.
+async fn read_audio(
+    state: &AppState,
+    store: &ObjectBlobStore,
+    tenant_id: &str,
+    id: &str,
+    file: &FileRow,
+    hash: &str,
+) -> anyhow::Result<Option<media::AudioInfo>> {
+    let (path, temporary) = readable(state, store, tenant_id, hash).await?;
+    let ext = extension(&file.name);
+    let read = tokio::task::spawn_blocking(move || {
+        let info = media::inspect(&path, &ext).map_err(|err| {
+            let problem = if all_zero(&path) {
+                "file_empty"
+            } else {
+                "file_not_audio"
+            };
+            (problem, format!("{err:#}"))
+        });
+        if temporary {
+            let _ = std::fs::remove_file(&path);
+        }
+        info
+    })
+    .await?;
+    match read {
+        Ok(info) => {
+            sqlx::query(
+                "UPDATE upload_files SET duration_ms = $3 WHERE upload_id = $1 AND idx = $2",
+            )
+            .bind(id)
+            .bind(file.idx)
+            .bind(i64::try_from(info.duration_ms).unwrap_or(i64::MAX))
+            .execute(&state.db)
+            .await?;
+            Ok(Some(info))
+        }
+        Err((problem, detail)) => {
+            tracing::info!(upload = %id, file = %file.name, problem, detail, "unreadable file");
+            sqlx::query(
+                "UPDATE upload_files SET problem = $3, problem_detail = $4
+                 WHERE upload_id = $1 AND idx = $2",
+            )
+            .bind(id)
+            .bind(file.idx)
+            .bind(problem)
+            .bind(&detail)
+            .execute(&state.db)
+            .await?;
+            Ok(None)
+        }
+    }
+}
+
+/// Fails upload `id` for its `problems` unreadable files; the analysis is not retried.
+async fn fail_unreadable(
+    db: &SqlitePool,
+    tenant_id: &str,
+    id: &str,
+    problems: i64,
+) -> anyhow::Result<()> {
+    let failed = sqlx::query(
+        "UPDATE uploads SET status = 'failed', error = 'analysis_files_unreadable', updated_at = $3
+         WHERE tenant_id = $1 AND id = $2 AND status = 'analyzing'",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(now_ms())
+    .execute(db)
+    .await?;
+    if failed.rows_affected() > 0 {
+        note(db, tenant_id, id, "files_unreadable", Some(problems), None).await?;
+    }
+    Ok(())
+}
+
 /// The `ingest_pipeline` job: inspects the files and stores the proposed book.
+///
+/// Every file is read, and what each holds is kept for the journal. Unreadable files fail
+/// the upload at once: reading them again gives the same answer. Storage errors are
+/// returned, so the job runs again.
 pub(crate) async fn analyze(state: &AppState, tenant_id: &str, id: &str) -> anyhow::Result<()> {
-    let (status, storage_id, _) = upload_row(&state.db, tenant_id, id).await?;
+    let (status, storage_id, _) = match upload_row(&state.db, tenant_id, id).await {
+        Ok(row) => row,
+        Err(BerthError::NotFound) => return Ok(()), // discarded
+        Err(err) => return Err(err.into()),
+    };
     if status != "analyzing" {
-        return Ok(()); // already done by an earlier attempt
+        return Ok(()); // done by an earlier attempt, or cancelled
     }
     let name: String = sqlx::query_scalar("SELECT name FROM uploads WHERE id = $1")
         .bind(id)
         .fetch_one(&state.db)
         .await?;
+    note(&state.db, tenant_id, id, "analysis_started", None, None).await?;
+    sqlx::query(
+        "UPDATE upload_files SET duration_ms = NULL, problem = NULL, problem_detail = NULL
+         WHERE tenant_id = $1 AND upload_id = $2",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .execute(&state.db)
+    .await?;
     let store = profiles::open(state, tenant_id, &storage_id).await?;
     let list = files(&state.db, tenant_id, id).await?;
     let mut audio = Vec::new();
     let mut images = Vec::new();
+    let mut problems = 0;
     for file in list {
         let hash = file.blob_hash.clone().context("file without blob")?;
         if file.kind == "image" {
             images.push((file, hash));
             continue;
         }
-        let (path, temporary) = readable(state, &store, tenant_id, &hash).await?;
-        let ext = extension(&file.name);
-        let info = tokio::task::spawn_blocking(move || {
-            let info = media::inspect(&path, &ext);
-            if temporary {
-                let _ = std::fs::remove_file(&path);
-            }
-            info
-        })
-        .await?
-        .with_context(|| format!("cannot read {}", file.name))?;
-        audio.push((file, info));
+        if !still_analyzing(&state.db, tenant_id, id).await? {
+            return Ok(());
+        }
+        match read_audio(state, &store, tenant_id, id, &file, &hash).await? {
+            Some(info) => audio.push((file, info)),
+            None => problems += 1,
+        }
+    }
+    if problems > 0 {
+        return fail_unreadable(&state.db, tenant_id, id, problems).await;
     }
     let embedded = largest_cover(audio.iter().filter_map(|(_, i)| i.cover.as_ref()));
     let mut draft = propose(&name, audio);
@@ -814,7 +971,7 @@ pub(crate) async fn analyze(state: &AppState, tenant_id: &str, id: &str) -> anyh
             Some(blobs::store_bytes(state, tenant_id, &storage_id, cover.data, &cover.mime).await?);
     }
 
-    sqlx::query(
+    let ready = sqlx::query(
         "UPDATE uploads SET status = 'ready', draft = $3, error = NULL, updated_at = $4
          WHERE tenant_id = $1 AND id = $2 AND status = 'analyzing'",
     )
@@ -824,19 +981,24 @@ pub(crate) async fn analyze(state: &AppState, tenant_id: &str, id: &str) -> anyh
     .bind(now_ms())
     .execute(&state.db)
     .await?;
+    if ready.rows_affected() > 0 {
+        let chapters = i64::try_from(draft.chapters.len()).ok();
+        note(&state.db, tenant_id, id, "analysed", chapters, None).await?;
+    }
     tracing::info!(upload = %id, files = draft.files.len(), chapters = draft.chapters.len(), "upload analysed");
     Ok(())
 }
 
-/// Marks an upload failed after the analysis gave up.
+/// Marks an upload failed after the analysis gave up; a cancelled one stays as it is.
 pub(crate) async fn fail(
     db: &SqlitePool,
     tenant_id: &str,
     id: &str,
     error: &str,
 ) -> sqlx::Result<()> {
-    sqlx::query(
-        "UPDATE uploads SET status = 'failed', error = $3, updated_at = $4 WHERE tenant_id = $1 AND id = $2",
+    let failed = sqlx::query(
+        "UPDATE uploads SET status = 'failed', error = $3, updated_at = $4
+         WHERE tenant_id = $1 AND id = $2 AND status = 'analyzing'",
     )
     .bind(tenant_id)
     .bind(id)
@@ -844,6 +1006,59 @@ pub(crate) async fn fail(
     .bind(now_ms())
     .execute(db)
     .await?;
+    if failed.rows_affected() > 0 {
+        note(db, tenant_id, id, "gave_up", None, None).await?;
+    }
+    Ok(())
+}
+
+/// Journals attempt `attempt` of the analysis that failed with `error`.
+pub(crate) async fn attempt_failed(
+    db: &SqlitePool,
+    tenant_id: &str,
+    id: &str,
+    attempt: i64,
+    error: &str,
+) -> sqlx::Result<()> {
+    note(
+        db,
+        tenant_id,
+        id,
+        "attempt_failed",
+        Some(attempt),
+        Some(error),
+    )
+    .await
+}
+
+/// Stops the analysis of upload `id`: it fails as cancelled, to be analysed again or
+/// discarded.
+///
+/// # Errors
+/// `NotFound`, `Conflict("upload_not_analysing")`.
+pub async fn cancel(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
+    let mut tx = db.begin().await.context("begin")?;
+    let moved = sqlx::query(
+        "UPDATE uploads SET status = 'failed', error = 'analysis_cancelled', updated_at = $3
+         WHERE tenant_id = $1 AND id = $2 AND status = 'analyzing'",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(now_ms())
+    .execute(&mut *tx)
+    .await
+    .context("cancel upload")?;
+    if moved.rows_affected() == 0 {
+        get(db, tenant_id, id).await?;
+        return Err(BerthError::Conflict("upload_not_analysing".into()));
+    }
+    jobs::cancel_ingest(&mut tx, tenant_id, id)
+        .await
+        .context("cancel job")?;
+    note(&mut *tx, tenant_id, id, "cancelled", None, None)
+        .await
+        .context("journal")?;
+    tx.commit().await.context("commit")?;
     Ok(())
 }
 
@@ -912,6 +1127,9 @@ pub async fn retry(state: &AppState, tenant_id: &str, id: &str) -> Result<()> {
     )
     .await
     .context("queue analysis")?;
+    note(&mut *tx, tenant_id, id, "retried", None, None)
+        .await
+        .context("journal")?;
     tx.commit().await.context("commit")?;
     state.wake_jobs();
     Ok(())
@@ -1207,6 +1425,15 @@ pub async fn discard(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
     blobs::touch(&mut tx, tenant_id, &hashes)
         .await
         .context("touch blobs")?;
+    jobs::cancel_ingest(&mut tx, tenant_id, id)
+        .await
+        .context("cancel job")?;
+    sqlx::query("DELETE FROM upload_events WHERE tenant_id = $1 AND upload_id = $2")
+        .bind(tenant_id)
+        .bind(id)
+        .execute(&mut *tx)
+        .await
+        .context("delete journal")?;
     sqlx::query("DELETE FROM upload_files WHERE tenant_id = $1 AND upload_id = $2")
         .bind(tenant_id)
         .bind(id)
@@ -1221,6 +1448,150 @@ pub async fn discard(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
         .context("delete upload")?;
     tx.commit().await.context("commit")?;
     Ok(())
+}
+
+/// How far the analysis of an upload got, for its card.
+#[derive(Debug, Clone, Default, Serialize)]
+pub struct Progress {
+    /// Audio files in the upload.
+    pub audio: i64,
+    /// Audio files read so far, readable or not.
+    pub checked: i64,
+    /// Audio files that could not be read.
+    pub problems: i64,
+    /// The failed attempt the analysis waits to run again after.
+    pub retry: Option<Retry>,
+}
+
+/// A failed attempt of the analysis that will run again.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct Retry {
+    /// Attempts so far.
+    pub attempt: i64,
+    /// Attempts in all.
+    #[sqlx(skip)]
+    pub max: i64,
+    /// When it runs again.
+    pub run_at: i64,
+    /// What failed.
+    pub error: String,
+}
+
+/// The progress of upload `id`.
+///
+/// # Errors
+/// Database failures.
+pub async fn progress(db: &SqlitePool, tenant_id: &str, id: &str) -> sqlx::Result<Progress> {
+    let (audio, checked, problems): (i64, i64, i64) = sqlx::query_as(
+        "SELECT COUNT(*),
+            COALESCE(SUM(CASE WHEN duration_ms IS NOT NULL OR problem IS NOT NULL THEN 1 ELSE 0 END), 0),
+            COALESCE(SUM(CASE WHEN problem IS NOT NULL THEN 1 ELSE 0 END), 0)
+         FROM upload_files WHERE tenant_id = $1 AND upload_id = $2 AND kind = 'audio'",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_one(db)
+    .await?;
+    let retry: Option<Retry> = sqlx::query_as(
+        "SELECT attempts AS attempt, run_at, last_error AS error FROM jobs
+         WHERE tenant_id = $1 AND kind = $3 AND done_at IS NULL AND last_error IS NOT NULL
+           AND json_extract(payload, '$.upload_id') = $2
+         ORDER BY created_at DESC LIMIT 1",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .bind(jobs::INGEST)
+    .fetch_optional(db)
+    .await?;
+    Ok(Progress {
+        audio,
+        checked,
+        problems,
+        retry: retry.map(|r| Retry {
+            max: jobs::MAX_ATTEMPTS,
+            ..r
+        }),
+    })
+}
+
+/// The journal of an upload: its files with what the analysis found, and its events.
+#[derive(Debug, Clone, Serialize)]
+pub struct Journal {
+    /// Files in drop order.
+    pub files: Vec<JournalFile>,
+    /// Events, oldest first.
+    pub events: Vec<JournalEvent>,
+}
+
+/// A file in the journal.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct JournalFile {
+    /// Path inside the dropped folder.
+    pub name: String,
+    /// Bytes.
+    pub size: i64,
+    /// `audio` or `image`.
+    pub kind: String,
+    /// Playing time once read.
+    pub duration_ms: Option<i64>,
+    /// Why it could not be read: `file_empty` or `file_not_audio`.
+    pub problem: Option<String>,
+    /// The reader's message.
+    pub problem_detail: Option<String>,
+    /// A readable file of the same size: an empty file is likely a failed copy of it.
+    #[sqlx(skip)]
+    pub twin: Option<String>,
+}
+
+/// An event in the journal.
+#[derive(Debug, Clone, Serialize, sqlx::FromRow)]
+pub struct JournalEvent {
+    /// When.
+    pub at: i64,
+    /// `received`, `analysis_started`, `attempt_failed`, `gave_up`, `files_unreadable`,
+    /// `analysed`, `cancelled` or `retried`.
+    pub event: String,
+    /// Files, chapters or the attempt, by event.
+    pub count: Option<i64>,
+    /// The error of a failed attempt.
+    pub detail: Option<String>,
+}
+
+/// The journal of upload `id`.
+///
+/// # Errors
+/// Database failures.
+pub async fn journal(db: &SqlitePool, tenant_id: &str, id: &str) -> sqlx::Result<Journal> {
+    let mut files: Vec<JournalFile> = sqlx::query_as(
+        "SELECT name, size, kind, duration_ms, problem, problem_detail FROM upload_files
+         WHERE tenant_id = $1 AND upload_id = $2 ORDER BY idx",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_all(db)
+    .await?;
+    let readable: Vec<(i64, String)> = files
+        .iter()
+        .filter(|f| f.duration_ms.is_some())
+        .map(|f| (f.size, f.name.clone()))
+        .collect();
+    for file in &mut files {
+        if file.problem.as_deref() == Some("file_empty") {
+            file.twin = readable
+                .iter()
+                .find(|(size, _)| *size == file.size)
+                .map(|(_, name)| name.clone());
+        }
+    }
+    let events = sqlx::query_as(
+        "SELECT at, event, count, detail FROM upload_events
+         WHERE tenant_id = $1 AND upload_id = $2 ORDER BY id",
+    )
+    .bind(tenant_id)
+    .bind(id)
+    .fetch_all(db)
+    .await?;
+    Ok(Journal { files, events })
 }
 
 #[cfg(test)]
