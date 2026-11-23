@@ -27,6 +27,7 @@ use super::{
 };
 use crate::{
     AppState,
+    blob_gc::{self, Removed},
     db::now_ms,
     jobs, media,
     storage::{BlobStore, ContentHash, ObjectBlobStore, put_headers},
@@ -1400,12 +1401,13 @@ pub async fn history(
     Ok((rows.into_iter().map(Into::into).collect(), total))
 }
 
-/// Drops an unsaved upload from the queue; its stored bytes go a day later unless another
-/// book or upload uses them (`blob_gc`).
+/// Drops an unsaved upload from the queue and deletes its stored files right away, except
+/// those another book or upload uses; says what was deleted.
 ///
 /// # Errors
 /// `NotFound`, `Conflict("upload_saved")`.
-pub async fn discard(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
+pub async fn discard(state: &AppState, tenant_id: &str, id: &str) -> Result<Removed> {
+    let db = &state.db;
     let (status, _, _) = upload_row(db, tenant_id, id).await?;
     if status == "saved" {
         return Err(BerthError::Conflict("upload_saved".into()));
@@ -1447,7 +1449,9 @@ pub async fn discard(db: &SqlitePool, tenant_id: &str, id: &str) -> Result<()> {
         .await
         .context("delete upload")?;
     tx.commit().await.context("commit")?;
-    Ok(())
+    let removed = blob_gc::remove_now(state, tenant_id, &hashes).await;
+    tracing::info!(upload = %id, files = removed.files, bytes = removed.bytes, kept = removed.kept, failed = removed.failed, "upload discarded");
+    Ok(removed)
 }
 
 /// How far the analysis of an upload got, for its card.

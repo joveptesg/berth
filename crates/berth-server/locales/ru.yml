@@ -481,6 +481,10 @@ upload:
   log_analysed: "Готово, глав: %{count}"
   log_cancelled: "Разбор отменён"
   log_retried: "Разбор запущен заново"
+  removed: "«%{name}» убрана из очереди."
+  removed_files: "Удалено из хранилища файлов: %{count} (%{size})."
+  removed_kept: "Оставлено файлов: %{count} — их используют другие книги или загрузки."
+  removed_failed: "Пока не удалено: %{count} — хранилище отказало, сервер повторит в течение часа."
 
 errors:
   demo_books_required: "Выберите хотя бы одну книгу."

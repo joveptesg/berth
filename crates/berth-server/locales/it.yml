@@ -481,6 +481,10 @@ upload:
   log_analysed: "Fatto, capitoli: %{count}"
   log_cancelled: "Analisi annullata"
   log_retried: "Analisi riavviata"
+  removed: "%{name} rimosso dalla coda."
+  removed_files: "File eliminati dallo spazio di archiviazione: %{count} (%{size})."
+  removed_kept: "File conservati: %{count}, li usano altri libri o caricamenti."
+  removed_failed: "Non ancora eliminati: %{count}; l'archivio ha rifiutato, il server riprova entro un'ora."
 
 errors:
   demo_books_required: "Scegli almeno un libro."

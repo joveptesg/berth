@@ -484,6 +484,10 @@ upload:
   log_analysed: "Done, chapters: %{count}"
   log_cancelled: "Analysis cancelled"
   log_retried: "Analysis started again"
+  removed: "%{name} removed from the queue."
+  removed_files: "Files deleted from storage: %{count} (%{size})."
+  removed_kept: "Files kept: %{count}, other books or uploads use them."
+  removed_failed: "Not deleted yet: %{count}; storage refused, the server tries again within the hour."
 
 errors:
   demo_books_required: "Pick at least one book."

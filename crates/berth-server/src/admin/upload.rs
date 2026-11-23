@@ -9,7 +9,6 @@ use axum::{
     body::Body,
     extract::{Path, Query, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
 };
 use berth_core::BerthError;
 use minijinja::{Value, context};
@@ -327,9 +326,15 @@ pub(crate) async fn discard(
     Extension(session): Extension<AdminSession>,
     Path(id): Path<String>,
 ) -> Page {
-    ingest::discard(&state.db, &session.0.tenant_id, &id).await?;
-    // The card is swapped for nothing.
-    Ok(().into_response())
+    let tenant_id = &session.0.tenant_id;
+    let name = ingest::get(&state.db, tenant_id, &id).await?.name;
+    let removed = ingest::discard(&state, tenant_id, &id).await?;
+    // The card says what happened to the files in storage.
+    render(
+        &state,
+        "partials/upload_removed.html",
+        context! { id, name, removed => serde(removed) },
+    )
 }
 
 pub(crate) async fn cover(

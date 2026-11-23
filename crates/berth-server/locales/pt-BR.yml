@@ -481,6 +481,10 @@ upload:
   log_analysed: "Pronto, capítulos: %{count}"
   log_cancelled: "Análise cancelada"
   log_retried: "Análise iniciada de novo"
+  removed: "%{name} removido da fila."
+  removed_files: "Arquivos apagados do armazenamento: %{count} (%{size})."
+  removed_kept: "Arquivos mantidos: %{count}, outros livros ou envios os usam."
+  removed_failed: "Ainda não apagados: %{count}; o armazenamento recusou, o servidor tenta de novo em até uma hora."
 
 errors:
   demo_books_required: "Escolha pelo menos um livro."

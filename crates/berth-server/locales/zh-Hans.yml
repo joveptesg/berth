@@ -481,6 +481,10 @@ upload:
   log_analysed: "完成，章节：%{count}"
   log_cancelled: "已取消分析"
   log_retried: "重新开始分析"
+  removed: "已从队列中移除 %{name}。"
+  removed_files: "已从存储中删除文件：%{count} 个（%{size}）。"
+  removed_kept: "保留的文件：%{count} 个，其他书籍或上传正在使用。"
+  removed_failed: "尚未删除：%{count} 个；存储拒绝了请求，服务器会在一小时内重试。"
 
 errors:
   demo_books_required: "请至少选择一本书。"

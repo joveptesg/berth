@@ -482,6 +482,10 @@ upload:
   log_analysed: "Fertig, Kapitel: %{count}"
   log_cancelled: "Analyse abgebrochen"
   log_retried: "Analyse neu gestartet"
+  removed: "%{name} aus der Warteschlange entfernt."
+  removed_files: "Aus dem Speicher gelöschte Dateien: %{count} (%{size})."
+  removed_kept: "Behaltene Dateien: %{count}, andere Bücher oder Uploads nutzen sie."
+  removed_failed: "Noch nicht gelöscht: %{count}; der Speicher lehnte ab, der Server versucht es innerhalb einer Stunde erneut."
 
 errors:
   demo_books_required: "Wähle mindestens ein Buch aus."

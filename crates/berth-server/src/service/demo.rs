@@ -684,7 +684,7 @@ async fn load(
     };
     let loaded = target.fill(book, &picked, cover).await;
     if loaded.is_err() {
-        let _ = ingest::discard(&state.db, tenant_id, &upload).await;
+        let _ = ingest::discard(state, tenant_id, &upload).await;
     }
     loaded.map(Some)
 }

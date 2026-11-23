@@ -2147,20 +2147,34 @@ async fn an_analysis_can_be_cancelled_retried_and_discarded() {
         .unwrap();
     assert_eq!(upload.status, "ready");
 
-    // Discarding an upload in analysis drops its job too.
-    let other = browser_upload(
-        &state,
-        &session,
-        "Основание",
-        &[("01.mp3", chapter_mp3("Глава 1", 1, 2))],
-    )
-    .await;
+    // Discarding an upload in analysis drops its job too, and its files from storage at
+    // once, except the ones another upload has.
+    let same = chapter_mp3("Глава 1", 1, 2);
+    let other = browser_upload(&state, &session, "Основание", &[("01.mp3", same.clone())]).await;
+    let twin = browser_upload(&state, &session, "Основание (копия)", &[("01.mp3", same)]).await;
     let gone = send(
         &state,
         post(&format!("/upload/{other}/discard"), Some(&session), &[]),
     )
     .await;
     assert_eq!(gone.status, StatusCode::OK, "{}", gone.body);
+    assert!(
+        gone.body.contains("Files deleted from storage: 0"),
+        "{}",
+        gone.body
+    );
+    assert!(gone.body.contains("Files kept: 1"), "{}", gone.body);
+    let last = send(
+        &state,
+        post(&format!("/upload/{twin}/discard"), Some(&session), &[]),
+    )
+    .await;
+    assert!(
+        last.body.contains("Files deleted from storage: 1"),
+        "{}",
+        last.body
+    );
+    assert!(!last.body.contains("Files kept"), "{}", last.body);
     assert_eq!(berth_server::jobs::run_due(&state).await.unwrap(), 0);
     let pending: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM jobs WHERE done_at IS NULL")
         .fetch_one(&state.db)
@@ -4773,7 +4787,7 @@ async fn unused_blobs_go_a_day_after_their_last_reference() {
         .unwrap();
     assert_eq!(locations, 0);
 
-    // A discarded upload: its bytes go too, an upload still in the queue keeps its own.
+    // A discarded upload: its bytes go at once, an upload still in the queue keeps its own.
     let upload = |title: &'static str| {
         let state = state.clone();
         let token = token.clone();
@@ -4805,19 +4819,19 @@ async fn unused_blobs_go_a_day_after_their_last_reference() {
     };
     let (dropped, dropped_hash) = upload("Брошенная").await;
     let (_queued, queued_hash) = upload("В очереди").await;
-    ingest::discard(&state.db, &tenant_id, &dropped)
-        .await
-        .unwrap();
     let dropped_object = find_file(dir.path(), &dropped_hash).unwrap();
     let queued_object = find_file(dir.path(), &queued_hash).unwrap();
+    let removed = ingest::discard(&state, &tenant_id, &dropped).await.unwrap();
+    assert_eq!((removed.files, removed.kept, removed.failed), (1, 0, 0));
+    assert!(removed.bytes > 0);
+    assert!(!dropped_object.exists());
+    assert!(queued_object.exists());
     assert_eq!(
         collect_unreferenced(&state, now() + 25 * HOUR)
             .await
             .unwrap(),
-        1
+        0
     );
-    assert!(!dropped_object.exists());
-    assert!(queued_object.exists());
 
     // An object no row knows (an upload that never finished) goes after a day.
     let stray = queued_object.with_file_name("ab".repeat(32));

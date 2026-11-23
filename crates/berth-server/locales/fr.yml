@@ -481,6 +481,10 @@ upload:
   log_analysed: "Terminé, chapitres : %{count}"
   log_cancelled: "Analyse annulée"
   log_retried: "Analyse relancée"
+  removed: "%{name} retiré de la file d'attente."
+  removed_files: "Fichiers supprimés du stockage : %{count} (%{size})."
+  removed_kept: "Fichiers conservés : %{count}, d'autres livres ou imports les utilisent."
+  removed_failed: "Pas encore supprimés : %{count} ; le stockage a refusé, le serveur réessaie dans l'heure."
 
 errors:
   demo_books_required: "Choisissez au moins un livre."

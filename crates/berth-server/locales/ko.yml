@@ -481,6 +481,10 @@ upload:
   log_analysed: "완료, 챕터: %{count}"
   log_cancelled: "분석 취소됨"
   log_retried: "분석 다시 시작"
+  removed: "%{name}을(를) 대기열에서 제거했어요."
+  removed_files: "저장소에서 삭제한 파일: %{count}개 (%{size})."
+  removed_kept: "남겨 둔 파일: %{count}개. 다른 책이나 업로드가 사용해요."
+  removed_failed: "아직 삭제하지 못한 파일: %{count}개. 저장소가 거부해 1시간 안에 다시 시도해요."
 
 errors:
   demo_books_required: "책을 한 권 이상 고르세요."

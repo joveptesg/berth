@@ -481,6 +481,10 @@ upload:
   log_analysed: "Listo, capítulos: %{count}"
   log_cancelled: "Análisis cancelado"
   log_retried: "Análisis iniciado de nuevo"
+  removed: "%{name} quitado de la cola."
+  removed_files: "Archivos borrados del almacenamiento: %{count} (%{size})."
+  removed_kept: "Archivos conservados: %{count}, los usan otros libros o subidas."
+  removed_failed: "Aún sin borrar: %{count}; el almacenamiento lo rechazó, el servidor lo reintentará en una hora."
 
 errors:
   demo_books_required: "Elige al menos un libro."

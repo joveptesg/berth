@@ -481,6 +481,10 @@ upload:
   log_analysed: "完了、チャプター: %{count}"
   log_cancelled: "解析を中止"
   log_retried: "解析を再開"
+  removed: "%{name} をキューから削除しました。"
+  removed_files: "ストレージから削除したファイル: %{count} 件 (%{size})。"
+  removed_kept: "残したファイル: %{count} 件。他の書籍やアップロードが使っています。"
+  removed_failed: "まだ削除できていません: %{count} 件。ストレージが拒否したため、1 時間以内に再試行します。"
 
 errors:
   demo_books_required: "書籍を1冊以上選んでください。"

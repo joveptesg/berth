@@ -1,0 +1,7 @@
+{# What is left of a removed upload's card: what happened to its files in storage. #}
+<p id="upload-{{ id }}" role="status" class="rounded-[16px] border border-line bg-surface px-4 py-3 text-[13px] text-text-2">
+  <span class="font-semibold text-text">{{ t('upload.removed', name=name) }}</span>
+  {{ t('upload.removed_files', count=removed.files, size=removed.bytes | filesize) }}
+  {%- if removed.kept %} {{ t('upload.removed_kept', count=removed.kept) }}{% endif %}
+  {%- if removed.failed %} <span class="text-danger">{{ t('upload.removed_failed', count=removed.failed) }}</span>{% endif %}
+</p>

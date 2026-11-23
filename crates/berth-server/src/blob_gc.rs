@@ -85,6 +85,73 @@ pub async fn collect_unreferenced(state: &AppState, now: i64) -> anyhow::Result<
     Ok(removed)
 }
 
+/// What [`remove_now`] did with the files of a discarded upload.
+#[derive(Debug, Clone, Default, PartialEq, Eq, serde::Serialize)]
+pub struct Removed {
+    /// Files deleted from storage.
+    pub files: i64,
+    /// Their bytes.
+    pub bytes: i64,
+    /// Files kept: another book or upload uses them.
+    pub kept: i64,
+    /// Files storage refused to delete now; the collector tries again.
+    pub failed: i64,
+}
+
+/// Deletes blobs `hashes` (the files of a discarded upload) right away, without the grace
+/// period: nothing was served from an unsaved upload. A blob another book or upload uses
+/// stays.
+pub(crate) async fn remove_now(state: &AppState, tenant_id: &str, hashes: &[String]) -> Removed {
+    let mut done = Removed::default();
+    for hash in hashes {
+        let stored: anyhow::Result<(Option<i64>, Vec<String>)> = async {
+            let size =
+                sqlx::query_scalar("SELECT size FROM blobs WHERE tenant_id = $1 AND hash = $2")
+                    .bind(tenant_id)
+                    .bind(hash)
+                    .fetch_optional(&state.db)
+                    .await?;
+            let storages = sqlx::query_scalar(
+                "SELECT storage_id FROM blob_locations WHERE tenant_id = $1 AND hash = $2",
+            )
+            .bind(tenant_id)
+            .bind(hash)
+            .fetch_all(&state.db)
+            .await?;
+            Ok((size, storages))
+        }
+        .await;
+        let (size, storages) = match stored {
+            Ok(found) => found,
+            Err(err) => {
+                tracing::warn!(error = ?err, %hash, "could not look up blob");
+                done.failed += 1;
+                continue;
+            }
+        };
+        let (mut removed, mut failed) = (false, false);
+        for storage_id in storages {
+            match remove(state, tenant_id, hash, &storage_id, i64::MAX).await {
+                Ok(true) => removed = true,
+                Ok(false) => {}
+                Err(err) => {
+                    tracing::warn!(error = ?err, %hash, storage = %storage_id, "could not remove blob");
+                    failed = true;
+                }
+            }
+        }
+        if failed {
+            done.failed += 1;
+        } else if removed {
+            done.files += 1;
+            done.bytes += size.unwrap_or(0);
+        } else {
+            done.kept += 1;
+        }
+    }
+    done
+}
+
 /// Marks the location deleting while it is still unused, deletes the object, then the rows.
 /// A failed delete leaves the location `deleting`: it no longer counts as stored.
 async fn remove(
